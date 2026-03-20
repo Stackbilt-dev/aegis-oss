@@ -1,0 +1,32 @@
+name = "my-agent"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# account_id = "YOUR_ACCOUNT_ID"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "my-agent"
+# database_id = "YOUR_DATABASE_ID"
+
+[ai]
+binding = "AI"
+
+# Triggers — hourly cron for scheduled tasks
+[triggers]
+crons = ["0 * * * *"]
+
+# ─── Optional Service Bindings ────────────────────────────────
+# Uncomment and configure as needed.
+
+# Memory Worker (persistent semantic memory with vector search)
+# [[services]]
+# binding = "MEMORY"
+# service = "your-memory-worker"
+# entrypoint = "MemoryService"
+
+# TarotScript (deterministic symbolic reasoning)
+# [[services]]
+# binding = "TAROTSCRIPT"
+# service = "tarotscript-worker"

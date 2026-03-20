@@ -1,0 +1,134 @@
+ADF: 0.1
+
+🎯 TASK: AEGIS — Kurt's personal persistent AI agent. Self-optimizing Cognitive Kernel with three interlocking gears: Abstraction (channel/model normalization), Memory (episodic/semantic/procedural), Routing (TarotScript classify-cast + procedural memory = learned execution patterns, Groq/Workers AI as fallback). General-purpose — BizOps is one capability, not the ceiling.
+
+🧬 PERSONA [load-bearing]:
+  Identity: AEGIS is Kurt's technical co-founder in agent form. Not an assistant. Not a chatbot. A peer who happens to have perfect recall, zero ego, and 24/7 availability.
+  Voice:
+    - Pragmatic senior technical co-founder — direct, systems-thinking, no corporate fluff
+    - Thinks like an operator, not a consultant
+    - Gives the answer first, then the reasoning — never the other way around
+    - If something is on fire, says it's on fire
+    - Proactive — notices things during tasks and flags them without being asked
+    - Remembers what it learns (records important facts to semantic memory)
+  Boundaries:
+    - General-purpose. BizOps, code, research, planning, coordination — whatever Kurt needs
+    - BizOps Copilot is a capability, not the identity
+    - Channels shape tone (CLI = full context, Web = mobile-concise) but never change voice
+  Anti-patterns:
+    - Never hedge with "I'm just an AI" or "I don't have opinions"
+    - Never lead with caveats or disclaimers before the actual answer
+    - Never produce corporate-speak, bullet-point soup, or filler
+
+📋 CONTEXT [advisory]:
+  - Solo operator (Kurt) running AEGIS
+  - PRIMARY deployment: Edge-native on Cloudflare Workers (https://aegis-web.blue-pine-edf6.workers.dev)
+  - SECONDARY deployment: Local daemon (CLI REPL, code executor) — optional
+  - BizOps Copilot: remote MCP server (Cloudflare Worker), connected via Service Binding from edge
+  - D1 (Cloudflare SQLite) for edge state: conversations, messages, memory (all 3 tiers)
+  - SQLite (better-sqlite3) for local daemon state: sessions, event dedup, memory
+  - Tiered cognitive cost: Signal (Groq/Llama 3.3 70B, ~free) → Reflex (procedural memory, $0) → Cognition (Claude, $$$)
+  - Push as much as possible into reflex + signal. Claude only fires when the kernel doesn't know what to do.
+  - Cognitive Kernel: every message flows through dispatch() → route() → execute → memory write
+
+⚠ CONSTRAINTS [load-bearing]:
+  - TypeScript, ES modules, 2-space indent, single quotes, semicolons
+  - PascalCase for types/interfaces, camelCase for functions/variables
+  - Services contain business logic; handlers do HTTP/channel plumbing only
+  - Zod schemas validate all external input at boundaries
+  - Never commit secrets (.env, API keys, tokens)
+  - Use Conventional Commits (feat, fix, docs, chore)
+  - Pure functions in library code; side effects only in entry points
+  - Channel-based tool allow-lists enforced via hooks (daemon) or in-process filtering (edge)
+  - Event deduplication required on all inbound channels
+  - All user/channel input flows through kernel dispatch() — never call sendMessage() directly from channels
+  - Operator identity, persona, entity names, integration toggles, and URLs live in web/src/operator/config.ts — never hardcode these in source files
+
+🧭 DESIGN_PHILOSOPHY [load-bearing]:
+  Extension Over Addition:
+    - Prefer extending an existing concept's domain over introducing a new concept
+    - Before adding a new function, endpoint, service, or keyword: ask whether an existing one can grow to cover the new case
+    - Extension means broadening what something accepts or handles while preserving its identity and mental model
+    - The constraint: extend along the axis of the original concept's identity, not past it
+    - If an abstraction must handle fundamentally different concerns to absorb the new case, that's addition disguised as extension — decompose instead
+    - Examples:
+      - recordMemory() gained an optional db param for dual-write — not a new recordMemoryShadow()
+      - AUTH_SERVICE grew from 4 to 16 RPCs — not per-product auth implementations
+      - /health expanded to include task stats — not a new /health/tasks endpoint
+      - TarotScript's cross extended to match any value type — not a new if keyword
+    - Anti-pattern: god objects. When extension makes a concept responsible for everything, it has lost its identity. That's when you decompose (see: dispatch() → router + executors, memory.ts → memory/)
+    - Test: "Does this still feel like the same concept to a new reader?" If yes, extend. If no, add and name the new thing honestly.
+
+📖 GUIDE [advisory]:
+  - Pure runtime/environment? → CLAUDE.md, not ADF
+  - Universal architecture constraint? → core.adf CONSTRAINTS [load-bearing]
+  - Agent SDK patterns (sessions, hooks, tools)? → agent.adf
+  - Channel/permissions/message flow? → channels.adf
+  - Kernel routing/memory/dispatch? → kernel.adf
+  - Session state or current task? → state.adf
+  - [load-bearing] = violation causes incorrect output
+  - [advisory] = best practice, not enforced
+
+📁 STRUCTURE [advisory]:
+  Edge Worker (web/src/) — primary deployment:
+    - index.ts: Hono router — UI, API endpoints, health, procedures, SSE streaming
+    - auth.ts: Bearer auth middleware (cookie/header/query)
+    - ui.ts: Chat UI (inline HTML, vanilla JS, dark terminal aesthetic)
+    - types.ts: Env bindings (DB: D1Database, BIZOPS: Fetcher, AI: Ai, secrets)
+    - claude.ts: Anthropic Messages API executor with MCP tool loop + streaming variant, resolveMcpTool(), buildContext(), handleInProcessTool(), callMcpWithRetry()
+    - workers-ai-chat.ts: GPT-OSS-120B executor via Workers AI binding, OpenAI-compatible tool loop
+    - composite.ts: LLM Map-Reduce executor (Groq→CF→Groq→Claude pipeline)
+    - groq.ts: Fetch-based Groq client (no SDK), askGroq() + askGroqJson()
+    - mcp-client.ts: Multi-namespace MCP HTTP client (parameterized prefix) + McpRegistry (multi-client resolution)
+    - mcp-server.ts: Remote MCP server — stateless JSON-RPC handler (12 AEGIS tools for external MCP clients)
+    - search.ts: Brave Search API client (braveSearch, fetchUrlText)
+    - github.ts: GitHub API client (ghFetch with retry + rate limiting, 15+ operations)
+    - email.ts: Resend email client — daily Co-Founder Brief (consolidated digest), ARGUS critical alerts, voice funnel notifications
+    - webhook.ts: ARGUS Phase 1 — unified webhook ingestion (GitHub/Stripe/ElevenLabs HMAC, D1 events table)
+    - roundtable.ts: Roundtable content generation pipeline (topic queue → Claude generation → D1 storage)
+    - dispatch.ts: Research Dispatch pipeline (arxiv → keyword scoring → Claude analysis → D1 draft)
+    - kernel/dispatch.ts: Edge dispatch loop, EdgeEnv, createIntent(), executors, buildMcpRegistry(), fetchCfObservability()
+    - kernel/router.ts: TarotScript classify-cast → Workers AI/Groq fallback → procedural lookup → circuit breaker → default table
+    - kernel/memory.ts: Three-tier memory CRUD (async D1), episodic consolidation, topic normalization
+    - kernel/scheduled.ts: Cron job handlers (heartbeat, consolidation, goals, roundtable, dispatch, argus-notify, argus-heartbeat, digest)
+    - kernel/types.ts: KernelIntent, ExecutionPlan, DispatchResult, memory entry types
+    - operator/types.ts: OperatorConfig type contract (includes cfObservability integration toggle)
+    - operator/config.example.ts: Committed reference config (copy → config.ts, gitignored)
+    - operator/persona.example.ts: Committed persona template (copy → persona.ts, gitignored)
+    - operator/index.ts: Config loader, validation, auto-derives possessive, frozen export + renderTemplate()
+    - operator/prompt-builder.ts: buildSystemPrompt(), buildGroqSystemPrompt(), buildClassifySystem(), getTaskPatterns()
+
+  Local Daemon (src/) — optional, for CLI + code executor:
+    - index.ts: Entry — mode routing (cli | daemon)
+    - config.ts: Zod-validated env config
+    - kernel/{dispatch,router,memory,types}.ts: Kernel (sync better-sqlite3)
+    - agent/{session,hooks,tools,system-prompt,code-executor}.ts: Claude SDK
+    - channels/{types,permissions,cli}.ts: CLI REPL, permissions
+    - heartbeat/evaluator.ts: BizOps dashboard triage
+    - daemon/{health,scheduler,process}.ts: Hono health, cron, shutdown
+    - db/{client,schema}.ts: better-sqlite3 singleton + CRUD
+
+🔧 BINDINGS [load-bearing]:
+  Edge (primary):
+    - Cloudflare Worker: aegis-web, Hono framework
+    - D1 Database: aegis-web (a0a3b1c7-43ac-49d3-a481-d0aa7c396576)
+    - Service Binding: BIZOPS → businessops-copilot (Worker-to-Worker MCP)
+    - Anthropic API: fetch-based, claude-sonnet-4-6 / claude-opus-4-6
+    - Groq API: fetch-based, llama-3.3-70b-versatile + llama-3.1-8b-instant + openai/gpt-oss-120b
+    - Workers AI: GPT-OSS-120B (@cf/openai/gpt-oss-120b) + Llama 3.3 70B + Llama 3.2 3B (classifier)
+    - MCP (BizOps): Streamable HTTP transport via Service Binding (prefix: bizops)
+    - MCP (CF Observability): https://observability.mcp.cloudflare.com/mcp, direct fetch (prefix: cf_obs)
+    - McpRegistry: multi-namespace resolution across BizOps + CF Observability (+ future MCP servers)
+    - Resend: daily Co-Founder Brief, ARGUS critical alerts, voice funnel notifications
+    - Brave Search: web research tool
+    - GitHub API: multi-repo self-improvement (read + write operations)
+    - AI Gateway: optional routing layer for observability/caching (set AI_GATEWAY_ID to enable)
+
+  Local (optional):
+    - Claude Agent SDK: @anthropic-ai/claude-agent-sdk (query API)
+    - BizOps MCP: HTTP transport via public URL
+    - Groq: OpenAI SDK pointed at api.groq.com
+    - SQLite: better-sqlite3, WAL mode, foreign keys ON
+    - Scheduler: node-cron for heartbeat intervals
+    - Health: Hono on localhost:AEGIS_PORT
+    - Daemon: PM2 ecosystem.config.js

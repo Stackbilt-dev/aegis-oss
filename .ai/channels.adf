@@ -1,0 +1,53 @@
+ADF: 0.1
+
+🎯 TASK: Channel context — Web chat (edge-native), CLI REPL (local), Slack (deferred), permissions, event handling
+
+⚠ CONSTRAINTS [load-bearing]:
+  - All inbound messages deduplicated via event_id check before processing
+  - Channel permissions checked at PreToolUse hook level (daemon) or tool filtering (edge)
+  - All channel output goes through kernel dispatch() — channels never call sendMessage() directly
+  - Web channel runs edge-native (full kernel in Worker) — no daemon dependency
+  - Web channel uses elevated permissions (full BizOps + memory, no filesystem)
+
+📁 FILES [advisory]:
+  Daemon (local):
+    - src/channels/types.ts: InboundMessage, OutboundMessage, Channel type ('cli' | 'slack' | 'web' | 'telnyx')
+    - src/channels/permissions.ts: CHANNEL_PERMISSIONS map, isToolAllowed(), isMutationTool()
+    - src/channels/cli.ts: readline REPL, dispatches through kernel, shows [executor | classification | cost | latency]
+  Edge Worker:
+    - web/src/index.ts: Hono router — POST /api/message dispatches through edge kernel, ALL /mcp remote MCP server
+    - web/src/auth.ts: Bearer auth middleware (cookie/header/query param support)
+    - web/src/ui.ts: Chat UI (inline HTML string, vanilla JS, dark terminal aesthetic)
+    - web/src/types.ts: Env bindings (DB: D1Database, BIZOPS: Fetcher, secrets)
+
+🔐 PERMISSIONS [load-bearing]:
+  CLI:
+    allowed: mcp__bizops__*, mcp__aegis_memory__*, Bash, Read, Write, Edit, Glob, Grep, WebSearch, WebFetch
+    → God mode. User is at the keyboard.
+
+  Web:
+    allowed: mcp__bizops__*, record_memory_entry (in-process), WebSearch, WebFetch
+    denied: Bash, Read, Write, Edit, Glob, Grep (no filesystem from web)
+    → Elevated. Full BizOps read + write via Claude executor with MCP tool loop.
+    → code_task gracefully degrades with helpful message (no filesystem at edge).
+
+  Slack (deferred):
+    allowed: mcp__bizops__list_*, mcp__bizops__get_*, mcp__bizops__dashboard_*, mcp__bizops__finance_summary, mcp__bizops__ask_advisor, WebSearch, WebFetch, mcp__aegis_memory__*
+    → Read-only BizOps + web. No mutations, no local filesystem.
+
+📋 EVENT_FLOW [advisory]:
+  Web (edge-native — PRIMARY):
+    1. User sends message via chat UI → Worker POST /api/message
+    2. Worker: event dedup (web_events table), persist user message to D1
+    3. Edge kernel: createIntent('web') → route() → execute → recordEpisode() + upsertProcedure()
+    4. Worker: persist assistant message + metadata to D1, return to UI
+    5. UI: render response with classification/executor/cost telemetry
+
+  CLI (local daemon):
+    1. readline input → createIntent('cli', sessionId, text)
+    2. dispatch(intent) → render result to console
+
+  Slack (deferred):
+    1. Socket Mode event → extract event_id → SQLite dedup → drop if duplicate
+    2. If new: insert event_id, ACK instantly (3s requirement)
+    3. createIntent('slack', threadId, text) → dispatch → Web API response

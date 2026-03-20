@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.dev.vars
+.wrangler/
+web/wrangler.toml
+web/src/operator/config.ts
+web/src/operator/persona.ts
+*.log
+.DS_Store

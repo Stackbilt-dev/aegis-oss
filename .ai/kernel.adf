@@ -1,0 +1,88 @@
+ADF: 0.1
+
+🎯 TASK: Cognitive Kernel — self-optimizing routing loop. Intent normalization → TarotScript classify-cast (zero-inference, primary) → Workers AI/Groq fallback → procedural memory lookup → circuit breaker → executor selection → episode + procedure recording. Runs at edge (D1) and locally (SQLite).
+
+⚠ CONSTRAINTS [load-bearing]:
+  - All channel input enters via dispatch(createIntent(...)) — no direct sendMessage() from channels
+  - Internal triggers (heartbeat) set classified + costCeiling on the intent, bypassing classification
+  - Procedural memory fires when: success_count >= 3 AND success_rate >= 70%
+  - Circuit breaker: 2 consecutive failures → degraded → skips replay → falls through to default route
+  - Every dispatch records an episodic entry AND upserts the procedural entry
+  - Executors are opaque to the router: claude, claude_opus, gpt_oss, workers_ai, groq, direct, claude_code — each returns { text, cost }
+
+📁 FILES [advisory]:
+  Edge (web/src/kernel/) — primary:
+    - types.ts: KernelIntent, EpisodicEntry, ProceduralEntry, ExecutionPlan, DispatchResult, Executor, ProceduralStatus, Refinement
+    - router.ts: route(intent, db, groqKey, groqModel, groqBaseUrl?, ai?, tarotscriptFetcher?) → { plan, nearMiss }
+    - dispatch.ts: dispatch(intent, edgeEnv) → DispatchResult. EdgeEnv has db, API keys, bizopsFetcher.
+    - memory.ts: All memory CRUD (async D1). recordEpisode(), upsertProcedure(), getProcedure(), getAllProcedures(), findNearMiss(), addRefinement(), recordMemory(), getAllMemoryForContext().
+
+  Local (src/kernel/) — optional:
+    - types.ts, router.ts, dispatch.ts, memory.ts: Same logic, sync better-sqlite3.
+
+🧠 MEMORY_TIERS [load-bearing]:
+  Episodic:
+    table: episodic_memory
+    stores: What happened — intent_class, channel, summary, outcome, cost, latency_ms, near_miss
+    indexed: intent_class, created_at
+  Semantic:
+    table: memory_entries
+    stores: What I know — topic, fact, confidence, source
+    written by: record_memory_entry tool (in-process on edge, MCP server on daemon)
+  Procedural:
+    table: procedural_memory
+    stores: How to do things — task_pattern (UNIQUE), executor, executor_config, success/fail counts, avg stats, status, consecutive_failures, refinements (JSON)
+    key format: task_pattern = "{classification}:{complexity_tier}" (e.g., general_knowledge:low, general_knowledge:high)
+    complexity tiers: low (0-1), mid (2), high (3) — same classification learns different executors per tier
+    indexed: task_pattern, status
+    upsert: ON CONFLICT updates running averages incrementally
+    lifecycle: learning → learned → degraded (2 failures) → learned (on success)
+
+🔀 ROUTING [advisory]:
+  Task patterns (dynamic — built from operator config via getTaskPatterns()):
+    - heartbeat: system monitoring → direct executor (dashboard_summary + Groq triage)
+    - bizops_read: read-only BizOps queries → claude (with MCP tools) [only when bizops.enabled]
+    - bizops_mutate: BizOps create/update/delete → claude (with MCP tools) [only when bizops.enabled]
+    - general_knowledge: general Q&A → claude (no tools needed)
+    - memory_recall: "what do you remember?" → claude
+    - greeting: hello/hi → groq (cheap, fast)
+    - code_task: write/edit/fix code → claude_code (CLI) or graceful degradation (web)
+    - code_review: review/analyze code → claude (web) or claude_code (CLI)
+    - self_improvement: self-analysis, GitHub issues/PRs → claude
+    - web_research: real-time web lookups → claude (with Brave tools)
+    - goal_execution: autonomous goal loop → claude (internal only)
+  Classification chain: Phase 1a TarotScript classify-cast (zero-inference, semantic keyword matching via `where relevance intention`) → Phase 1b Workers AI Llama 3.2 3B → Phase 1b Groq 70B fallback. Returns {pattern, complexity, needs_tools, confidence}. Episodes tagged with [clf:classify-cast], [clf:workers-ai], or [clf:groq] for monitoring.
+  Phase 1.5: Confidence evaluation — <0.50 escalate, 0.50-0.79 Groq logprobs re-classify, >=0.80 trust.
+  Phase 3 uses complexity-aware routing:
+    - complexity >= 3 → claude_opus
+    - self_improvement, goal_execution → claude (reliability-critical)
+    - needs_tools or tool-requiring patterns → gpt_oss (GPT-OSS-120B, cheap tool calling)
+    - complexity <= 1, no tools → workers_ai
+    - moderate no-tool → gpt_oss
+    - else → gpt_oss
+  DEFAULT_ROUTES map kept as fallback for degraded procedure replanning.
+  Procedures replace default routing after learning (per complexity tier — same pattern at different complexity learns independently).
+
+⚡ EXECUTORS [advisory]:
+  Edge (web/src/kernel/dispatch.ts):
+    claude: Anthropic Sonnet 4.6 with MCP tool loop (max 10 rounds). SSE streaming variant. Reliability-critical: self_improvement, goal_execution.
+    claude_opus: Anthropic Opus 4.6 — same tool loop, used for complexity >= 3.
+    gpt_oss: GPT-OSS-120B via Workers AI binding. OpenAI-compatible tool loop (max 10 rounds). Standard executor for tool queries + moderate no-tool. $0.35/$0.75 per MTok.
+    composite: LLM Map-Reduce — Groq GPT-OSS orchestrates → CF GPT-OSS gathers tools → Groq analyzes (parallel) → Claude synthesizes. Routes: self_improvement, goal_execution, complexity >= 2 + tools. $0.01-0.03/query.
+    workers_ai: Llama 3.3 70B via Workers AI binding. No tools. ~$0.005/query. Simple queries (complexity <= 1).
+    groq: Llama 3.1 8B Instant for responses, 70B for classification. fetch-based, brief system prompt, no tools. ~free.
+    direct: heartbeat handler — BizOps dashboard_summary + CF observability (parallel) → Groq triage. 8 checks: 5 BizOps + 3 infra (worker_errors, worker_latency, worker_volume). Returns meta.
+    claude_code: graceful degradation — returns helpful message (no filesystem at edge).
+
+  MCP Architecture:
+    McpClient: parameterized prefix per namespace (e.g. 'bizops', 'cf_obs'). Tool names: mcp__{prefix}__{tool}.
+    McpRegistry: multi-client resolution. register() adds clients, listAllTools() fetches in parallel, resolveClient() routes by prefix match.
+    resolveMcpTool(): exported helper in claude.ts — checks registry first, falls back to single client.
+    buildMcpRegistry(env): in dispatch.ts — always registers BizOps, conditionally registers CF Observability when CF_ANALYTICS_TOKEN set.
+    CF Observability MCP: https://observability.mcp.cloudflare.com/mcp — worker error rates, latency, request volume. Direct fetch (no Service Binding).
+
+  Local (src/kernel/dispatch.ts):
+    claude: Claude Agent SDK query(). Full MCP tools.
+    groq: OpenAI SDK via Groq endpoint.
+    direct: heartbeat via evaluator.ts.
+    claude_code: spawns Claude Code CLI in target repo. Permission-scoped per channel.

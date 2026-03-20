@@ -1,0 +1,23 @@
+ADF: 0.1
+
+🎯 ROLE: AEGIS daemon context router
+
+📐 RULES:
+  - Prefer smallest relevant module set.
+  - Never assume unseen modules were loaded.
+  - Edge Worker tasks (web/src/) load channels.adf for web channel + core.adf for constraints.
+  - Kernel tasks (routing, memory, dispatch) load kernel.adf for the cognitive loop.
+  - Agent/Claude tasks load agent.adf for executor and MCP patterns.
+  - Channel tasks (permissions, message flow) load channels.adf.
+  - MCP/BizOps tasks load agent.adf for MCP server details and tool list.
+
+📦 DEFAULT_LOAD:
+  - core.adf
+  - state.adf
+
+📂 ON_DEMAND:
+  - persona.adf (Triggers on: persona, behavioral, memory obligation, agenda, proposed action, identity, voice, traits, channel awareness)
+  - agent.adf (Triggers on: Claude, SDK, session, hook, tool, MCP, prompt, code-executor, aegis_memory, Anthropic, executor, mcp-client, Service Binding)
+  - channels.adf (Triggers on: CLI, web, REPL, channel, permission, Worker, chat, UI, auth, D1, Hono)
+  - kernel.adf (Triggers on: kernel, router, dispatch, memory, episodic, procedural, classify, executor, intent, circuit, procedure, route, learning, degraded, operator, config, prompt-builder)
+  - advisory-board.adf (Triggers on: Atlas, Mercer, Sloan, advisory board, GTM, distribution, revenue, monetization, pricing, sub-agent, advisor)

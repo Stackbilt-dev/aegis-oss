@@ -1,0 +1,161 @@
+ADF: 0.1
+
+🎯 TASK: Agent context — Claude execution, MCP connections, tools, memory. Two implementations: edge (Anthropic API + fetch) and local (Claude Agent SDK).
+
+⚠ CONSTRAINTS [load-bearing]:
+  - Memory writes use structured record_memory_entry tool, never raw file writes
+  - MCP auth via Authorization Bearer header, never token-in-URL
+  - System prompt includes memory context on every execution
+  - sendMessage() / executeClaudeChat() is called only by the kernel dispatcher — never by channels directly
+  - Edge MCP uses Service Binding fetch (avoids Cloudflare Worker-to-Worker 1042 error)
+  - Anthropic tool_result format: { type: 'tool_result', tool_use_id, content } — NOT { id, text }
+
+📁 FILES [advisory]:
+  Edge (web/src/) — primary:
+    - claude.ts: executeClaudeChat() — Anthropic Messages API with tool loop (max 10 rounds)
+      - System prompt: built by operator/prompt-builder.ts from config + persona template + memory context from D1
+      - Tools: conditionally assembled from operatorConfig.integrations (BizOps, GitHub, Brave, goals)
+      - Cost estimation: (input*3 + output*15) / 1M
+    - mcp-client.ts: McpClient class — Streamable HTTP transport
+      - Constructor: { url, token, fetcher? } — fetcher is the Service Binding
+      - Session management: initialize() → Mcp-Session-Id header → all subsequent calls
+      - SSE response parsing for text/event-stream Content-Type
+      - toAnthropicTools(): converts MCP tool definitions to Anthropic API format
+      - toMcpToolName(): strips 'mcp__bizops__' prefix for MCP dispatch
+    - groq.ts: askGroq() — fetch-based, no SDK dependency
+    - github.ts: GitHub REST API client — fetch-based, no SDK
+        - Read: getRepoTree, getFileContent, getRecentCommits, listIssues, listPullRequests, listOrgRepos
+        - Write: createIssue, createBranch, getFileSha, updateFile, createPullRequest, mergePullRequest
+        - CI: listWorkflowRuns (Actions API), getCombinedStatus (Status API)
+        - Git Data API: createBlob, getBaseTreeSha, createTree, createGitCommit, updateRef (multi-file commits)
+        - ghFetch: GitHubApiError class, retry on 500/502/503 (2x exponential backoff), rate limit detection (403/429)
+        - Auth: Bearer GITHUB_TOKEN secret
+
+  Local (src/agent/) — optional:
+    - session.ts: sendMessage(channel, threadId, text) → TurnResult via Claude SDK query()
+    - system-prompt.ts: buildSystemPrompt() — Kurt persona + memory entries + channel context
+    - hooks.ts: makePreToolUseHook(channel), makeStopHook()
+    - tools.ts: In-process SDK MCP server (aegis_memory) with record_memory_entry tool
+    - code-executor.ts: Spawns Claude Code CLI in target repo, resolves repo from semantic memory
+
+🔌 MCP_SERVERS [advisory]:
+  bizops:
+    - 29 tools: set_context, get_context, list_orgs, get_org, create_org, update_org, rapid_intake,
+      list_compliance, create_compliance, update_compliance, delete_compliance, upcoming_deadlines,
+      list_documents, create_document, update_document, delete_document, doc_gaps,
+      list_finance, create_finance, update_finance, delete_finance, finance_summary,
+      dashboard_summary, weekly_ops_briefing, ask_advisor, veil_check,
+      register_project, list_projects, get_project, update_project
+    - Edge: Service Binding (env.BIZOPS.fetch), MCP Streamable HTTP, Bearer auth
+    - Local: HTTP transport to https://businessops-copilot.kurt-5be.workers.dev/mcp, Bearer auth
+
+  aegis_memory (local only):
+    - In-process SDK MCP server (createSdkMcpServer)
+    - Tool: record_memory_entry { topic, fact, confidence, source }
+    - Edge equivalent: handled in-process in claude.ts (direct D1 write)
+
+🛠 CODE_EXECUTOR [advisory]:
+  Edge (web):
+    - code_task: graceful degradation — returns helpful message suggesting CLI
+    - code_review: routed to claude executor (can reason about code without filesystem)
+
+  Task Runner (scripts/taskrunner.sh — autonomous overnight sessions):
+    - Polls: GET /api/cc-tasks/next for pending tasks (respects dependencies + priority)
+    - Spawns: claude -p "<mission_brief>" --dangerously-skip-permissions --output-format json --max-turns N --settings hooks/autonomous-settings.json
+    - Mission brief includes: task instructions, no-questions constraint, no-deploy constraint, completion signal
+    - Safety hooks: block AskUserQuestion, block destructive ops, block deploys, block secret access, post-edit syntax check
+    - Results posted back: POST /api/cc-tasks/:id/complete with result/error/exit_code
+    - Session digest auto-posted after each task for dreaming cycle ingestion
+    - Modes: --max N (task limit), --loop (poll forever), --dry-run (preview)
+    - Queue management: MCP tools (aegis_create_cc_task) or REST API (POST /api/cc-tasks)
+
+  Local (daemon):
+    - Spawns: claude --print --output-format json --max-budget-usd <budget> --model sonnet
+    - code_review: read-only tools (Read, Glob, Grep, git log/diff), $0.50 budget
+    - code_task on CLI: full tools, $2.00 budget
+    - code_task on non-CLI: read-only tools (safety)
+    - Repo resolution: semantic memory topic matching
+    - Env: strips CLAUDECODE + CLAUDE_CODE_ENTRYPOINT to avoid nesting guard
+    - Timeout: 5 minutes
+
+🔭 SELF_IMPROVEMENT [advisory]:
+  GitHub in-process tools (web channel, 11 tools, available when GITHUB_TOKEN + GITHUB_REPO set):
+    Read:
+    - list_org_repos: GET /orgs/{org}/repos → name/visibility/language/updated_at (default: org from GITHUB_REPO)
+    - list_repo_files: GET /git/trees/HEAD?recursive=1 → flat file path list
+    - read_repo_file: GET /contents/{path} → base64-decoded, truncated at 8000 chars (shows total size)
+    - get_repo_commits: GET /commits → sha/message/author/date (first-line message)
+    - get_repo_issues: GET /issues → filters out PRs, returns number/title/state/url/labels
+    - get_repo_prs: GET /pulls → number/title/state/merged/head/base/url
+    - get_ci_status: GET /commits/{ref}/status + /actions/runs → combined commit status + Actions workflow runs
+
+    Write:
+    - create_improvement_issue: POST /issues + addAgendaItem mirror
+    - create_improvement_pr: single-file: createBranch → updateFile → createPullRequest + addAgendaItem(high)
+    - create_multi_file_pr: multi-file: createBranch → createBlob(each) → createTree → createGitCommit → updateRef → createPullRequest + addAgendaItem(high)
+    - merge_pull_request: PUT /pulls/{n}/merge (squash/merge/rebase) + auto-resolve matching agenda item
+
+  Classification: 'self_improvement' → claude executor (via DEFAULT_ROUTES in router.ts)
+
+  Triggers:
+    - On-demand: chat message classified as self_improvement by Groq
+    - Scheduled: runSelfImprovementAnalysis() in kernel/scheduled.ts
+      - Runs at UTC hours divisible by 6 (00, 06, 12, 18) — 4x per day max
+      - Skips silently if GITHUB_TOKEN/GITHUB_REPO not set
+      - Activity-gated: skips if no new episodes or commits since last run
+
+  Feedback loop (recordSelfImprovementOutcomes):
+    - Checks closed PRs with aegis/ branch prefix — distinguishes merged vs closed-without-merge
+    - Records outcome facts to self_improvement_outcomes memory topic
+
+  Cost constraints:
+    - 8000 char truncation per file read (~2000 tokens)
+    - Scheduled prompt caps output at 2-3 issues/PRs per run
+    - Self-improvement failure is caught + logged, never propagates to runScheduledTasks
+
+  Resilience:
+    - ghFetch retries transient 500/502/503 with exponential backoff (2 retries, 500ms base)
+    - Rate limit detection: 403 (primary) and 429 (secondary) with descriptive errors
+    - createBranch catches 422 → clear "branch already exists" error
+
+  Required GitHub token scopes: repo (or fine-grained: Contents read/write, Issues write, Pull requests write, Actions read, Metadata read)
+  Secret: GITHUB_TOKEN — set via `wrangler secret put GITHUB_TOKEN --name aegis-web`
+  Var: GITHUB_REPO = "Stackbilt-dev/aegis" (in wrangler.toml [vars])
+
+🔌 MCP_SERVER_ENDPOINT [advisory]:
+  Stateless remote MCP server at /mcp — exposes AEGIS tools to external MCP clients (Claude Code, Claude Desktop, etc.).
+  Protocol: MCP 2025-03-26 over Streamable HTTP (JSON-RPC 2.0, stateless — no Durable Objects)
+  Auth: Bearer AEGIS_TOKEN (same middleware as all other endpoints)
+  Implementation: web/src/mcp-server.ts — direct JSON-RPC handler (no SDK dependencies)
+  Route: app.all('/mcp') in web/src/index.ts
+
+  Tools (15 total — 8 read, 7 write):
+    Read:
+    - aegis_chat: Full kernel dispatch (classify → route → execute), returns response + metadata
+    - aegis_conversations: List recent conversations (limit param, max 50)
+    - aegis_conversation_history: Get messages for a conversation
+    - aegis_agenda: Active agenda items + proposed actions
+    - aegis_health: Service health + procedure stats
+    - aegis_memory: Semantic memory entries (optional topic filter)
+    - aegis_list_goals: Active autonomous goals with schedule + run count
+    - aegis_cc_sessions: Claude Code session digests (by ID or recent)
+    - aegis_list_cc_tasks: List queued CC tasks (optional status filter)
+
+    Write (direct D1, bypasses kernel routing — for Claude Code parity):
+    - aegis_record_memory: Write semantic memory entry (topic, fact, confidence, source)
+    - aegis_add_agenda: Add agenda item (item, context, priority)
+    - aegis_resolve_agenda: Resolve agenda item as done/dismissed
+    - aegis_add_goal: Create autonomous goal (title, description, schedule_hours)
+    - aegis_update_goal: Pause/complete/fail a goal
+    - aegis_create_cc_task: Queue a Claude Code task for autonomous execution (title, repo, prompt, priority, depends_on, max_turns)
+    - aegis_cancel_cc_task: Cancel a pending CC task
+
+  Client config (Claude Code .claude/settings.json):
+    { "mcpServers": { "aegis": { "type": "url", "url": "https://aegis-web.kurt-5be.workers.dev/mcp", "headers": { "Authorization": "Bearer <AEGIS_TOKEN>" } } } }
+
+🔐 SECURITY [load-bearing]:
+  - CLI channel: full tool access (god mode — user is at keyboard)
+  - Web channel: elevated BizOps + memory, no filesystem. code_task degrades gracefully.
+  - Slack channel: read-only BizOps + web search only (deferred)
+  - Edge Worker: Bearer auth on all endpoints (cookie/header/query param)
+  - MCP: Bearer token auth, never exposed in URLs
