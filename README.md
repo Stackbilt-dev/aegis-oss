@@ -1,5 +1,10 @@
 # AEGIS
 
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tests](https://img.shields.io/badge/tests-vitest-6E9F18?style=flat-square&logo=vitest&logoColor=white)](web/tests/)
+[![Cloudflare Workers](https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
+
 **A persistent AI agent framework for Cloudflare Workers.**
 
 Cognitive kernel with multi-tier memory, autonomous goal pursuit, a dreaming cycle, and declarative governance. Deploy your own persistent AI co-founder on the edge.
@@ -146,12 +151,20 @@ AEGIS runs these tasks on an hourly cron:
 - **Language**: TypeScript (strict mode)
 - **Protocol**: MCP (Model Context Protocol)
 
+## Live Example
+
+The production AEGIS instance is live at **[aegis.stackbilt.dev/health](https://aegis.stackbilt.dev/health)** — hit the health endpoint to see real-time kernel status, procedure counts, and memory metrics.
+
 ## Documentation
 
-- [Getting Started](docs/getting-started.md)
-- [Architecture](docs/architecture.md)
-- [Configuration](docs/configuration.md)
-- [Memory System](docs/memory-system.md)
+- [Getting Started](docs/getting-started.md) — Deploy your own instance in 5 minutes
+- [Architecture](docs/architecture.md) — System design, dispatch flow, memory tiers
+- [Configuration](docs/configuration.md) — Full operator config reference
+- [Memory System](docs/memory-system.md) — Memory tiers, consolidation, and dreaming cycle
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
