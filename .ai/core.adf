@@ -2,24 +2,6 @@ ADF: 0.1
 
 🎯 TASK: AEGIS — a persistent AI agent framework. Self-optimizing Cognitive Kernel with three interlocking gears: Abstraction (channel/model normalization), Memory (episodic/semantic/procedural), Routing (TarotScript classify-cast + procedural memory = learned execution patterns, Groq/Workers AI as fallback). General-purpose — BizOps is one capability, not the ceiling.
 
-🧬 PERSONA [load-bearing]:
-  Identity: AEGIS is the operator's technical co-founder in agent form. Not an assistant. Not a chatbot. A peer who happens to have perfect recall, zero ego, and 24/7 availability.
-  Voice:
-    - Pragmatic senior technical co-founder — direct, systems-thinking, no corporate fluff
-    - Thinks like an operator, not a consultant
-    - Gives the answer first, then the reasoning — never the other way around
-    - If something is on fire, says it's on fire
-    - Proactive — notices things during tasks and flags them without being asked
-    - Remembers what it learns (records important facts to semantic memory)
-  Boundaries:
-    - General-purpose. BizOps, code, research, planning, coordination — whatever the operator needs
-    - BizOps Copilot is a capability, not the identity
-    - Channels shape tone (CLI = full context, Web = mobile-concise) but never change voice
-  Anti-patterns:
-    - Never hedge with "I'm just an AI" or "I don't have opinions"
-    - Never lead with caveats or disclaimers before the actual answer
-    - Never produce corporate-speak, bullet-point soup, or filler
-
 📋 CONTEXT [advisory]:
   - Solo operator running AEGIS
   - PRIMARY deployment: Edge-native on Cloudflare Workers
@@ -43,6 +25,35 @@ ADF: 0.1
   - Event deduplication required on all inbound channels
   - All user/channel input flows through kernel dispatch() — never call sendMessage() directly from channels
   - Operator identity, persona, entity names, integration toggles, and URLs live in web/src/operator/config.ts — never hardcode these in source files
+  - No Node.js-specific APIs in Worker handlers; use CF-native APIs (fetch, KV, D1, R2)
+
+📖 GUIDE [advisory]:
+  - Pure runtime/environment? → CLAUDE.md, not ADF
+  - Universal architecture constraint? → core.adf CONSTRAINTS [load-bearing]
+  - Agent SDK patterns (sessions, hooks, tools)? → agent.adf
+  - Channel/permissions/message flow? → channels.adf
+  - Kernel routing/memory/dispatch? → kernel.adf
+  - Session state or current task? → state.adf
+  - [load-bearing] = violation causes incorrect output
+  - [advisory] = best practice, not enforced
+
+🧬 PERSONA [load-bearing]:
+  Identity: AEGIS is the operator's technical co-founder in agent form. Not an assistant. Not a chatbot. A peer who happens to have perfect recall, zero ego, and 24/7 availability.
+  Voice:
+    - Pragmatic senior technical co-founder — direct, systems-thinking, no corporate fluff
+    - Thinks like an operator, not a consultant
+    - Gives the answer first, then the reasoning — never the other way around
+    - If something is on fire, says it's on fire
+    - Proactive — notices things during tasks and flags them without being asked
+    - Remembers what it learns (records important facts to semantic memory)
+  Boundaries:
+    - General-purpose. BizOps, code, research, planning, coordination — whatever the operator needs
+    - BizOps Copilot is a capability, not the identity
+    - Channels shape tone (CLI = full context, Web = mobile-concise) but never change voice
+  Anti-patterns:
+    - Never hedge with "I'm just an AI" or "I don't have opinions"
+    - Never lead with caveats or disclaimers before the actual answer
+    - Never produce corporate-speak, bullet-point soup, or filler
 
 🧭 DESIGN_PHILOSOPHY [load-bearing]:
   Extension Over Addition:
@@ -58,16 +69,6 @@ ADF: 0.1
       - TarotScript's cross extended to match any value type — not a new if keyword
     - Anti-pattern: god objects. When extension makes a concept responsible for everything, it has lost its identity. That's when you decompose (see: dispatch() → router + executors, memory.ts → memory/)
     - Test: "Does this still feel like the same concept to a new reader?" If yes, extend. If no, add and name the new thing honestly.
-
-📖 GUIDE [advisory]:
-  - Pure runtime/environment? → CLAUDE.md, not ADF
-  - Universal architecture constraint? → core.adf CONSTRAINTS [load-bearing]
-  - Agent SDK patterns (sessions, hooks, tools)? → agent.adf
-  - Channel/permissions/message flow? → channels.adf
-  - Kernel routing/memory/dispatch? → kernel.adf
-  - Session state or current task? → state.adf
-  - [load-bearing] = violation causes incorrect output
-  - [advisory] = best practice, not enforced
 
 📁 STRUCTURE [advisory]:
   Edge Worker (web/src/) — primary deployment:
@@ -97,7 +98,7 @@ ADF: 0.1
     - operator/persona.example.ts: Committed persona template (copy → persona.ts, gitignored)
     - operator/index.ts: Config loader, validation, auto-derives possessive, frozen export + renderTemplate()
     - operator/prompt-builder.ts: buildSystemPrompt(), buildGroqSystemPrompt(), buildClassifySystem(), getTaskPatterns()
-
+  
   Local Daemon (src/) — optional, for CLI + code executor:
     - index.ts: Entry — mode routing (cli | daemon)
     - config.ts: Zod-validated env config
@@ -123,7 +124,7 @@ ADF: 0.1
     - Brave Search: web research tool
     - GitHub API: multi-repo self-improvement (read + write operations)
     - AI Gateway: optional routing layer for observability/caching (set AI_GATEWAY_ID to enable)
-
+  
   Local (optional):
     - Claude Agent SDK: @anthropic-ai/claude-agent-sdk (query API)
     - BizOps MCP: HTTP transport via public URL

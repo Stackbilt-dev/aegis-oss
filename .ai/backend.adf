@@ -1,4 +1,5 @@
 ADF: 0.1
+
 📋 CONTEXT:
-  - Backend module scaffold
-  - Add service/API/database constraints and operational rules
+  - Cloudflare Workers edge runtime (wrangler deploy)
+  - Hono for route composition — typed, lightweight, edge-compatible
