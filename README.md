@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/hero-banner.png" alt="AEGIS — Cognitive Kernel" width="100%">
+</p>
+
 # AEGIS
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
