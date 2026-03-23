@@ -120,7 +120,7 @@ Fix the issue described above. Follow existing patterns in the codebase.
   it('includes issue number in header and commit instructions', () => {
     const prompt = buildIssueTaskPrompt(
       { number: 42, title: 'Fix tests', url: 'https://github.com/org/repo/issues/42', labels: ['bug'], body: 'Tests are failing' },
-      'Stackbilt-dev/aegis',
+      'ExampleOrg/aegis',
     );
     expect(prompt).toContain('# MISSION BRIEF — GitHub Issue #42');
     expect(prompt).toContain('referencing #42');
@@ -129,9 +129,9 @@ Fix the issue described above. Follow existing patterns in the codebase.
   it('includes repo name and URL', () => {
     const prompt = buildIssueTaskPrompt(
       { number: 1, title: 'Test', url: 'https://github.com/org/repo/issues/1', labels: [], body: 'Body' },
-      'Stackbilt-dev/aegis',
+      'ExampleOrg/aegis',
     );
-    expect(prompt).toContain('**Repo**: Stackbilt-dev/aegis');
+    expect(prompt).toContain('**Repo**: ExampleOrg/aegis');
     expect(prompt).toContain('**URL**: https://github.com/org/repo/issues/1');
   });
 
@@ -139,7 +139,7 @@ Fix the issue described above. Follow existing patterns in the codebase.
     const body = 'Detailed description of the bug with steps to reproduce';
     const prompt = buildIssueTaskPrompt(
       { number: 1, title: 'Test', url: 'url', labels: [], body },
-      'Stackbilt-dev/aegis',
+      'ExampleOrg/aegis',
     );
     expect(prompt).toContain(body);
   });
@@ -147,7 +147,7 @@ Fix the issue described above. Follow existing patterns in the codebase.
   it('includes scope restrictions', () => {
     const prompt = buildIssueTaskPrompt(
       { number: 1, title: 'Test', url: 'url', labels: [], body: 'body' },
-      'Stackbilt-dev/aegis',
+      'ExampleOrg/aegis',
     );
     expect(prompt).toContain('Only modify files in this repository');
     expect(prompt).toContain('Do not make unrelated improvements');
@@ -254,7 +254,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     number: 10,
     title: 'Test issue',
     state: 'open',
-    url: 'https://github.com/Stackbilt-dev/aegis/issues/10',
+    url: 'https://github.com/ExampleOrg/aegis/issues/10',
     labels: ['aegis', 'bug'],
     body: 'This is a sufficiently long description for body quality gate',
     created_at: '2026-03-10T00:00:00Z',
@@ -267,7 +267,7 @@ function makeEnv(db: D1Database) {
   return {
     db,
     githubToken: 'test-token',
-    githubRepo: 'Stackbilt-dev/aegis',
+    githubRepo: 'ExampleOrg/aegis',
     anthropicApiKey: '',
     groqApiKey: '',
     aegisToken: '',

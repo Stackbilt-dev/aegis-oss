@@ -18,21 +18,19 @@ const CF_OBSERVABILITY_MCP_URL = 'https://observability.mcp.cloudflare.com/mcp';
 export function buildMcpRegistry(env: EdgeEnv): McpRegistry {
   const registry = new McpRegistry();
 
-  // BizOps MCP — optional integration. Register only when configured.
-  if (env.bizopsToken && operatorConfig.integrations.bizops.enabled) {
-    registry.register(new McpClient({
-      url: operatorConfig.integrations.bizops.fallbackUrl,
-      token: env.bizopsToken,
-      prefix: 'bizops',
-      fetcher: env.bizopsFetcher,
-      rpcPath: '/rpc',
-    }));
-  }
+  // Always register BizOps (Service Binding)
+  registry.register(new McpClient({
+    url: operatorConfig.integrations.bizops.fallbackUrl,
+    token: env.bizopsToken,
+    prefix: 'bizops',
+    fetcher: env.bizopsFetcher,
+    rpcPath: '/rpc',
+  }));
 
   // Colony OS MARA — Service Binding (Governor MCP, 8 tools)
   if (env.maraToken) {
     registry.register(new McpClient({
-      url: 'https://mara.example.com/mara/mcp', // Replace with your MARA endpoint
+      url: 'https://your-mara-worker.your-subdomain.workers.dev/mara/mcp',
       token: env.maraToken,
       prefix: 'mara',
       fetcher: env.maraFetcher,
@@ -42,7 +40,7 @@ export function buildMcpRegistry(env: EdgeEnv): McpRegistry {
   // CodeBeast — adversarial code review + fix drain (Service Binding, stateless RPC)
   if (env.codebeastFetcher) {
     registry.register(new McpClient({
-      url: 'https://codebeast.example.com', // Replace with your CodeBeast endpoint
+      url: 'https://your-codebeast-worker.your-subdomain.workers.dev',
       token: '',  // Service Binding — no auth needed
       prefix: 'codebeast',
       fetcher: env.codebeastFetcher,

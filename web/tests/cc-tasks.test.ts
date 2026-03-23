@@ -366,13 +366,13 @@ describe('cc-tasks routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: 'failed',
-          error: 'Repo not found: kurtovermier.com',
+          error: 'Repo not found: user-website.example',
           exit_code: 1,
           task_title: 'Scaffold deploy pipeline',
-          repo: 'kurtovermier.com',
+          repo: 'user-website.example',
           category: 'tests',
           preflight: {
-            repo: 'kurtovermier.com',
+            repo: 'user-website.example',
             repo_exists: false,
             warnings: ['Resolved repo path does not exist on this runner'],
           },

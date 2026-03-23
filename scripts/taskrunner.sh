@@ -22,7 +22,7 @@ if [[ -z "${CC_UNBUFFERED:-}" ]] && command -v stdbuf >/dev/null 2>&1; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AEGIS_URL="${AEGIS_URL:-https://aegis.stackbilt.dev}"
+AEGIS_URL="${AEGIS_URL:-https://your-aegis-instance.example.com}"
 AEGIS_TOKEN="${AEGIS_TOKEN:-YOUR_AEGIS_TOKEN}"
 REPOS_ROOT="${REPOS_ROOT:-/path/to/your/repos}"
 HOOKS_SETTINGS="${SCRIPT_DIR}/hooks/autonomous-settings.json"
@@ -208,27 +208,13 @@ print(json.dumps(payload))
 resolve_repo() {
   local repo="$1"
 
+  # Map short names to actual repo directory names.
+  # Customize this for your org's repos.
   declare -A REPO_ALIASES=(
-    [aegis]=aegis-daemon
-    [edgestack_v2]=edgestack-v2
-    [businessops-copilot]=businessops-copilot
-    [bizops-internal]=businessops-copilot
-    [stackbilt-auth]=stackbilt-auth
-    [img-forge]=img-forge
-    [charter]=charter
-    [roundtable]=roundtable
-    [stackbilt_llc]=stackbilt_llc
-    [stackbilt-mcp-gateway]=stackbilt-mcp-gateway
-    [foodfiles]=foodfiles
-    [foodfilesapi_v2]=foodfilesapi_v2
-    [codebeast]=codebeast
-    [colonyos]=colonyos
-    [cc-taskrunner]=cc-taskrunner
-    [kurtovermier.com]=kurtosite092025
-    [docs]=stackbilt_docs_v2
-    [stackbilt-memory]=stackbilt-memory-worker
-    [tamlyno-web]=tamlyno-web
-    [tarotscript]=tarotscript
+    # [short-name]=directory-name
+    # Example:
+    # [my-api]=my-api-repo
+    # [frontend]=frontend-v2
   )
 
   local resolved="${REPO_ALIASES[$repo]:-$repo}"
@@ -686,6 +672,14 @@ ${research_addendum}
 
 ${preflight_prompt}
 
+## Validation Loop (self-correct up to 3x)
+After making changes, run the validation sequence:
+1. Run typecheck: \`npx tsc --noEmit\` (or the project's typecheck command)
+2. Run tests if they exist: check package.json for a test script
+3. If either fails: read the error, fix it, and re-run. Repeat up to 3 times.
+4. Only commit when validation passes.
+5. If you cannot fix after 3 attempts, commit what works and note what failed.
+
 ## Constraints
 - Do NOT ask questions — make reasonable decisions and document them
 - Do NOT deploy to production unless the task explicitly says to
@@ -943,7 +937,7 @@ PRBODY
   if [[ -n "$pr_url" ]]; then
     digest_summary="${digest_summary} — PR: ${pr_url}"
   fi
-  cd "$REPOS_ROOT/aegis-daemon"
+  cd "$REPOS_ROOT/$(basename "$SCRIPT_DIR/..")"
   bash scripts/session-digest.sh "$digest_summary" 2>/dev/null || true
 
   if [[ $exit_code -eq 0 ]]; then

@@ -13,7 +13,7 @@ vi.mock('../src/operator/index.js', () => ({
       bizops: { enabled: false, toolPrefix: '', fallbackUrl: '' },
       github: { enabled: false },
       brave: { enabled: true },
-      email: { profiles: {}, defaultProfile: 'stackbilt' },
+      email: { profiles: {}, defaultProfile: 'primary' },
       goals: { enabled: false },
     },
     baseUrl: '',

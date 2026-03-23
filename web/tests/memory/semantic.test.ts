@@ -80,7 +80,7 @@ describe('normalizeTopic', () => {
     expect(normalizeTopic('bizops_improvements')).toBe('bizops');
     expect(normalizeTopic('dispatch_generation')).toBe('content');
     expect(normalizeTopic('roundtable_generation')).toBe('content');
-    expect(normalizeTopic('stackbilt_governance')).toBe('stackbilt');
+    expect(normalizeTopic('organization_governance')).toBe('organization');
   });
 
   it('returns normalized form when no canonical match', () => {

@@ -100,7 +100,38 @@ export async function gatherCuriosityTopics(env: EdgeEnv): Promise<CuriosityCand
     });
   }
 
-  // Source 6: Self-model interests — autonomous exploration driven by what I find interesting
+  // Source 6: Complexity plateau detection — if recent self-improvement is all easy wins,
+  // force exploration of harder problems (heuristic avoidance from adversarial reasoning).
+  const recentTasks = await env.db.prepare(`
+    SELECT category FROM cc_tasks
+    WHERE status = 'completed'
+      AND created_by IN ('aegis', 'self_improvement')
+      AND completed_at > datetime('now', '-14 days')
+    ORDER BY completed_at DESC
+    LIMIT 10
+  `).all<{ category: string }>();
+
+  if (recentTasks.results.length >= 5) {
+    const easyCategories = new Set(['docs', 'tests', 'refactor']);
+    const easyCount = recentTasks.results.filter(t => easyCategories.has(t.category)).length;
+    const easyRatio = easyCount / recentTasks.results.length;
+
+    if (easyRatio >= 0.7) {
+      // 70%+ of recent work is low-complexity — inject hard problem exploration
+      candidates.push({
+        topic: 'Self-improvement is stuck in easy-win mode — identify one genuinely hard, high-leverage problem across the Stackbilt ecosystem that has been avoided',
+        reason: `${Math.round(easyRatio * 100)}% of recent ${recentTasks.results.length} autonomous tasks were low-complexity (${[...easyCategories].join('/')}). Heuristic avoidance triggered.`,
+        source: 'failure_rate', // reuse existing source type
+      });
+      candidates.push({
+        topic: 'What architectural decision or technical debt is the biggest drag on system capability right now?',
+        reason: 'Complexity plateau — forcing exploration beyond local optima',
+        source: 'failure_rate',
+      });
+    }
+  }
+
+  // Source 7: Self-model interests — autonomous exploration driven by what I find interesting
   const { selfModel } = operatorConfig;
   if (selfModel?.interests.length) {
     // Rotate through interests based on day-of-year so we don't always pick the same one

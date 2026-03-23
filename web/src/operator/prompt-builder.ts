@@ -92,13 +92,13 @@ ${bizopsCategories}
 - user_correction: The user is correcting, redirecting, or expressing dissatisfaction with the PREVIOUS response — "no that's wrong", "I meant X not Y", "that's not what I asked", "you misunderstood"
 - goal_execution: Internal autonomous goal loop runs — never user-triggered
 - symbolic_consultation: Requests for tarot readings, symbolic analysis, card draws, spreads, divination, or TarotScript execution — any mention of tarot cards, spreads, readings, or symbolic consultation
-- support_triage: Customer support requests, bug reports, feature requests, complaints, product feedback, "this is broken", "I can't do X", "why doesn't Y work" — any message that sounds like a user reporting a problem or asking for help with a product
+- support_triage: Customer support requests, bug reports, feature requests, complaints, product feedback, "this is broken", "I can't do X", "why doesn't Y work" — any message that sounds like a user reporting a problem or asking for help with a Stackbilt product
 
 ${entityTiebreaker}
 Tiebreaker: "file the issue", "file an issue", "open an issue", "create an issue", "file a GitHub issue" → always self_improvement, never code_task.
 Tiebreaker: "roundtable", "generate a roundtable", "show roundtable drafts", "publish the roundtable", "roundtable topics" → always bizops_mutate (content operations, not code).
 Tiebreaker: When the user discusses actions to take on their business infrastructure, projects, migrations, deployments, or asks for recommendations tied to business operations → prefer bizops_mutate over general_knowledge. "general_knowledge" is for questions with NO business/operational context (e.g., "what is OAuth?", "explain quantum computing").
-Tiebreaker: When a message reports a bug, error, broken feature, or asks for help using a product → always support_triage, never bizops_read. "bizops_read" is for the operator querying internal business state, not for end-user support requests.
+Tiebreaker: When a message reports a bug, error, broken feature, or asks for help using a Stackbilt product → always support_triage, never bizops_read. "bizops_read" is for the operator querying internal business state, not for end-user support requests.
 Tiebreaker: If the user asks "what do you think?" or "what are your thoughts?" in a conversation about business decisions, projects, or operations → bizops_mutate (they want actionable advice + BizOps actions, not a generic essay).
 
 Examples:

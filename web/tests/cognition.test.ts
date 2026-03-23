@@ -8,9 +8,9 @@ import type { CognitiveState } from '../src/kernel/types.js';
 
 vi.mock('../src/operator/index.js', () => ({
   operatorConfig: {
-    identity: { name: 'AEGIS', possessive: "Kurt's" },
+    identity: { name: 'AEGIS', possessive: "Alex's" },
     persona: { tagline: 'test', traits: [], channelNote: '' },
-    entities: { names: ['StackBilt LLC'], memoryTopics: [] },
+    entities: { names: ['ExampleCo LLC'], memoryTopics: [] },
     integrations: {
       bizops: { enabled: true, toolPrefix: 'bizops', fallbackUrl: '' },
       github: { enabled: false },
@@ -435,7 +435,7 @@ describe('formatCognitiveContext', () => {
       ],
     };
     const output = formatCognitiveContext(state);
-    expect(output).not.toContain('Stackbilt Product Portfolio');
+    expect(output).not.toContain('ExampleCo Product Portfolio');
   });
 
   it('includes heartbeat severity when present', () => {

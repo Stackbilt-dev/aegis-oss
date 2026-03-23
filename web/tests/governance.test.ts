@@ -34,7 +34,7 @@ function createMockDb(resultQueue: (Record<string, unknown> | null)[] = []) {
 // ─── checkTaskGovernanceLimits Tests ──────────────────────────
 
 describe('checkTaskGovernanceLimits', () => {
-  const defaultOpts = { repo: 'aegis-daemon', title: 'Test task', category: 'feature' };
+  const defaultOpts = { repo: 'my-project', title: 'Test task', category: 'feature' };
 
   it('allows task creation when all caps are within limits', async () => {
     const db = createMockDb([{ c: 0 }, { c: 0 }, { c: 0 }]);
@@ -49,7 +49,7 @@ describe('checkTaskGovernanceLimits', () => {
     expect(result.allowed).toBe(false);
     if (!result.allowed) {
       expect(result.reason).toContain('Per-repo cap');
-      expect(result.reason).toContain('aegis-daemon');
+      expect(result.reason).toContain('my-project');
     }
   });
 
@@ -103,11 +103,11 @@ describe('checkTaskGovernanceLimits', () => {
     const db = createMockDb([{ c: 0 }, { c: 0 }, { c: 0 }]);
     await checkTaskGovernanceLimits(db as unknown as D1Database, {
       ...defaultOpts,
-      repo: 'edgestack-v2',
+      repo: 'demo-app-v2',
     });
 
     const repoQuery = db._queries[0];
-    expect(repoQuery.bindings).toContain('edgestack-v2');
+    expect(repoQuery.bindings).toContain('demo-app-v2');
   });
 
   it('passes title to the duplicate check query', async () => {

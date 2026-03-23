@@ -112,7 +112,7 @@ describe('sessions routes', () => {
           commits: [{ hash: 'abc123', message: 'fix bug' }],
           files_changed: ['src/index.ts'],
           decisions: ['Use vitest'],
-          repos: ['aegis-daemon'],
+          repos: ['my-project'],
           duration_minutes: 30,
         }),
       });

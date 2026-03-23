@@ -31,7 +31,7 @@ Every insight entry follows this template:
 ```markdown
 ### [Short descriptive title]
 - **Type**: pattern | bug_signature | perf_win | arch_improvement | gotcha
-- **Origin**: repo@commit (e.g., aegis-daemon@c5cd3f6)
+- **Origin**: repo@commit (e.g., aegis-oss@example)
 - **Applicable to**: [list of repos where this insight applies]
 - **Confidence**: 0.0-1.0 (how certain we are this is a real pattern)
 - **Impact**: unknown | confirmed | tested | deployed
@@ -79,7 +79,7 @@ Developer session (any repo)
 CRIX has two storage tiers that work together:
 
 ### Memory Worker Registry (primary)
-- Insights stored in `stackbilt-memory` D1 with Vectorize semantic embeddings
+- Insights stored in `memory-worker` D1 with Vectorize semantic embeddings
 - Topic: `cross_repo_insights`, source: `crix_publish`
 - Fields: `insight_type`, `origin_repo`, `keywords`, `cross_repo_impact`, `validation_stage`
 - Recall via `memoryBinding.recall()` with semantic search (BGE-base-en-v1.5)

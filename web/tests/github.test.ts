@@ -28,20 +28,20 @@ import {
 // ─── resolveRepoName ──────────────────────────────────────────
 
 describe('resolveRepoName', () => {
-  it('resolves aegis-daemon alias to aegis', () => {
-    expect(resolveRepoName('aegis-daemon')).toBe('Stackbilt-dev/aegis');
+  it('resolves my-project alias to aegis', () => {
+    expect(resolveRepoName('my-project')).toBe('ExampleOrg/aegis');
   });
 
-  it('resolves businessops-copilot alias to bizops-internal', () => {
-    expect(resolveRepoName('businessops-copilot')).toBe('Stackbilt-dev/bizops-internal');
+  it('resolves bizops-copilot alias to example-app', () => {
+    expect(resolveRepoName('bizops-copilot')).toBe('ExampleOrg/example-app');
   });
 
   it('preserves repo names without alias', () => {
-    expect(resolveRepoName('charter')).toBe('Stackbilt-dev/charter');
+    expect(resolveRepoName('charter')).toBe('ExampleOrg/charter');
   });
 
   it('uses default org when no org specified', () => {
-    expect(resolveRepoName('img-forge')).toBe('Stackbilt-dev/img-forge');
+    expect(resolveRepoName('img-forge')).toBe('ExampleOrg/img-forge');
   });
 
   it('preserves explicit org/repo format', () => {
@@ -49,26 +49,26 @@ describe('resolveRepoName', () => {
   });
 
   it('resolves alias with explicit org', () => {
-    expect(resolveRepoName('MyOrg/aegis-daemon')).toBe('MyOrg/aegis');
+    expect(resolveRepoName('MyOrg/my-project')).toBe('MyOrg/aegis');
   });
 
   it('accepts custom default org', () => {
     expect(resolveRepoName('charter', 'CustomOrg')).toBe('CustomOrg/charter');
   });
 
-  it('normalizes "stackbilt" org to Stackbilt-dev', () => {
-    expect(resolveRepoName('stackbilt/docs')).toBe('Stackbilt-dev/docs');
+  it('normalizes "exampleorg" org to ExampleOrg', () => {
+    expect(resolveRepoName('exampleorg/docs')).toBe('ExampleOrg/docs');
   });
 
-  it('normalizes "Stackbilt" org to Stackbilt-dev', () => {
-    expect(resolveRepoName('Stackbilt/docs')).toBe('Stackbilt-dev/docs');
+  it('normalizes "Exampleorg" org to ExampleOrg', () => {
+    expect(resolveRepoName('Exampleorg/docs')).toBe('ExampleOrg/docs');
   });
 
-  it('normalizes "stackbilt-dev" org to Stackbilt-dev', () => {
-    expect(resolveRepoName('stackbilt-dev/charter')).toBe('Stackbilt-dev/charter');
+  it('normalizes "exampleorg-dev" org to ExampleOrg', () => {
+    expect(resolveRepoName('exampleorg-dev/charter')).toBe('ExampleOrg/charter');
   });
 
-  it('preserves non-Stackbilt org names', () => {
+  it('preserves non-ExampleOrg org names', () => {
     expect(resolveRepoName('octocat/hello-world')).toBe('octocat/hello-world');
   });
 });
@@ -137,7 +137,7 @@ describe('GitHub API functions', () => {
         truncated: false,
       });
 
-      const files = await getRepoTree(token, 'Stackbilt-dev/aegis');
+      const files = await getRepoTree(token, 'ExampleOrg/aegis');
       expect(files).toEqual(['src/index.ts', 'README.md']);
     });
   });
@@ -149,14 +149,14 @@ describe('GitHub API functions', () => {
         encoding: 'base64',
       });
 
-      const content = await getFileContent(token, 'Stackbilt-dev/aegis', 'README.md');
+      const content = await getFileContent(token, 'ExampleOrg/aegis', 'README.md');
       expect(content).toBe('hello world');
     });
 
     it('throws on unexpected encoding', async () => {
       mockFetch({ content: 'foo', encoding: 'utf-8' });
 
-      await expect(getFileContent(token, 'Stackbilt-dev/aegis', 'README.md'))
+      await expect(getFileContent(token, 'ExampleOrg/aegis', 'README.md'))
         .rejects.toThrow('Unexpected encoding: utf-8');
     });
   });
@@ -168,14 +168,14 @@ describe('GitHub API functions', () => {
           sha: 'abc123',
           commit: {
             message: 'feat: add thing\n\nMore details here',
-            author: { name: 'Kurt', date: '2026-03-10T00:00:00Z' },
+            author: { name: 'Alex', date: '2026-03-10T00:00:00Z' },
           },
         },
       ]);
 
-      const commits = await getRecentCommits(token, 'Stackbilt-dev/aegis', 1);
+      const commits = await getRecentCommits(token, 'ExampleOrg/aegis', 1);
       expect(commits).toEqual([
-        { sha: 'abc123', message: 'feat: add thing', author: 'Kurt', date: '2026-03-10T00:00:00Z' },
+        { sha: 'abc123', message: 'feat: add thing', author: 'Alex', date: '2026-03-10T00:00:00Z' },
       ]);
     });
   });
@@ -187,7 +187,7 @@ describe('GitHub API functions', () => {
         { number: 2, title: 'PR', state: 'open', html_url: 'url2', body: '', labels: [], created_at: '2026-01-02', pull_request: { url: 'pr_url' } },
       ]);
 
-      const issues = await listIssues(token, 'Stackbilt-dev/aegis');
+      const issues = await listIssues(token, 'ExampleOrg/aegis');
       expect(issues).toHaveLength(1);
       expect(issues[0].number).toBe(1);
       expect(issues[0].labels).toEqual(['bug']);
@@ -198,7 +198,7 @@ describe('GitHub API functions', () => {
         { number: 1, title: 'Issue', state: 'open', html_url: 'url', body: null, labels: [], created_at: '2026-01-01' },
       ]);
 
-      const issues = await listIssues(token, 'Stackbilt-dev/aegis');
+      const issues = await listIssues(token, 'ExampleOrg/aegis');
       expect(issues[0].body).toBe('');
     });
   });
@@ -210,7 +210,7 @@ describe('GitHub API functions', () => {
         { number: 11, title: 'PR2', state: 'closed', merged_at: null, html_url: 'url2', head: { ref: 'feat/b' }, base: { ref: 'main' }, created_at: '2026-01-02' },
       ]);
 
-      const prs = await listPullRequests(token, 'Stackbilt-dev/aegis', 'closed');
+      const prs = await listPullRequests(token, 'ExampleOrg/aegis', 'closed');
       expect(prs[0].merged).toBe(true);
       expect(prs[1].merged).toBe(false);
     });
@@ -222,7 +222,7 @@ describe('GitHub API functions', () => {
         { name: 'aegis', description: 'AI agent', visibility: 'private', language: 'TypeScript', default_branch: 'main', updated_at: '2026-03-10', html_url: 'url' },
       ]);
 
-      const repos = await listOrgRepos(token, 'Stackbilt-dev');
+      const repos = await listOrgRepos(token, 'ExampleOrg');
       expect(repos).toHaveLength(1);
       expect(repos[0].name).toBe('aegis');
       expect(repos[0].url).toBe('url');
@@ -233,7 +233,7 @@ describe('GitHub API functions', () => {
     it('returns issue number and url', async () => {
       mockFetch({ number: 42, html_url: 'https://github.com/org/repo/issues/42' });
 
-      const result = await createIssue(token, 'Stackbilt-dev/aegis', 'Test', 'Body', ['bug']);
+      const result = await createIssue(token, 'ExampleOrg/aegis', 'Test', 'Body', ['bug']);
       expect(result).toEqual({ number: 42, url: 'https://github.com/org/repo/issues/42' });
     });
   });
@@ -242,7 +242,7 @@ describe('GitHub API functions', () => {
     it('throws readable error on 422 (branch exists)', async () => {
       mockFetchError(422, 'Reference already exists');
 
-      await expect(createBranch(token, 'Stackbilt-dev/aegis', 'feat/x', 'abc'))
+      await expect(createBranch(token, 'ExampleOrg/aegis', 'feat/x', 'abc'))
         .rejects.toThrow('Branch "feat/x" already exists');
     });
   });
@@ -251,7 +251,7 @@ describe('GitHub API functions', () => {
     it('returns PR number and url', async () => {
       mockFetch({ number: 99, html_url: 'https://github.com/org/repo/pull/99' });
 
-      const result = await createPullRequest(token, 'Stackbilt-dev/aegis', 'Title', 'Body', 'feat/x');
+      const result = await createPullRequest(token, 'ExampleOrg/aegis', 'Title', 'Body', 'feat/x');
       expect(result).toEqual({ number: 99, url: 'https://github.com/org/repo/pull/99' });
     });
   });
@@ -264,7 +264,7 @@ describe('GitHub API functions', () => {
         ],
       });
 
-      const results = await searchIssues(token, 'Stackbilt-dev/aegis', 'bug');
+      const results = await searchIssues(token, 'ExampleOrg/aegis', 'bug');
       expect(results).toHaveLength(1);
       expect(results[0].number).toBe(5);
     });
@@ -281,7 +281,7 @@ describe('GitHub API functions', () => {
       });
       vi.stubGlobal('fetch', fetchMock);
 
-      await closeIssue(token, 'Stackbilt-dev/aegis', 1, 'Closing');
+      await closeIssue(token, 'ExampleOrg/aegis', 1, 'Closing');
       // First call: comment, second call: patch state
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(fetchMock.mock.calls[0][0]).toContain('/comments');
@@ -298,7 +298,7 @@ describe('GitHub API functions', () => {
       });
       vi.stubGlobal('fetch', fetchMock);
 
-      await closeIssue(token, 'Stackbilt-dev/aegis', 1);
+      await closeIssue(token, 'ExampleOrg/aegis', 1);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
@@ -311,7 +311,7 @@ describe('GitHub API functions', () => {
         ],
       });
 
-      const runs = await listWorkflowRuns(token, 'Stackbilt-dev/aegis');
+      const runs = await listWorkflowRuns(token, 'ExampleOrg/aegis');
       expect(runs).toHaveLength(1);
       expect(runs[0].conclusion).toBe('success');
       expect(runs[0].branch).toBe('main');
@@ -328,7 +328,7 @@ describe('GitHub API functions', () => {
         ],
       });
 
-      const status = await getCombinedStatus(token, 'Stackbilt-dev/aegis', 'main');
+      const status = await getCombinedStatus(token, 'ExampleOrg/aegis', 'main');
       expect(status.state).toBe('success');
       expect(status.total).toBe(2);
       expect(status.statuses).toHaveLength(1);
@@ -339,7 +339,7 @@ describe('GitHub API functions', () => {
     it('returns merge result', async () => {
       mockFetch({ sha: 'merge_sha', merged: true, message: 'Pull Request successfully merged' });
 
-      const result = await mergePullRequest(token, 'Stackbilt-dev/aegis', 1);
+      const result = await mergePullRequest(token, 'ExampleOrg/aegis', 1);
       expect(result.merged).toBe(true);
       expect(result.sha).toBe('merge_sha');
     });
@@ -349,7 +349,7 @@ describe('GitHub API functions', () => {
     it('throws GitHubApiError on 404', async () => {
       mockFetchError(404, 'Not Found');
 
-      await expect(getRepoTree(token, 'Stackbilt-dev/nonexistent'))
+      await expect(getRepoTree(token, 'ExampleOrg/nonexistent'))
         .rejects.toThrow(GitHubApiError);
     });
 
@@ -359,7 +359,7 @@ describe('GitHub API functions', () => {
         'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 60),
       });
 
-      await expect(getRepoTree(token, 'Stackbilt-dev/aegis'))
+      await expect(getRepoTree(token, 'ExampleOrg/aegis'))
         .rejects.toThrow(/Rate limited/);
     });
 
@@ -383,7 +383,7 @@ describe('GitHub API functions', () => {
         .mockResolvedValueOnce(successRes);
       vi.stubGlobal('fetch', fetchMock);
 
-      const result = await getRepoTree(token, 'Stackbilt-dev/aegis');
+      const result = await getRepoTree(token, 'ExampleOrg/aegis');
       expect(result).toEqual([]);
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });

@@ -12,7 +12,9 @@ import { buildSystemPrompt } from '../operator/prompt-builder.js';
 
 import { GITHUB_TOOLS, handleGithubTool } from './github.js';
 import { GOAL_TOOLS, handleGoalTool } from './goals.js';
+import { ROUNDTABLE_TOOLS, DISPATCH_TOOLS, handleContentTool } from './content.js';
 import { WEB_TOOLS, handleWebTool } from './web.js';
+import { SEND_EMAIL_TOOL, handleEmailTool } from './email.js';
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -193,6 +195,13 @@ export async function buildContext(config: ClaudeConfig, roundtableDb?: D1Databa
   if (integrations.goals.enabled) {
     tools.push(...GOAL_TOOLS);
   }
+  if (roundtableDb) {
+    tools.push(...ROUNDTABLE_TOOLS);
+    tools.push(...DISPATCH_TOOLS);
+  }
+  if (config.resendApiKeys?.resendApiKey) {
+    tools.push(SEND_EMAIL_TOOL);
+  }
 
   return { systemPrompt, tools, conversationHistory };
 }
@@ -264,6 +273,15 @@ export async function handleInProcessTool(
   if (braveApiKey) {
     const webResult = await handleWebTool(name, input, braveApiKey);
     if (webResult !== null) return webResult;
+  }
+
+  if (roundtableDb) {
+    const contentResult = await handleContentTool(name, input, roundtableDb, db, anthropicConfig, githubToken, githubRepo);
+    if (contentResult !== null) return contentResult;
+  }
+
+  if (name === 'send_email' && resendApiKeys) {
+    return handleEmailTool(name, input, resendApiKeys);
   }
 
   return null;

@@ -5,8 +5,8 @@ import { sanitizeForBlog } from '../src/sanitize.js';
 
 describe('sanitizeForBlog', () => {
   describe('entity replacements', () => {
-    it('replaces "Stackbilt LLC" with [Company]', () => {
-      expect(sanitizeForBlog('Founded Stackbilt LLC in 2025')).toContain('[Company]');
+    it('replaces "ExampleCo LLC" with [Company]', () => {
+      expect(sanitizeForBlog('Founded ExampleCo LLC in 2025')).toContain('[Company]');
     });
 
     it('replaces "Citizens Reunited, PBC" with [Partner Org]', () => {
@@ -17,25 +17,25 @@ describe('sanitizeForBlog', () => {
       expect(sanitizeForBlog('Citizens Reunited project')).toContain('[Partner Org]');
     });
 
-    it('replaces "Kurt Overmier" with [Operator]', () => {
-      expect(sanitizeForBlog('Kurt Overmier is the founder')).toContain('[Operator]');
+    it('replaces "Jane Doe" with [Operator]', () => {
+      expect(sanitizeForBlog('Jane Doe is the founder')).toContain('[Operator]');
     });
 
-    it('replaces "Tamlyn Overmier" with [Client]', () => {
-      expect(sanitizeForBlog('Tamlyn Overmier requested changes')).toContain('[Client]');
+    it('replaces "John Doe" with [Client]', () => {
+      expect(sanitizeForBlog('John Doe requested changes')).toContain('[Client]');
     });
 
-    it('replaces "businessops-copilot" with [internal-service]', () => {
-      expect(sanitizeForBlog('bound to businessops-copilot')).toContain('[internal-service]');
+    it('replaces "bizops-copilot" with [internal-service]', () => {
+      expect(sanitizeForBlog('bound to bizops-copilot')).toContain('[internal-service]');
     });
 
-    it('replaces "stackbilt-memory" with [memory-service]', () => {
-      expect(sanitizeForBlog('data in stackbilt-memory')).toContain('[memory-service]');
+    it('replaces "aegis-memory" with [memory-service]', () => {
+      expect(sanitizeForBlog('data in aegis-memory')).toContain('[memory-service]');
     });
 
     it('is case-insensitive for entities', () => {
-      expect(sanitizeForBlog('STACKBILT LLC')).toContain('[Company]');
-      expect(sanitizeForBlog('kurt overmier')).toContain('[Operator]');
+      expect(sanitizeForBlog('EXAMPLECO LLC')).toContain('[Company]');
+      expect(sanitizeForBlog('jane doe')).toContain('[Operator]');
     });
   });
 
@@ -45,15 +45,15 @@ describe('sanitizeForBlog', () => {
     });
 
     it('redacts UUIDs', () => {
-      expect(sanitizeForBlog('ID: a0a3b1c7-43ac-49d3-a481-d0aa7c396576')).toContain('[ID-REDACTED]');
+      expect(sanitizeForBlog('ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890')).toContain('[ID-REDACTED]');
     });
 
     it('redacts API tokens (aegis_*)', () => {
-      expect(sanitizeForBlog('token: aegis_0536a9669f99fd3b85b99f908b32f9f2')).toContain('[TOKEN-REDACTED]');
+      expect(sanitizeForBlog('token: aegis_abc123def456abc123def456abc123de')).toContain('[TOKEN-REDACTED]');
     });
 
     it('redacts email addresses', () => {
-      expect(sanitizeForBlog('email: admin@stackbilt.dev')).toContain('[EMAIL-REDACTED]');
+      expect(sanitizeForBlog('email: admin@example.com')).toContain('[EMAIL-REDACTED]');
     });
 
     it('redacts US phone numbers', () => {
@@ -75,7 +75,7 @@ describe('sanitizeForBlog', () => {
     });
 
     it('redacts 32-char hex (Cloudflare account IDs)', () => {
-      expect(sanitizeForBlog('account: 3ede775d1472c2c8e7fd90dbf492aa63')).toContain('[ACCOUNT-REDACTED]');
+      expect(sanitizeForBlog('account: abc123def456abc123def456abc123de')).toContain('[ACCOUNT-REDACTED]');
     });
 
     it('redacts URLs with token/secret/key/auth', () => {
@@ -86,14 +86,14 @@ describe('sanitizeForBlog', () => {
 
   describe('combined behavior', () => {
     it('handles multiple replacements in one string', () => {
-      const input = 'Kurt Overmier at Stackbilt LLC (admin@stackbilt.dev)';
+      const input = 'Jane Doe at ExampleCo LLC (admin@example.com)';
       const result = sanitizeForBlog(input);
       expect(result).toContain('[Operator]');
       expect(result).toContain('[Company]');
       expect(result).toContain('[EMAIL-REDACTED]');
-      expect(result).not.toContain('Kurt Overmier');
-      expect(result).not.toContain('Stackbilt LLC');
-      expect(result).not.toContain('admin@stackbilt.dev');
+      expect(result).not.toContain('Jane Doe');
+      expect(result).not.toContain('ExampleCo LLC');
+      expect(result).not.toContain('admin@example.com');
     });
 
     it('passes through safe content unchanged', () => {

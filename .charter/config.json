@@ -1,0 +1,75 @@
+{
+  "project": "aegis-web",
+  "version": "0.1",
+  "git": {
+    "requireTrailers": true,
+    "trailerThreshold": "HIGH"
+  },
+  "drift": {
+    "enabled": true,
+    "minScore": 0.7,
+    "include": [
+      "**/*.ts",
+      "**/*.js",
+      "**/*.tsx",
+      "**/*.jsx"
+    ],
+    "exclude": [
+      "node_modules/**",
+      "dist/**",
+      ".git/**",
+      "coverage/**"
+    ]
+  },
+  "validation": {
+    "citationStrictness": "FAIL"
+  },
+  "ci": {
+    "failOnWarn": false,
+    "postComments": false
+  },
+  "audit": {
+    "policyCoverage": {
+      "enabled": true,
+      "requiredSections": [
+        {
+          "id": "commit_trailers",
+          "title": "Commit Trailers",
+          "match": [
+            "commit trailers",
+            "governed-by",
+            "resolves-request"
+          ]
+        },
+        {
+          "id": "change_classification",
+          "title": "Change Classification",
+          "match": [
+            "change classification",
+            "surface",
+            "local",
+            "cross_cutting"
+          ]
+        },
+        {
+          "id": "exception_path",
+          "title": "Exception Path",
+          "match": [
+            "exception",
+            "waiver",
+            "override"
+          ]
+        },
+        {
+          "id": "escalation_approval",
+          "title": "Escalation & Approval",
+          "match": [
+            "escalation",
+            "approval",
+            "architectural review"
+          ]
+        }
+      ]
+    }
+  }
+}

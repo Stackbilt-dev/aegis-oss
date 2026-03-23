@@ -26,6 +26,7 @@ export interface Env {
 
   // AI Gateway (observability, caching, rate limiting)
   AI_GATEWAY_ID: string;
+  CF_ACCOUNT_ID: string;
 
   // BizOps MCP — Service Binding (Worker-to-Worker)
   BIZOPS: Fetcher;
@@ -42,6 +43,10 @@ export interface Env {
   // Brave Search (web research)
   BRAVE_API_KEY: string;
 
+  // Bluesky AT Protocol (content distribution)
+  BLUESKY_HANDLE: string;
+  BLUESKY_APP_PASSWORD: string;
+
   // Proactive notifications (Stage 2)
   AEGIS_NOTIFY_EMAIL: string;
   AEGIS_BASE_URL: string;
@@ -52,11 +57,11 @@ export interface Env {
   // Cloudflare Observability (infrastructure monitoring)
   CF_ANALYTICS_TOKEN: string;
 
-  // Image generation service (hero image generation via Service Binding)
+  // img-forge (hero image generation via Service Binding)
   IMG_FORGE: Fetcher;
   IMG_FORGE_SB_SECRET: string;
 
-  // Memory Worker (Service Binding RPC)
+  // Stackbilt Memory Worker (Service Binding RPC)
   MEMORY: MemoryServiceBinding;
 
   // TarotScript Worker (symbolic consultation via Service Binding)
@@ -87,7 +92,7 @@ export interface Env {
   GA_CREDENTIALS: string; // JSON: { client_id, client_secret, refresh_token, property_id }
 }
 
-// ─── Memory Worker RPC interface (mirrors memory-worker MemoryService)
+// ─── Memory Worker RPC interface (mirrors stackbilt-memory-worker MemoryService)
 export interface MemoryServiceBinding {
   store(tenantId: string, fragments: MemoryStoreRequest[]): Promise<MemoryStoreResult>;
   recall(tenantId: string, query: MemoryRecallQuery): Promise<MemoryFragmentResult[]>;

@@ -1,19 +1,43 @@
-// ─── AEGIS-OSS Scheduled Task Orchestrator ────────────────────
-// Runs on hourly cron (0 * * * *). Tasks are phased by cost:
-// Phase 1: Free (D1 + GitHub API only)
-// Phase 2: Cheap (1-4 LLM subrequests)
-// Phase 3: Heavy (mutually exclusive, stay under 50 subrequest limit)
-
 import { type EdgeEnv } from '../dispatch.js';
+import { type ImgForgeConfig } from '../../content/index.js';
 import { operatorConfig } from '../../operator/index.js';
 import { runHeartbeat } from './heartbeat.js';
 import { runMemoryConsolidation } from './consolidation.js';
+import { runSelfImprovementAnalysis, runSelfImprovementHousekeeping, runInfraComplianceCheck } from './self-improvement.js';
 import { runGoalLoop } from './goals.js';
+import { runRoundtableContentGeneration, runDispatchContentGeneration, runColumnContentGeneration } from './content.js';
 import { runAgendaEscalation } from './escalation.js';
 import { runMemoryReflectionCycle, runOperatorLogCycle } from './reflection.js';
 import { runCuriosityCycle } from './curiosity.js';
 import { runDreamingCycle } from './dreaming.js';
+import { runProductHealthSweep } from './product-health.js';
+import { runIssueWatcher } from './issue-watcher.js';
+import { runCiWatcher } from './ci-watcher.js';
+import { runDailyDigest } from './digest.js';
+import { runArgusNotifications } from './argus-notify.js';
+import { runArgusHeartbeat } from './argus-heartbeat.js';
 import { runCognitiveMetrics } from './cognitive-metrics.js';
+import { runArgusAnalytics } from './argus-analytics.js';
+import { runPrAutomerge } from './pr-automerge.js';
+import { runFeedWatcher } from './feed-watcher.js';
+import { runCostReport } from './cost-report.js';
+import { runBoardSync } from './board-sync.js';
+import { runContentDrip } from './content-drip.js';
+
+export function buildImgForgeConfig(env: EdgeEnv): ImgForgeConfig | undefined {
+  if (!env.imgForgeFetcher || !env.imgForgeSbSecret || !operatorConfig.integrations.imgForge.enabled) {
+    return undefined;
+  }
+  return {
+    fetcher: env.imgForgeFetcher,
+    sbSecret: env.imgForgeSbSecret,
+    baseUrl: operatorConfig.integrations.imgForge.baseUrl,
+  };
+}
+
+// ─── Task Runner Infrastructure ─────────────────────────────
+
+type TaskKind = 'heartbeat' | 'cron';
 
 async function recordTaskRun(
   db: D1Database,
@@ -34,6 +58,7 @@ async function recordTaskRun(
 async function runTask(
   env: EdgeEnv,
   name: string,
+  kind: TaskKind,
   fn: (env: EdgeEnv) => Promise<void>,
 ): Promise<void> {
   const start = Date.now();
@@ -42,13 +67,17 @@ async function runTask(
     await recordTaskRun(env.db, name, 'ok', Date.now() - start);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[scheduled] ${name} failed:`, msg);
+    console.error(`[${kind}] ${name} failed:`, msg);
     await recordTaskRun(env.db, name, 'error', Date.now() - start, msg);
   }
 }
 
-export async function runScheduledTasks(env: EdgeEnv): Promise<void> {
-  // Phase 1: Free — D1 only, 0 subrequests
+// ─── Heartbeat Phase ────────────────────────────────────────
+// Runs every hour, never skipped. Cheap operations that share
+// context and maintain system awareness. These are the pulse.
+
+async function runHeartbeatPhase(env: EdgeEnv): Promise<void> {
+  // Escalation runs first: bumps stale priorities, returns stale items for heartbeat
   let staleHighItems: import('./escalation.js').StaleHighItem[] = [];
   {
     const start = Date.now();
@@ -57,34 +86,85 @@ export async function runScheduledTasks(env: EdgeEnv): Promise<void> {
       await recordTaskRun(env.db, 'escalation', 'ok', Date.now() - start);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[scheduled] escalation failed:`, msg);
+      console.error('[heartbeat] escalation failed:', msg);
       await recordTaskRun(env.db, 'escalation', 'error', Date.now() - start, msg);
     }
   }
-  await runTask(env, 'cognitive-metrics', runCognitiveMetrics);
 
-  // Phase 2: Cheap — 1-4 subrequests
-  await runTask(env, 'consolidation', runMemoryConsolidation);
-  await runTask(env, 'heartbeat', (e) => runHeartbeat(e, staleHighItems));
+  // Awareness — lightweight monitors, always run
+  await runTask(env, 'ci-watcher', 'heartbeat', runCiWatcher);
+  await runTask(env, 'argus-notify', 'heartbeat', runArgusNotifications);
+  await runTask(env, 'argus-heartbeat', 'heartbeat', runArgusHeartbeat);
+  await runTask(env, 'cognitive-metrics', 'heartbeat', runCognitiveMetrics);
+  await runTask(env, 'pr-automerge', 'heartbeat', runPrAutomerge);
 
-  // Phase 3: Heavy — mutually exclusive to stay under 50 subrequest limit
+  // Memory maintenance
+  await runTask(env, 'consolidation', 'heartbeat', runMemoryConsolidation);
+  await runTask(env, 'heartbeat', 'heartbeat', (e) => runHeartbeat(e, staleHighItems));
+  await runTask(env, 'product-health', 'heartbeat', runProductHealthSweep);
+
+  // Housekeeping — outcomes, task patterns, CRIX
+  await runTask(env, 'self-improvement-housekeeping', 'heartbeat', runSelfImprovementHousekeeping);
+}
+
+// ─── Cron Phase ─────────────────────────────────────────────
+// Time-gated, isolated tasks. Each has its own frequency and
+// internal time gate. These are the scheduled work.
+
+async function runCronPhase(env: EdgeEnv): Promise<void> {
   const hour = new Date().getUTCHours();
-  const isGoalHour = hour % 6 !== 0;
 
-  if (isGoalHour) {
-    await runTask(env, 'goals', runGoalLoop);
+  // 2-hourly: issue watcher + board sync
+  if (hour % 2 === 0) {
+    await runTask(env, 'issue-watcher', 'cron', runIssueWatcher);
+    await runTask(env, 'board-sync', 'cron', runBoardSync);
   }
 
-  // Introspection — time-guarded, won't fire most hours
-  await runTask(env, 'reflection', runMemoryReflectionCycle);
-  await runTask(env, 'operator-log', runOperatorLogCycle);
+  // Analytics + feeds + cost (internally time-gated)
+  await runTask(env, 'argus-analytics', 'cron', runArgusAnalytics);
+  await runTask(env, 'feed-watcher', 'cron', runFeedWatcher);
+  await runTask(env, 'cost-report', 'cron', runCostReport);
 
-  // Curiosity — daily, non-goal hours
-  if (!isGoalHour) {
-    await runTask(env, 'curiosity', runCuriosityCycle);
+  // Heavy tasks — mutually exclusive to stay under 50 subrequest limit
+  const isSelfImprovementHour = hour % 6 === 0;
+
+  if (isSelfImprovementHour) {
+    await runTask(env, 'self-improvement', 'cron', runSelfImprovementAnalysis);
+  } else {
+    await runTask(env, 'goals', 'cron', runGoalLoop);
   }
 
-  // Dreaming cycle — daily async reflection
-  // Self-gated (checks last_dreaming_at watermark, runs once per ~24h)
-  await runTask(env, 'dreaming', runDreamingCycle);
+  // Daily infra compliance + docs drift (runs at 05 UTC)
+  await runTask(env, 'infra-compliance', 'cron', runInfraComplianceCheck);
+
+  // Content drip — publish scheduled social posts
+  await runTask(env, 'content-drip', 'cron', runContentDrip);
+
+  // Content generation — time-guarded, won't fire most hours
+  await runTask(env, 'roundtable', 'cron', runRoundtableContentGeneration);
+  await runTask(env, 'dispatch', 'cron', runDispatchContentGeneration);
+  await runTask(env, 'column', 'cron', runColumnContentGeneration);
+
+  // Introspection
+  await runTask(env, 'reflection', 'cron', runMemoryReflectionCycle);
+  await runTask(env, 'operator-log', 'cron', runOperatorLogCycle);
+  await runTask(env, 'daily-digest', 'cron', runDailyDigest);
+
+  // Curiosity — daily, non-self-improvement hours only
+  if (!isSelfImprovementHour) {
+    await runTask(env, 'curiosity', 'cron', runCuriosityCycle);
+  }
+
+  // Dreaming — daily async reflection (self-gated via watermark)
+  await runTask(env, 'dreaming', 'cron', runDreamingCycle);
+}
+
+// ─── Main Entry Point ───────────────────────────────────────
+
+export async function runScheduledTasks(env: EdgeEnv): Promise<void> {
+  // Heartbeat first — cheap, always runs, maintains awareness
+  await runHeartbeatPhase(env);
+
+  // Cron second — time-gated, isolated, may be heavy
+  await runCronPhase(env);
 }

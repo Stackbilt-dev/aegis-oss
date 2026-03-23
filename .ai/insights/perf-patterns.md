@@ -6,8 +6,8 @@ Performance wins — optimizations that measurably improved latency, cost, or th
 
 ### Complexity-aware model routing for composite executor
 - **Type**: perf_win
-- **Origin**: aegis-daemon@composite-executor
-- **Applicable to**: [aegis-daemon]
+- **Origin**: aegis-oss@composite-executor
+- **Applicable to**: [aegis-oss]
 - **Confidence**: 0.75
 - **Impact**: deployed
 - **Keywords**: composite executor, model routing, complexity, groq, gpt_oss, cost, latency
@@ -16,8 +16,8 @@ The composite executor originally routed all subtasks to the same model regardle
 
 ### Hybrid recall with Vectorize semantic search
 - **Type**: perf_win
-- **Origin**: stackbilt-memory@v0.3.0
-- **Applicable to**: [aegis-daemon, stackbilt-memory]
+- **Origin**: memory-worker@v0.3.0
+- **Applicable to**: [aegis-oss, memory-worker]
 - **Confidence**: 0.7
 - **Impact**: deployed
 - **Keywords**: memory, vectorize, bge-base, semantic search, hybrid recall, 768-dim, cosine

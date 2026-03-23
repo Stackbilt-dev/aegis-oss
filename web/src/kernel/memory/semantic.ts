@@ -23,10 +23,10 @@ const CANONICAL_TOPICS: Record<string, string> = {
   'imgforge':             'img_forge',
   'img_forge_economics':  'img_forge',
   'img_forge_integration': 'img_forge',
-  // BizOps — operational mutations and improvements are the same domain (optional integration)
+  // BizOps — operational mutations and improvements are the same domain
   'bizops_improvements':  'bizops',
   'bizops_mutate':        'bizops',
-  // Content pipelines — blog, dispatch, column all live here
+  // Content pipelines — roundtable, dispatch, column all live here
   'dispatch_generation':   'content',
   'roundtable_generation': 'content',
   'research_dispatch':     'content',
@@ -35,12 +35,9 @@ const CANONICAL_TOPICS: Record<string, string> = {
   'content_generation':    'content',
   // Self-improvement — outcomes belong with the source topic
   'self_improvement_outcomes': 'self_improvement',
-  // Org-level governance and priorities
+  // Organization-level governance and priorities → root organization
   'organization_governance':  'organization',
   'organization_priorities':  'organization',
-  // Operator preferences
-  'kurt_preferences':      'operator_preferences',
-  'kurt_persona':          'operator_persona',
 };
 
 // Normalize topics to lowercase_underscore to prevent fragmentation

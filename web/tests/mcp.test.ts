@@ -726,7 +726,7 @@ describe('MCP Tool Handlers', () => {
     it('creates task with defaults', async () => {
       const env = makeEnv();
       const result = await handlers.toolAegisCreateCcTask(
-        { title: 'Add tests', repo: 'aegis-daemon', prompt: 'Write unit tests' },
+        { title: 'Add tests', repo: 'my-project', prompt: 'Write unit tests' },
         env as any,
       );
       expect(result.isError).toBeUndefined();

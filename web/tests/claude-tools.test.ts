@@ -16,9 +16,9 @@ vi.mock('../src/operator/index.js', () => ({
       brave: { enabled: true },
       goals: { enabled: true },
       email: {
-        defaultProfile: 'stackbilt',
+        defaultProfile: 'primary',
         profiles: {
-          stackbilt: { from: 'aegis@stackbilt.dev', defaultTo: 'test@test.com', keyEnvField: 'resendApiKey' },
+          primary: { from: 'agent@example.com', defaultTo: 'test@test.com', keyEnvField: 'resendApiKey' },
           personal: { from: 'aegis@personal.com', defaultTo: 'test@test.com', keyEnvField: 'resendApiKeyPersonal' },
         },
       },
@@ -117,7 +117,7 @@ vi.mock('../src/github.js', () => ({
   listWorkflowRuns: (...args: unknown[]) => mockListWorkflowRuns(...args),
   getCombinedStatus: (...args: unknown[]) => mockGetCombinedStatus(...args),
   mergePullRequest: (...args: unknown[]) => mockMergePullRequest(...args),
-  resolveRepoName: (repo: string) => repo.includes('/') ? repo : `Stackbilt-dev/${repo}`,
+  resolveRepoName: (repo: string) => repo.includes('/') ? repo : `ExampleOrg/${repo}`,
 }));
 
 // Mock search.ts
@@ -145,7 +145,7 @@ vi.mock('../src/dispatch.js', () => ({
 vi.mock('../src/email.js', () => ({
   resolveEmailProfile: (profile: string, keys: Record<string, string>) => ({
     apiKey: profile === 'personal' ? keys.resendApiKeyPersonal : keys.resendApiKey,
-    from: profile === 'personal' ? 'aegis@personal.com' : 'aegis@stackbilt.dev',
+    from: profile === 'personal' ? 'aegis@personal.com' : 'agent@example.com',
     defaultTo: 'test@test.com',
   }),
 }));
@@ -571,7 +571,7 @@ describe('handleInProcessTool — core tools', () => {
 describe('handleGithubTool', () => {
   const db = mockDb();
   const token = 'ghp_test';
-  const repo = 'Stackbilt-dev/aegis';
+  const repo = 'ExampleOrg/aegis';
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -949,11 +949,11 @@ describe('handleContentTool', () => {
 
   it('list_roundtable_topics returns topics', async () => {
     const rdb = contentDb({
-      topics: [{ topic: 'Edge computing', cta_product: 'edgestack', status: 'queued', source: 'aegis_auto' }],
+      topics: [{ topic: 'Edge computing', cta_product: 'demo-app', status: 'queued', source: 'aegis_auto' }],
     });
     const result = await handleContentTool('list_roundtable_topics', {}, rdb, aegisDb);
     expect(result).toContain('Edge computing');
-    expect(result).toContain('edgestack');
+    expect(result).toContain('demo-app');
   });
 
   it('list_roundtable_topics returns empty message', async () => {
@@ -983,11 +983,11 @@ describe('handleContentTool', () => {
     mockQueueRoundtableTopic.mockResolvedValue(99);
     const rdb = contentDb();
     const result = await handleContentTool('queue_roundtable_topic', {
-      topic: 'Workers AI perf', context: 'Observed latency', cta_product: 'edgestack',
+      topic: 'Workers AI perf', context: 'Observed latency', cta_product: 'demo-app',
     }, rdb, aegisDb);
     expect(result).toContain('Workers AI perf');
-    expect(result).toContain('edgestack');
-    expect(mockQueueRoundtableTopic).toHaveBeenCalledWith(rdb, 'Workers AI perf', 'Observed latency', 'edgestack', 'aegis_auto');
+    expect(result).toContain('demo-app');
+    expect(mockQueueRoundtableTopic).toHaveBeenCalledWith(rdb, 'Workers AI perf', 'Observed latency', 'demo-app', 'aegis_auto');
   });
 
   it('queue_roundtable_topic requires topic', async () => {

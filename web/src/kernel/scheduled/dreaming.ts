@@ -8,10 +8,33 @@ import { recordMemory as recordMemoryAdapter } from '../memory-adapter.js';
 import { getActiveAgendaItems, resolveAgendaItem, type AgendaItem } from '../memory/agenda.js';
 import { askGroq } from '../../groq.js';
 import { createIssue, resolveRepoName } from '../../github.js';
+import { ensureOnBoard } from '../board.js';
 import { McpClient } from '../../mcp-client.js';
 import { operatorConfig } from '../../operator/index.js';
 import { runReading, summarizeForMemory, formatSymbolicNote } from '../symbolic.js';
 import { checkTaskGovernanceLimits } from './governance.js';
+
+// ─── Workers AI helper (free inference, Groq fallback) ──────
+async function askWorkersAiOrGroq(
+  env: EdgeEnv,
+  system: string,
+  user: string,
+  useResponseModel = false,
+): Promise<string> {
+  if (env.ai) {
+    const model = useResponseModel
+      ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+      : (env.gptOssModel || '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    const result = await env.ai.run(
+      model as Parameters<Ai['run']>[0],
+      { messages: [{ role: 'system', content: system }, { role: 'user', content: user }] },
+    ) as { response?: string; choices?: Array<{ message?: { content?: string } }> };
+    return result.choices?.[0]?.message?.content ?? result.response ?? '';
+  }
+  // Fallback to Groq
+  const groqModel = useResponseModel ? env.groqResponseModel : env.groqModel;
+  return askGroq(env.groqApiKey, groqModel, system, user, env.groqBaseUrl);
+}
 
 const DREAMING_SYSTEM = `You are AEGIS's memory consolidation system. You review full conversation threads from the past day and extract durable knowledge.
 
@@ -36,7 +59,7 @@ Return ONLY valid JSON (no markdown):
     { "preference": "description of user preference", "evidence": "quote or paraphrase from conversation" }
   ],
   "proposed_tasks": [
-    { "title": "short task title", "repo": "aegis-daemon", "prompt": "detailed instructions for a Claude Code session to execute this task", "category": "docs|tests|research|bugfix|feature|refactor", "rationale": "why this task is needed based on the conversations" }
+    { "title": "short task title", "repo": "aegis", "prompt": "detailed instructions for a Claude Code session to execute this task", "category": "docs|tests|research|bugfix|feature|refactor", "rationale": "why this task is needed based on the conversations" }
   ]
 }
 
@@ -45,10 +68,10 @@ Rules:
 - A routing failure is when the user had to redirect or correct the agent.
 - BizOps drift is when conversation reveals information newer than BizOps records.
 - Return empty arrays if nothing notable happened.
-- TOPIC RULES: Use ONLY these established topics: aegis, organization, operator_persona, operator_preferences, tarotscript, img_forge, bizops, colonyos, infrastructure, compliance, codebeast, content, memory_worker, edgestack. Do NOT invent new topics. Do NOT use "synthesis_*" or "cross_repo_insights" prefixes. If a fact spans projects, file it under the primary project topic.
-- Do NOT record vague "synthesis" observations like "The operator's cognitive style can be applied to X". Only record concrete, actionable facts with specific details.
-- proposed_tasks: up to 3 concrete, well-scoped tasks that would improve AEGIS based on what the conversations reveal. Each must have a clear prompt with specific files/changes. Categories: docs (documentation gaps), tests (missing test coverage), research (investigation needed), bugfix (concrete bugs), feature (new functionality), refactor (code quality). Do NOT propose deploy tasks. Only propose tasks with clear evidence from the conversations.
-- proposed_tasks repo MUST match one of your configured repository names. Use the LOCAL DIRECTORY name, not the GitHub repo name.
+- TOPIC RULES: Use ONLY established topics relevant to your deployment. Do NOT invent new topics. Do NOT use "synthesis_*" or "cross_repo_insights" prefixes. If a fact spans projects, file it under the primary project topic.
+- Do NOT record vague "synthesis" observations. Only record concrete, actionable facts with specific details.
+- proposed_tasks: up to 3 concrete, well-scoped tasks that would improve the system based on what the conversations reveal. Each must have a clear prompt with specific files/changes. Categories: docs (documentation gaps), tests (missing test coverage), research (investigation needed), bugfix (concrete bugs), feature (new functionality), refactor (code quality). Do NOT propose deploy tasks. Only propose tasks with clear evidence from the conversations.
+- proposed_tasks repo should match repos configured in your taskrunner aliases. Use the LOCAL DIRECTORY name, not the GitHub repo name.
 - proposed_tasks MUST reference specific files or modules to change. Do NOT propose vague tasks like "add tests for X project" — name the exact source files to test. BizOps project records are metadata, not codebases — never generate tasks about BizOps project entries themselves.`;
 
 export async function runDreamingCycle(env: EdgeEnv): Promise<void> {
@@ -119,24 +142,22 @@ export async function runDreamingCycle(env: EdgeEnv): Promise<void> {
     return;
   }
 
-  // Fetch current BizOps state as exocortex context (optional integration)
+  // Fetch current BizOps state as exocortex context
   let bizopsContext = '';
-  if (env.bizopsToken && operatorConfig.integrations.bizops.enabled) {
-    try {
-      const client = new McpClient({
-        url: operatorConfig.integrations.bizops.fallbackUrl,
-        token: env.bizopsToken,
-        prefix: 'bizops',
-        fetcher: env.bizopsFetcher,
-        rpcPath: '/rpc',
-      });
+  try {
+    const client = new McpClient({
+      url: operatorConfig.integrations.bizops.fallbackUrl,
+      token: env.bizopsToken,
+      prefix: 'bizops',
+      fetcher: env.bizopsFetcher,
+      rpcPath: '/rpc',
+    });
 
-      const orgs = await client.callTool('list_organizations', {});
-      const projects = await client.callTool('list_projects', {});
-      bizopsContext = `\n\nCurrent BizOps state (compare against conversations):\nOrganizations: ${typeof orgs === 'string' ? orgs.slice(0, 2000) : JSON.stringify(orgs).slice(0, 2000)}\nProjects: ${typeof projects === 'string' ? projects.slice(0, 2000) : JSON.stringify(projects).slice(0, 2000)}`;
-    } catch {
-      // BizOps unavailable — dream without exocortex
-    }
+    const orgs = await client.callTool('list_organizations', {});
+    const projects = await client.callTool('list_projects', {});
+    bizopsContext = `\n\nCurrent BizOps state (compare against conversations):\nOrganizations: ${typeof orgs === 'string' ? orgs.slice(0, 2000) : JSON.stringify(orgs).slice(0, 2000)}\nProjects: ${typeof projects === 'string' ? projects.slice(0, 2000) : JSON.stringify(projects).slice(0, 2000)}`;
+  } catch {
+    // BizOps unavailable — dream without exocortex
   }
 
   // Inject CC task execution health so dreaming sees pipeline state when proposing tasks
@@ -176,9 +197,9 @@ export async function runDreamingCycle(env: EdgeEnv): Promise<void> {
 
   let rawResponse: string;
   try {
-    rawResponse = await askGroq(env.groqApiKey, env.groqModel, DREAMING_SYSTEM, userPrompt, env.groqBaseUrl);
+    rawResponse = await askWorkersAiOrGroq(env, DREAMING_SYSTEM, userPrompt);
   } catch (err) {
-    console.warn('[dreaming] Groq call failed:', err instanceof Error ? err.message : String(err));
+    console.warn('[dreaming] LLM call failed:', err instanceof Error ? err.message : String(err));
     return;
   }
 
@@ -209,12 +230,11 @@ export async function runDreamingCycle(env: EdgeEnv): Promise<void> {
   // Process facts (cap at 5 per dreaming cycle — more generous than hourly consolidation)
   // Blocklist: topics that polluted memory with low-value synthesis noise
   const BLOCKED_TOPIC_PREFIXES = ['synthesis_', 'cross_repo_insight'];
+  // Add your project-specific topic names here
   const ALLOWED_TOPICS = new Set([
-    'aegis', 'organization', 'operator_persona', 'operator_preferences', 'tarotscript',
-    'img_forge', 'bizops', 'colonyos', 'infrastructure', 'compliance',
-    'codebeast', 'content', 'memory_worker', 'edgestack',
-    'auth', 'charter', 'roundtable', 'finance', 'project',
-    // Add your custom topics here
+    'aegis', 'infrastructure', 'compliance', 'content',
+    'bizops', 'finance', 'project', 'operator_preferences',
+    'meta_insight', 'feed_intel',
   ]);
 
   let factsRecorded = 0;
@@ -257,7 +277,7 @@ export async function runDreamingCycle(env: EdgeEnv): Promise<void> {
     if (!pref.preference || pref.preference.length < 15) continue;
     try {
       if (!env.memoryBinding) continue;
-      await recordMemoryAdapter(env.memoryBinding, 'operator_preferences', pref.preference, 0.85, 'dreaming_cycle');
+      await recordMemoryAdapter(env.memoryBinding, 'kurt_preferences', pref.preference, 0.85, 'dreaming_cycle');
       console.log(`[dreaming] Preference: ${pref.preference.slice(0, 80)}`);
     } catch {
       // non-fatal
@@ -282,7 +302,13 @@ export async function runDreamingCycle(env: EdgeEnv): Promise<void> {
   // rather than facts. Feeds the persona matrix over time (aegis#95).
   await extractPersonaDimensions(env, threadContents);
 
-  // ─── Phase 4: Symbolic reflection (TarotScript SingleDraw) ──
+  // ─── Phase 4: Pattern Synthesis Daemon (PRISM) ────────────
+  // Cross-topic connection discovery. Pulls recent facts from multiple
+  // memory topics, asks Groq to find non-obvious structural connections,
+  // then validates utility before committing to meta_insight tier.
+  await runPatternSynthesis(env);
+
+  // ─── Phase 5: Symbolic reflection (TarotScript SingleDraw) ──
   // Structured serendipity — a single card mirror on the day's patterns.
   // Surfaces blind spots that convergent analytical reasoning suppresses.
   await runSymbolicReflection(env);
@@ -303,11 +329,10 @@ const PROPOSED_CATEGORIES = new Set(['bugfix', 'feature']);
 const VALID_CATEGORIES = new Set([...AUTO_SAFE_CATEGORIES, ...PROPOSED_CATEGORIES]);
 
 // Valid repos the taskrunner can resolve — must match aliases in taskrunner.sh
-// Add your repo directory names here — the taskrunner resolves these to local paths
+// Customize this set for your org's repos
 const VALID_TASK_REPOS = new Set([
-  'aegis-daemon', 'aegis',
-  // Add your repo names below, e.g.:
-  // 'my-service', 'my-frontend', 'my-auth',
+  'aegis',
+  // Add your repo directory names here
 ]);
 
 const MIN_PROMPT_LENGTH = 80; // Prompts shorter than this are too vague to execute
@@ -440,9 +465,9 @@ async function triageAgendaToIssues(env: EdgeEnv): Promise<void> {
 
   let rawResponse: string;
   try {
-    rawResponse = await askGroq(env.groqApiKey, env.groqResponseModel, AGENDA_TRIAGE_SYSTEM, itemList, env.groqBaseUrl);
+    rawResponse = await askWorkersAiOrGroq(env, AGENDA_TRIAGE_SYSTEM, itemList, true);
   } catch (err) {
-    console.warn('[dreaming:triage] Groq call failed:', err instanceof Error ? err.message : String(err));
+    console.warn('[dreaming:triage] LLM call failed:', err instanceof Error ? err.message : String(err));
     return;
   }
 
@@ -485,6 +510,15 @@ async function triageAgendaToIssues(env: EdgeEnv): Promise<void> {
         labels,
       );
       await resolveAgendaItem(env.db, item.id, 'done');
+
+      // Add to project board
+      const projectIdRow = await env.db.prepare(
+        "SELECT received_at FROM web_events WHERE event_id = 'board_project_id'"
+      ).first<{ received_at: string }>();
+      if (projectIdRow?.received_at) {
+        await ensureOnBoard(env.db, env.githubToken, projectIdRow.received_at, resolvedRepo, number, item.title, 'backlog').catch(() => {});
+      }
+
       promoted++;
       console.log(`[dreaming:triage] Promoted agenda #${item.id} → ${resolvedRepo}#${number}: ${url}`);
     } catch (err) {
@@ -534,13 +568,9 @@ async function extractPersonaDimensions(env: EdgeEnv, threadContents: string[]):
 
   let rawResponse: string;
   try {
-    // Use the lighter model — persona extraction doesn't need the biggest context
-    rawResponse = await askGroq(
-      env.groqApiKey, env.groqResponseModel, PERSONA_SYSTEM,
-      threadContents.join('\n\n').slice(0, 15000), env.groqBaseUrl,
-    );
+    rawResponse = await askWorkersAiOrGroq(env, PERSONA_SYSTEM, threadContents.join('\n\n').slice(0, 15000), true);
   } catch (err) {
-    console.warn('[dreaming:persona] Groq call failed:', err instanceof Error ? err.message : String(err));
+    console.warn('[dreaming:persona] LLM call failed:', err instanceof Error ? err.message : String(err));
     return;
   }
 
@@ -561,7 +591,7 @@ async function extractPersonaDimensions(env: EdgeEnv, threadContents: string[]):
     const fact = `[${obs.dimension}] ${obs.observation}`;
     try {
       if (!env.memoryBinding) continue;
-      await recordMemoryAdapter(env.memoryBinding, 'operator_persona', fact, obs.confidence ?? 0.7, 'persona_extraction');
+      await recordMemoryAdapter(env.memoryBinding, 'kurt_persona', fact, obs.confidence ?? 0.7, 'persona_extraction');
       recorded++;
       console.log(`[dreaming:persona] ${fact.slice(0, 80)}`);
     } catch {
@@ -601,6 +631,135 @@ async function runSymbolicReflection(env: EdgeEnv): Promise<void> {
     console.log(`[dreaming:symbolic] SingleDraw complete — ${summary.dominantElement}, shadow ${summary.shadowDensity.toFixed(2)}, sephira ${summary.sephira}`);
   } catch (err) {
     console.warn('[dreaming:symbolic] TarotScript reading failed:', err instanceof Error ? err.message : String(err));
+  }
+}
+
+// ─── Pattern Synthesis Daemon (PRISM) ──────────────────────
+// Cross-topic connection discovery. Pulls recent facts from diverse
+// memory topics, asks Groq to find structural connections, then
+// validates utility before committing to the meta_insight tier.
+//
+// Inspired by adversarial reasoning analysis: "Topological Transforms
+// map network structures and discover non-obvious relationships by
+// analyzing shared functional constraints and interdependencies."
+
+const SYNTHESIS_SYSTEM = `You are a pattern synthesis engine. You receive facts from different domains stored in an AI agent's memory. Your job is to find NON-OBVIOUS structural connections between facts from DIFFERENT topics.
+
+Rules:
+- Only propose connections between facts from DIFFERENT topics (cross-domain synthesis).
+- Each connection must be ACTIONABLE — it must change a decision, reveal a risk, or unlock an optimization. "These two things are related" is not enough.
+- Apply adversarial self-check: could this connection be a coincidence or superficial keyword overlap? If yes, discard it.
+- Maximum 2 connections per run. Quality over quantity.
+
+Return ONLY valid JSON (no markdown):
+{
+  "connections": [
+    {
+      "fact_a": "first fact (quote or paraphrase)",
+      "topic_a": "topic of first fact",
+      "fact_b": "second fact (quote or paraphrase)",
+      "topic_b": "topic of second fact",
+      "insight": "the non-obvious connection and WHY it matters",
+      "action": "specific action this insight enables or decision it changes",
+      "confidence": 0.8
+    }
+  ]
+}
+
+If no genuine cross-domain connections exist, return {"connections": []}.
+Do NOT force connections. Empty is better than noise.`;
+
+async function runPatternSynthesis(env: EdgeEnv): Promise<void> {
+  if (!env.memoryBinding) return;
+
+  // Gather recent facts from diverse topics
+  const topicSamples: Array<{ topic: string; content: string }> = [];
+  const sampleTopics = [
+    'aegis', 'infrastructure', 'feed_intel',
+    'compliance', 'finance', 'content',
+  ];
+
+  for (const topic of sampleTopics) {
+    try {
+      const facts = await env.memoryBinding.recall('aegis', {
+        topic,
+        limit: 3,
+        min_confidence: 0.7,
+      });
+      for (const f of facts) {
+        topicSamples.push({ topic: f.topic, content: f.content });
+      }
+    } catch {
+      // Topic may not exist yet — skip
+    }
+  }
+
+  if (topicSamples.length < 6) {
+    console.log(`[dreaming:prism] Too few facts for synthesis (${topicSamples.length})`);
+    return;
+  }
+
+  // Deduplicate by topic — keep max 3 per topic for diversity
+  const byTopic: Record<string, typeof topicSamples> = {};
+  for (const s of topicSamples) {
+    if (!byTopic[s.topic]) byTopic[s.topic] = [];
+    if (byTopic[s.topic].length < 3) byTopic[s.topic].push(s);
+  }
+
+  const topicCount = Object.keys(byTopic).length;
+  if (topicCount < 3) {
+    console.log(`[dreaming:prism] Need 3+ topics for cross-domain synthesis (have ${topicCount})`);
+    return;
+  }
+
+  const factsBlock = Object.entries(byTopic)
+    .map(([topic, facts]) =>
+      `[${topic}]\n${facts.map(f => `- ${f.content}`).join('\n')}`
+    ).join('\n\n');
+
+  try {
+    const raw = await askWorkersAiOrGroq(env, SYNTHESIS_SYSTEM, factsBlock.slice(0, 8000));
+
+    if (!raw) return;
+
+    const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const result = JSON.parse(cleaned) as {
+      connections?: Array<{
+        fact_a: string;
+        topic_a: string;
+        fact_b: string;
+        topic_b: string;
+        insight: string;
+        action: string;
+        confidence: number;
+      }>;
+    };
+
+    let recorded = 0;
+    for (const conn of (result.connections ?? []).slice(0, 2)) {
+      if (!conn.insight || !conn.action || conn.insight.length < 30) continue;
+      if (conn.topic_a === conn.topic_b) continue; // Same-topic — not cross-domain
+
+      // Utility gate: action must be specific (>20 chars, not generic advice)
+      if (conn.action.length < 20) continue;
+
+      const metaFact = `[PRISM] Connection: ${conn.topic_a} ↔ ${conn.topic_b} — ${conn.insight}. Action: ${conn.action}`;
+      await recordMemoryAdapter(
+        env.memoryBinding,
+        'meta_insight',
+        metaFact,
+        Math.min(conn.confidence ?? 0.8, 0.85), // Cap confidence — insights need validation
+        'pattern_synthesis',
+      );
+      recorded++;
+      console.log(`[dreaming:prism] Meta-insight: ${conn.topic_a} ↔ ${conn.topic_b} — ${conn.insight.slice(0, 100)}`);
+    }
+
+    if (recorded === 0) {
+      console.log('[dreaming:prism] No actionable cross-domain connections found (this is fine)');
+    }
+  } catch (err) {
+    console.warn('[dreaming:prism] Pattern synthesis failed:', err instanceof Error ? err.message : String(err));
   }
 }
 

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /mnt/c/Users/kover/Documents/aegis-daemon/scripts/hooks/block-interactive.sh"
+            "command": "bash scripts/hooks/block-interactive.sh"
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /mnt/c/Users/kover/Documents/aegis-daemon/scripts/hooks/deploy-safety-gate.sh"
+            "command": "bash scripts/hooks/deploy-safety-gate.sh"
           }
         ]
       }

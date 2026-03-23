@@ -196,7 +196,7 @@ describe('recall-baseline: extractNodes', () => {
   it('extracts known project names from text', async () => {
     const db = createMockDb({
       // Each entity triggers a first() check → null means insert
-      // "Kurt" (person), "aegis" (project), "cloudflare" (tool), topic "infrastructure"
+      // "Alex" (person), "aegis" (project), "cloudflare" (tool), topic "infrastructure"
       firstResults: [null, null, null, null],
       runMeta: [
         { last_row_id: 1 },
@@ -206,8 +206,8 @@ describe('recall-baseline: extractNodes', () => {
       ],
     });
 
-    const ids = await extractNodes(db, 'Kurt deployed aegis on cloudflare', 'infrastructure');
-    expect(ids.length).toBeGreaterThanOrEqual(3); // kurt, aegis, cloudflare, + topic
+    const ids = await extractNodes(db, 'Alex deployed aegis on cloudflare', 'infrastructure');
+    expect(ids.length).toBeGreaterThanOrEqual(3); // alex, aegis, cloudflare, + topic
   });
 
   it('extracts tech terms like MCP, OAuth, D1', async () => {
@@ -558,12 +558,12 @@ describe('recall-baseline: memory block loading', () => {
   it('assembleBlockContext joins blocks by priority order', () => {
     const blocks: MemoryBlock[] = [
       { id: 'identity', content: 'You are AEGIS.', version: 1, priority: 1, max_bytes: 1024, updated_by: 'operator', updated_at: '2026-03-01' },
-      { id: 'operator_profile', content: 'Kurt is the operator.', version: 1, priority: 2, max_bytes: 2048, updated_by: 'operator', updated_at: '2026-03-01' },
+      { id: 'operator_profile', content: 'Alex is the operator.', version: 1, priority: 2, max_bytes: 2048, updated_by: 'operator', updated_at: '2026-03-01' },
       { id: 'operating_rules', content: 'Think like an operator.', version: 1, priority: 3, max_bytes: 1536, updated_by: 'operator', updated_at: '2026-03-01' },
     ];
 
     const result = assembleBlockContext(blocks);
-    expect(result).toBe('You are AEGIS.\n\nKurt is the operator.\n\nThink like an operator.');
+    expect(result).toBe('You are AEGIS.\n\nAlex is the operator.\n\nThink like an operator.');
   });
 
   it('assembleBlockContext respects token budget', () => {

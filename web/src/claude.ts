@@ -12,10 +12,10 @@ import {
   type ContentBlock,
   type Message,
   type ApiResponse,
-} from './claude-tools/index.js';
+} from './claude-tools.js';
 
 // Re-export for external consumers
-export { buildContext, handleInProcessTool, resolveMcpTool, type ClaudeConfig } from './claude-tools/index.js';
+export { buildContext, handleInProcessTool, resolveMcpTool, type ClaudeConfig } from './claude-tools.js';
 
 // ─── Anthropic SSE streaming ─────────────────────────────────
 
@@ -283,9 +283,9 @@ export async function executeClaudeChat(
 
     // Check if we're done (no tool use)
     if (data.stop_reason === 'end_turn' || data.stop_reason === 'max_tokens') {
-      const textBlocks = data.content.filter((b: ContentBlock) => b.type === 'text');
+      const textBlocks = data.content.filter(b => b.type === 'text');
       return {
-        text: textBlocks.map((b: ContentBlock) => b.text ?? '').join('') || '(no response)',
+        text: textBlocks.map(b => b.text ?? '').join('') || '(no response)',
         cost: totalCost,
       };
     }
@@ -321,8 +321,8 @@ export async function executeClaudeChat(
       continue;
     }
 
-    const textBlocks = data.content.filter((b: ContentBlock) => b.type === 'text');
-    return { text: textBlocks.map((b: ContentBlock) => b.text ?? '').join('') || '(no response)', cost: totalCost };
+    const textBlocks = data.content.filter(b => b.type === 'text');
+    return { text: textBlocks.map(b => b.text ?? '').join('') || '(no response)', cost: totalCost };
   }
 
   return { text: '(reached maximum tool rounds)', cost: totalCost };

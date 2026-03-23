@@ -3,7 +3,7 @@ import type { Env } from './types.js';
 
 export async function bearerAuth(c: Context<{ Bindings: Env }>, next: Next): Promise<Response | void> {
   // Public routes — no auth required
-  if (c.req.path === '/health' || c.req.path === '/pulse' || (c.req.path === '/' && c.req.method === 'GET') || c.req.path.startsWith('/tech') || c.req.path === '/api/feedback') {
+  if (c.req.path === '/health' || c.req.path === '/pulse' || (c.req.path === '/' && c.req.method === 'GET') || c.req.path.startsWith('/tech') || c.req.path === '/api/feedback' || c.req.path === '/observe' || c.req.path.startsWith('/api/overworld/public')) {
     return next();
   }
 
@@ -31,8 +31,8 @@ export async function bearerAuth(c: Context<{ Bindings: Env }>, next: Next): Pro
   const token = extractBearer(authHeader) ?? cookieToken ?? queryToken;
 
   if (!token || token !== c.env.AEGIS_TOKEN) {
-    // Chat UI — show login page
-    if (c.req.path === '/chat' && c.req.method === 'GET') {
+    // UI pages — show login page
+    if ((c.req.path === '/chat' || c.req.path === '/overworld') && c.req.method === 'GET') {
       return c.html(loginPage(), 401);
     }
     return c.json({ error: 'Unauthorized' }, 401);
@@ -116,7 +116,7 @@ function loginPage(): string {
       e.preventDefault();
       const token = document.getElementById('t').value;
       document.cookie = 'aegis_token=' + encodeURIComponent(token) + ';path=/;max-age=31536000;SameSite=Strict;Secure';
-      window.location.href = '/chat';
+      window.location.href = window.location.pathname;
     };
   </script>
 </body>

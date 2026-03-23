@@ -10,7 +10,8 @@ const messages = new Hono<{ Bindings: Env }>();
 
 function groqBaseUrl(env: Env): string | undefined {
   if (!env.AI_GATEWAY_ID) return undefined;
-  return `https://gateway.ai.cloudflare.com/v1/5bea0dafb9c8274290fe2fbe8487fadf/${env.AI_GATEWAY_ID}/groq`;
+  if (!env.CF_ACCOUNT_ID) return undefined;
+  return `https://gateway.ai.cloudflare.com/v1/${env.CF_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/groq`;
 }
 
 // ─── Auto-generate conversation title (#21) ──────────────

@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 function makeConfig(overrides: Record<string, unknown> = {}) {
   return {
-    identity: { name: 'Kurt' },
+    identity: { name: 'Alex' },
     persona: { tagline: 'test', traits: ['trait1'], channelNote: 'note' },
     entities: { names: [], memoryTopics: [] },
     selfModel: {
@@ -34,11 +34,11 @@ describe('operator config validation', () => {
 
   it('auto-derives possessive for names not ending in s', async () => {
     vi.doMock('../src/operator/config.js', () => ({
-      default: makeConfig({ identity: { name: 'Kurt' } }),
+      default: makeConfig({ identity: { name: 'Alex' } }),
     }));
 
     const { operatorConfig } = await import('../src/operator/index.js');
-    expect(operatorConfig.identity.possessive).toBe("Kurt's");
+    expect(operatorConfig.identity.possessive).toBe("Alex's");
   });
 
   it('auto-derives possessive for names ending in s', async () => {
@@ -76,21 +76,21 @@ describe('renderTemplate', () => {
 
   it('replaces {name} and {possessive} placeholders', async () => {
     vi.doMock('../src/operator/config.js', () => ({
-      default: makeConfig({ identity: { name: 'Kurt' } }),
+      default: makeConfig({ identity: { name: 'Alex' } }),
     }));
 
     const { renderTemplate } = await import('../src/operator/index.js');
     const result = renderTemplate('Hello {name}, this is {possessive} agent.');
-    expect(result).toBe("Hello Kurt, this is Kurt's agent.");
+    expect(result).toBe("Hello Alex, this is Alex's agent.");
   });
 
   it('replaces multiple occurrences of the same placeholder', async () => {
     vi.doMock('../src/operator/config.js', () => ({
-      default: makeConfig({ identity: { name: 'Kurt' } }),
+      default: makeConfig({ identity: { name: 'Alex' } }),
     }));
 
     const { renderTemplate } = await import('../src/operator/index.js');
     const result = renderTemplate('{name} said {name} likes it');
-    expect(result).toBe('Kurt said Kurt likes it');
+    expect(result).toBe('Alex said Alex likes it');
   });
 });

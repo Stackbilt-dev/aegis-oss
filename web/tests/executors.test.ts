@@ -9,9 +9,9 @@ import type { EdgeEnv } from '../src/kernel/dispatch.js';
 
 vi.mock('../src/operator/index.js', () => ({
   operatorConfig: {
-    identity: { name: 'AEGIS', possessive: "Kurt's" },
+    identity: { name: 'AEGIS', possessive: "Alex's" },
     persona: { tagline: 'test', traits: [], channelNote: '' },
-    entities: { names: ['StackBilt LLC'], memoryTopics: [] },
+    entities: { names: ['ExampleCo LLC'], memoryTopics: [] },
     integrations: {
       bizops: { enabled: true, toolPrefix: 'bizops', fallbackUrl: 'https://bizops.test' },
       github: { enabled: false },

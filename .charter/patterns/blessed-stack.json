@@ -1,0 +1,55 @@
+{
+  "customized": false,
+  "preset": "worker",
+  "generatedAt": "2026-03-23T08:16:03.089Z",
+  "patterns": [
+    {
+      "name": "Hono API Layer",
+      "category": "INTEGRATION",
+      "blessed_solution": "Hono route composition for worker/backend APIs",
+      "rationale": "Typed lightweight router aligned to edge/server runtimes",
+      "anti_patterns": "Avoid ad-hoc route registration patterns per handler file",
+      "status": "ACTIVE"
+    },
+    {
+      "name": "Cloudflare Worker Runtime",
+      "category": "COMPUTE",
+      "blessed_solution": "Cloudflare Workers + Wrangler deployment workflow",
+      "rationale": "Cloudflare-native edge execution for APIs and middleware",
+      "anti_patterns": "Avoid mixing non-edge runtime assumptions into worker handlers",
+      "status": "ACTIVE"
+    },
+    {
+      "name": "Edge Compute",
+      "category": "COMPUTE",
+      "blessed_solution": "Cloudflare Workers for edge compute",
+      "rationale": "Low-latency runtime close to users",
+      "anti_patterns": "Avoid express/fastify for new edge services",
+      "status": "ACTIVE"
+    },
+    {
+      "name": "Edge Data",
+      "category": "DATA",
+      "blessed_solution": "Cloudflare D1 for transactional edge data",
+      "rationale": "Co-located data with worker runtime",
+      "anti_patterns": "Avoid direct pg/mysql clients in edge handlers",
+      "status": "ACTIVE"
+    },
+    {
+      "name": "Queue Processing",
+      "category": "ASYNC",
+      "blessed_solution": "Cloudflare Queues for asynchronous workloads",
+      "rationale": "Durable retries for non-request work",
+      "anti_patterns": "Avoid long-running synchronous request chains",
+      "status": "ACTIVE"
+    },
+    {
+      "name": "Edge Security",
+      "category": "SECURITY",
+      "blessed_solution": "Token-based auth with scoped service bindings",
+      "rationale": "Limits blast radius across edge services",
+      "anti_patterns": "Avoid shared hardcoded secrets across handlers",
+      "status": "ACTIVE"
+    }
+  ]
+}

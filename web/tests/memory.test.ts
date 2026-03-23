@@ -91,7 +91,7 @@ describe('semantic.ts', () => {
       expect(normalizeTopic('bizops_improvements')).toBe('bizops');
       expect(normalizeTopic('dispatch_generation')).toBe('content');
       expect(normalizeTopic('self_improvement_outcomes')).toBe('self_improvement');
-      expect(normalizeTopic('stackbilt_governance')).toBe('stackbilt');
+      expect(normalizeTopic('organization_governance')).toBe('organization');
     });
 
     it('passes through unknown topics unchanged', () => {
@@ -882,7 +882,7 @@ describe('insights.ts', () => {
       const result = await publishInsight(db, {
         fact: 'test fact',
         insight_type: 'pattern',
-        origin_repo: 'aegis-daemon',
+        origin_repo: 'my-project',
         keywords: ['test'],
         confidence: 0.5,
       });
@@ -899,7 +899,7 @@ describe('insights.ts', () => {
       const result = await publishInsight(db, {
         fact: 'existing fact',
         insight_type: 'pattern',
-        origin_repo: 'aegis-daemon',
+        origin_repo: 'my-project',
         keywords: ['test'],
         confidence: 0.9,
       });
@@ -914,9 +914,9 @@ describe('insights.ts', () => {
       });
 
       const result = await publishInsight(db, {
-        fact: 'The file at /mnt/c/users/kover/test.ts has a bug',
+        fact: 'The file at /home/user/test.ts has a bug',
         insight_type: 'bug_signature',
-        origin_repo: 'aegis-daemon',
+        origin_repo: 'my-project',
         keywords: ['bug'],
         confidence: 0.9,
       });
@@ -933,7 +933,7 @@ describe('insights.ts', () => {
       const result = await publishInsight(db, {
         fact: 'Set $ANTHROPIC_API_KEY before running tests',
         insight_type: 'gotcha',
-        origin_repo: 'aegis-daemon',
+        origin_repo: 'my-project',
         keywords: ['env'],
         confidence: 0.9,
       });
@@ -950,7 +950,7 @@ describe('insights.ts', () => {
       const result = await publishInsight(db, {
         fact: 'Bug in dispatch.ts: the handler returns undefined',
         insight_type: 'bug_signature',
-        origin_repo: 'aegis-daemon',
+        origin_repo: 'my-project',
         keywords: ['bug'],
         confidence: 0.9,
       });
@@ -968,7 +968,7 @@ describe('insights.ts', () => {
       const result = await publishInsight(db, {
         fact: 'When using service bindings in workers.ts: always validate the binding exists before calling RPC',
         insight_type: 'pattern',
-        origin_repo: 'aegis-daemon',
+        origin_repo: 'my-project',
         keywords: ['service', 'binding'],
         confidence: 0.85,
       });
@@ -987,7 +987,7 @@ describe('insights.ts', () => {
       const result = await publishInsight(db, {
         fact: 'Service bindings between CF Workers avoid cold start overhead, reducing p99 latency by 40ms',
         insight_type: 'perf_win',
-        origin_repo: 'aegis-daemon',
+        origin_repo: 'my-project',
         keywords: ['latency', 'service-binding'],
         confidence: 0.9,
       });
@@ -1844,7 +1844,7 @@ describe('agenda.ts', () => {
       });
 
       const id = await createProposedTaskAgendaItem(
-        db, 'task-abc', 'Add logging', 'aegis-daemon', 'feature', 'Needed for debugging'
+        db, 'task-abc', 'Add logging', 'my-project', 'feature', 'Needed for debugging'
       );
 
       expect(id).toBe(77);
@@ -1852,7 +1852,7 @@ describe('agenda.ts', () => {
       expect(insertQuery).toBeDefined();
       expect(insertQuery!.bindings[0]).toContain('[PROPOSED TASK]');
       expect(insertQuery!.bindings[0]).toContain('Add logging');
-      expect(insertQuery!.bindings[0]).toContain('aegis-daemon');
+      expect(insertQuery!.bindings[0]).toContain('my-project');
     });
   });
 });

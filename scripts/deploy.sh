@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # deploy.sh — Self-healing deploy pipeline using headless Claude Code
 #
-# Stackbilt standard deploy pipeline (Tier 1).
+# AEGIS deploy pipeline.
 # Orchestrates: pre-deploy audit → deploy → verify → rollback on failure.
 #
 # Usage:
@@ -11,9 +11,9 @@
 #   ./scripts/deploy.sh --force      # Skip audit + skip version verification
 #
 # Environment:
-#   AEGIS_URL        — AEGIS endpoint (default: https://aegis.stackbilt.dev)
+#   AEGIS_URL        — AEGIS endpoint (default: https://your-aegis-instance.example.com)
 #   AEGIS_TOKEN      — Auth token for session digest
-#   HEALTH_URL       — Health endpoint to verify (default: https://aegis.stackbilt.dev/health)
+#   HEALTH_URL       — Health endpoint to verify (default: https://your-aegis-instance.example.com/health)
 #   WORKER_DIR       — Worker source directory (default: web)
 #   MAX_TURNS        — Max Claude turns for audit (default: 10)
 
@@ -23,9 +23,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKER_DIR="${WORKER_DIR:-web}"
 WORKER_PATH="${PROJECT_ROOT}/${WORKER_DIR}"
-HEALTH_URL="${HEALTH_URL:-https://aegis.stackbilt.dev/health}"
-AEGIS_URL="${AEGIS_URL:-https://aegis.stackbilt.dev}"
-AEGIS_TOKEN="${AEGIS_TOKEN:-aegis_0536a9669f99fd3b85b99f908b32f9f2}"
+HEALTH_URL="${HEALTH_URL:-https://your-aegis-instance.example.com/health}"
+AEGIS_URL="${AEGIS_URL:-https://your-aegis-instance.example.com}"
+AEGIS_TOKEN="${AEGIS_TOKEN:-YOUR_AEGIS_TOKEN}"
 DEPLOY_SETTINGS="${SCRIPT_DIR}/hooks/deploy-settings.json"
 MAX_TURNS="${MAX_TURNS:-10}"
 

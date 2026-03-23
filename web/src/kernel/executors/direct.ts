@@ -91,18 +91,18 @@ export async function executeDirect(
   env: EdgeEnv,
 ): Promise<{ text: string; cost: number; meta?: unknown }> {
   if (intent.classified === 'heartbeat') {
-    // Edge heartbeat: call BizOps dashboard (if available) + CF infrastructure in parallel, triage with structured JSON
-    const mcpClient = env.bizopsToken ? new McpClient({
+    // Edge heartbeat: call BizOps dashboard + CF infrastructure in parallel, triage with structured JSON
+    const mcpClient = new McpClient({
       url: operatorConfig.integrations.bizops.fallbackUrl,
       token: env.bizopsToken,
       prefix: 'bizops',
       fetcher: env.bizopsFetcher,
       rpcPath: '/rpc',
-    }) : null;
+    });
 
     try {
       const [dashboard, cfMetrics] = await Promise.all([
-        mcpClient ? mcpClient.callTool('dashboard_summary', {}) : '(BizOps not configured)',
+        mcpClient.callTool('dashboard_summary', {}),
         fetchCfObservability(env),
       ]);
 

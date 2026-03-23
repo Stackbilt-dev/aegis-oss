@@ -170,11 +170,12 @@ export const TOOLS = [
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Short task title (e.g. "Add unit tests for quota service")' },
-        repo: { type: 'string', description: 'Target repo directory name (e.g. "aegis-daemon", "my-service")' },
+        repo: { type: 'string', description: 'Target repo directory name (e.g. "my-project", "demo-app-v2")' },
         prompt: { type: 'string', description: 'Detailed instructions for Claude Code. Be specific about what to change, where, and how to verify.' },
         completion_signal: { type: 'string', description: 'String to look for in output to confirm success (default: "TASK_COMPLETE")' },
         priority: { type: 'number', description: 'Priority 0-100 where 0 is highest (default: 50)' },
-        depends_on: { type: 'string', description: 'Task ID this depends on — will not run until dependency completes' },
+        depends_on: { type: 'string', description: 'Single task ID this depends on (legacy) — will not run until dependency completes' },
+        blocked_by: { type: 'array', items: { type: 'string' }, description: 'Array of task IDs that must all complete before this task runs (DAG dependencies)' },
         max_turns: { type: 'number', description: 'Max agentic turns for safety (default: 25)' },
         category: { type: 'string', enum: ['docs', 'tests', 'research', 'bugfix', 'feature', 'refactor', 'deploy'], description: 'Task category for governance routing (default: feature)' },
         authority: { type: 'string', enum: ['proposed', 'auto_safe', 'operator'], description: 'Authority level: operator=run immediately, auto_safe=safe auto-execute, proposed=needs approval (default: operator)' },
@@ -241,7 +242,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Post title' },
-        slug: { type: 'string', description: 'URL slug (e.g. "getting-started")' },
+        slug: { type: 'string', description: 'URL slug (e.g. "img-forge-quickstart")' },
         body: { type: 'string', description: 'Full markdown body' },
         description: { type: 'string', description: 'Short description for RSS/meta (1-2 sentences)' },
         tags: { type: 'string', description: 'Comma-separated tags (e.g. "ai,imagegeneration,cloudflare")' },

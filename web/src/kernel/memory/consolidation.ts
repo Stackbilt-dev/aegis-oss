@@ -23,12 +23,13 @@ Rules:
 
 KNOWN TOPICS — reuse these whenever the fact fits. Only create a new topic if genuinely none of these apply:
 - aegis: cognitive kernel internals, architecture, infrastructure, versioning, deployment
-- img_forge: image generation product, economics, integrations, API
-- bizops: BizOps tool, MCP tools, operational improvements (optional integration)
-- content: blog, dispatch, column generation pipelines
+- img_forge: img-forge product, economics, integrations, API
+- bizops: BizOps tool, MCP tools, operational improvements
+- content: roundtable, dispatch, column generation pipelines
 - self_improvement: self-improvement analysis, outcomes, patterns
 - organization: org-level priorities, governance, go-to-market
-- auth: auth product, API key formats, middleware chain, auth-contract
+- auth: auth product, Better Auth, API key formats, middleware chain, auth-contract
+- product_strategy: product positioning, competitive landscape
 - compliance: legal, tax, compliance deadlines, regulatory
 - finance: financial metrics, costs, revenue, billing
 - operator_preferences: operator preferences, workflow choices

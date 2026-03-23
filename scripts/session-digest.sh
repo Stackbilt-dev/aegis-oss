@@ -4,8 +4,8 @@
 
 set -euo pipefail
 
-AEGIS_URL="${AEGIS_URL:-https://aegis.stackbilt.dev}"
-AEGIS_TOKEN="${AEGIS_TOKEN:-aegis_0536a9669f99fd3b85b99f908b32f9f2}"
+AEGIS_URL="${AEGIS_URL:-https://your-aegis-instance.example.com}"
+AEGIS_TOKEN="${AEGIS_TOKEN:-YOUR_AEGIS_TOKEN}"
 
 # Accept summary from argument or stdin
 if [[ $# -gt 0 ]]; then

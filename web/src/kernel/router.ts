@@ -98,15 +98,15 @@ const DEFAULT_ROUTES: Record<string, Executor> = {
   self_improvement: 'composite',
   web_research: 'gpt_oss',
   goal_execution: 'composite',
-  symbolic_consultation: 'tarotscript',
-  support_triage: 'tarotscript',
-  tarot_pulse: 'tarotscript',
-  tarot_trajectory: 'tarotscript',
-  tarot_multi_angle: 'tarotscript',
-  tarot_deep: 'tarotscript',
-  tarot_shadow: 'tarotscript',
-  tarot_orchestration: 'tarotscript',
-  tarot_planning: 'tarotscript',
+  symbolic_consultation: 'gpt_oss',
+  support_triage: 'gpt_oss',
+  tarot_pulse: 'gpt_oss',
+  tarot_trajectory: 'gpt_oss',
+  tarot_multi_angle: 'gpt_oss',
+  tarot_deep: 'gpt_oss',
+  tarot_shadow: 'gpt_oss',
+  tarot_orchestration: 'gpt_oss',
+  tarot_planning: 'gpt_oss',
 };
 
 // Patterns that are explicitly decomposable into parallel tool subtasks.
@@ -127,8 +127,9 @@ function selectDefaultExecutor(classification: string, intent: KernelIntent): Ex
   if (classification === 'heartbeat') return 'direct';
   if (classification === 'greeting') return 'gpt_oss'; // GPT-OSS 120B — smart enough for re-entry briefing
   if (classification === 'code_task') return 'claude_code';
-  if (classification === 'symbolic_consultation') return 'tarotscript';
-  if (classification === 'support_triage') return 'tarotscript';
+  // TarotScript is a classifier, not a responder — all classifications route to LLM executors
+  if (classification === 'symbolic_consultation') return 'gpt_oss';
+  if (classification === 'support_triage') return 'gpt_oss';
   // User corrections need thread history to understand the original intent
   if (classification === 'user_correction') return 'gpt_oss';
   // memory_recall needs buildContext() for semantic memory access — never route to
@@ -273,12 +274,32 @@ export async function route(
       );
 
       if (tsResult && getTaskPatterns().includes(tsResult.classification)) {
-        classification = tsResult.classification;
-        intent.complexity = tsResult.complexity;
-        intent.needsTools = tsResult.needsTools;
-        intent.confidence = tsResult.confidence;
-        intent.classifierSource = 'classify-cast';
-        console.log(`[router] classify-cast: ${classification} (confidence=${tsResult.confidence})`);
+        // Guard: reject symbolic_consultation from classify-cast unless the message
+        // contains explicit tarot signals. The relevance scorer falls back to random
+        // draws when no card matches, which can produce false symbolic_consultation
+        // classifications for ordinary messages.
+        if (tsResult.classification === 'symbolic_consultation') {
+          const raw = intent.raw.toLowerCase();
+          const tarotSignals = /\b(tarot|divination|oracle)\b|pull\s+a\s+card|what\s+do\s+the\s+cards|do\s+a\s+(tarot\s+)?reading|tarot\s+spread|card\s+reading|run\s+a\s+spread/i;
+          if (!tarotSignals.test(raw)) {
+            console.log(`[router] classify-cast returned symbolic_consultation but no tarot signals — rejecting, falling through to LLM`);
+            // Don't accept — fall through to Phase 1b
+          } else {
+            classification = tsResult.classification;
+            intent.complexity = tsResult.complexity;
+            intent.needsTools = tsResult.needsTools;
+            intent.confidence = tsResult.confidence;
+            intent.classifierSource = 'classify-cast';
+            console.log(`[router] classify-cast: ${classification} (confidence=${tsResult.confidence})`);
+          }
+        } else {
+          classification = tsResult.classification;
+          intent.complexity = tsResult.complexity;
+          intent.needsTools = tsResult.needsTools;
+          intent.confidence = tsResult.confidence;
+          intent.classifierSource = 'classify-cast';
+          console.log(`[router] classify-cast: ${classification} (confidence=${tsResult.confidence})`);
+        }
       }
     } catch (err) {
       console.warn('[router] classify-cast failed, falling back to LLM chain:', err instanceof Error ? err.message : String(err));
@@ -414,9 +435,17 @@ export async function route(
     const successRate = total > 0 ? procedure.success_count / total : 0;
 
     if (procedure.success_count >= PROCEDURE_MIN_SUCCESSES && successRate >= PROCEDURE_MIN_SUCCESS_RATE) {
+      // TarotScript is a classifier, not a responder — override any learned
+      // procedure that points to tarotscript so users never see raw spread output.
+      let executor = procedure.executor as Executor;
+      if (executor === 'tarotscript') {
+        console.log(`[router] procedure "${procKey}" points to tarotscript — overriding to gpt_oss (tarotscript is classify-only)`);
+        executor = 'gpt_oss';
+      }
+
       return {
         plan: {
-          executor: procedure.executor as Executor,
+          executor,
           reasoning: `Matched procedure "${procKey}" (${procedure.success_count} successes, ${Math.round(procedure.avg_latency_ms)}ms avg)`,
           procedureId: procedure.id,
           costCeiling: intent.costCeiling,

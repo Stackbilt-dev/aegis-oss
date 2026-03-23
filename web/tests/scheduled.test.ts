@@ -367,11 +367,11 @@ describe('buildCuriosityPrompt', () => {
 describe('self-improvement defaults', () => {
   it('DEFAULT_WATCH_REPOS includes core repos', () => {
     expect(DEFAULT_WATCH_REPOS).toContain('aegis');
-    expect(DEFAULT_WATCH_REPOS).toContain('edgestack_v2');
+    expect(DEFAULT_WATCH_REPOS).toContain('demo_app_v2');
     expect(DEFAULT_WATCH_REPOS).toContain('charter');
     expect(DEFAULT_WATCH_REPOS).toContain('img-forge');
-    expect(DEFAULT_WATCH_REPOS).toContain('stackbilt-auth');
-    expect(DEFAULT_WATCH_REPOS).toContain('businessops-copilot');
+    expect(DEFAULT_WATCH_REPOS).toContain('example-auth');
+    expect(DEFAULT_WATCH_REPOS).toContain('bizops-copilot');
   });
 
   it('has at least 5 default repos', () => {
@@ -558,7 +558,7 @@ describe('DailyActivity shape', () => {
       authority: 'auto_safe',
       status: 'completed',
       exit_code: 0,
-      pr_url: 'https://github.com/Stackbilt-dev/aegis/pull/42',
+      pr_url: 'https://github.com/ExampleOrg/aegis/pull/42',
       error: null,
       completed_at: '2026-03-10T14:00:00Z',
     };

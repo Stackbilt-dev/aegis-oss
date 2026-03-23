@@ -14,10 +14,10 @@ vi.mock('../src/operator/index.js', () => ({
       brave: { enabled: false },
       email: {
         profiles: {
-          stackbilt: { from: 'aegis@stackbilt.dev', defaultTo: 'admin@stackbilt.dev', keyEnvField: 'resendApiKey' },
-          personal: { from: 'aegis@kurtovermier.com', defaultTo: 'kurt@kurtovermier.com', keyEnvField: 'resendApiKeyPersonal' },
+          primary: { from: 'agent@example.com', defaultTo: 'admin@example.com', keyEnvField: 'resendApiKey' },
+          personal: { from: 'aegis@personal.example.com', defaultTo: 'user@personal.example.com', keyEnvField: 'resendApiKeyPersonal' },
         },
-        defaultProfile: 'stackbilt',
+        defaultProfile: 'primary',
       },
       goals: { enabled: false },
     },
@@ -35,20 +35,20 @@ const {
   sendStaleAgendaAlert,
 } = await import('../src/email.js');
 
-const apiKeys = { resendApiKey: 'rk_test_stackbilt', resendApiKeyPersonal: 'rk_test_personal' };
+const apiKeys = { resendApiKey: 'rk_test_primary', resendApiKeyPersonal: 'rk_test_personal' };
 
 describe('resolveEmailProfile', () => {
-  it('resolves stackbilt profile', () => {
-    const sender = resolveEmailProfile('stackbilt', apiKeys);
-    expect(sender.apiKey).toBe('rk_test_stackbilt');
-    expect(sender.from).toBe('aegis@stackbilt.dev');
-    expect(sender.defaultTo).toBe('admin@stackbilt.dev');
+  it('resolves primary profile', () => {
+    const sender = resolveEmailProfile('primary', apiKeys);
+    expect(sender.apiKey).toBe('rk_test_primary');
+    expect(sender.from).toBe('agent@example.com');
+    expect(sender.defaultTo).toBe('admin@example.com');
   });
 
   it('resolves personal profile', () => {
     const sender = resolveEmailProfile('personal', apiKeys);
     expect(sender.apiKey).toBe('rk_test_personal');
-    expect(sender.from).toBe('aegis@kurtovermier.com');
+    expect(sender.from).toBe('aegis@personal.example.com');
   });
 
   it('throws on unknown profile', () => {
@@ -56,7 +56,7 @@ describe('resolveEmailProfile', () => {
   });
 
   it('throws on missing API key', () => {
-    expect(() => resolveEmailProfile('stackbilt', { resendApiKey: '', resendApiKeyPersonal: '' })).toThrow('Missing API key');
+    expect(() => resolveEmailProfile('primary', { resendApiKey: '', resendApiKeyPersonal: '' })).toThrow('Missing API key');
   });
 });
 
@@ -81,7 +81,7 @@ describe('email send functions', () => {
     const body = JSON.parse(init!.body as string);
     expect(body.subject).toContain('HIGH');
     expect(body.subject).toContain('Test summary');
-    expect(body.from).toBe('aegis@stackbilt.dev');
+    expect(body.from).toBe('agent@example.com');
   });
 
   it('sendHeartbeatAlert includes INFRA badge for worker_ checks', async () => {
@@ -113,7 +113,7 @@ describe('email send functions', () => {
   it('sendOperatorLog sends with worklog subject', async () => {
     await sendOperatorLog(
       apiKeys,
-      'admin@stackbilt.dev',
+      'admin@example.com',
       '## Summary\n\nShipped features.',
       { episodes: 10, goalsRun: 3, totalCost: 0.1234 },
       '2026-03-10',
@@ -128,7 +128,7 @@ describe('email send functions', () => {
   it('sendOperatorLog includes task stats when provided', async () => {
     await sendOperatorLog(
       apiKeys,
-      'admin@stackbilt.dev',
+      'admin@example.com',
       'Log content',
       { episodes: 5, goalsRun: 2, tasksCompleted: 3, tasksFailed: 1, prsCreated: 2, totalCost: 0.05 },
       '2026-03-10',
@@ -191,7 +191,7 @@ describe('email send functions', () => {
   it('sendMemoryReflection includes topic pills and memory count', async () => {
     await sendMemoryReflection(
       apiKeys,
-      'admin@stackbilt.dev',
+      'admin@example.com',
       '## Reflection\n\nI learned things.',
       42,
       ['architecture', 'testing'],
@@ -229,7 +229,7 @@ describe('email send functions', () => {
     );
 
     const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1]!.body) as string);
-    expect(body.from).toBe('aegis@kurtovermier.com');
+    expect(body.from).toBe('aegis@personal.example.com');
   });
 
   it('throws on Resend API error', async () => {

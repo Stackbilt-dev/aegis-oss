@@ -2,78 +2,16 @@ ADF: 0.1
 
 🧠 STATE:
   CURRENT: >
-    Edge-native kernel LIVE at https://aegis-web.blue-pine-edf6.workers.dev (2026-03-01).
-    Full Cognitive Kernel runs inside Cloudflare Worker — no local daemon dependency.
+    AEGIS OSS v0.1.0 — open-source cognitive kernel framework.
+    Deployable on Cloudflare Workers with D1, Workers AI, and Service Bindings.
 
-    Deployed infrastructure:
-    - Cloudflare Worker: aegis-web (https://aegis-web.blue-pine-edf6.workers.dev)
-    - D1 database: aegis-web (a0a3b1c7-43ac-49d3-a481-d0aa7c396576)
-    - Service Binding: BIZOPS → businessops-copilot (Worker-to-Worker)
-    - Auth: Bearer aegis_0536a9669f99fd3b85b99f908b32f9f2
-    - Secrets set: AEGIS_TOKEN, ANTHROPIC_API_KEY, GROQ_API_KEY, BIZOPS_TOKEN, CF_ANALYTICS_TOKEN, IMG_FORGE_SB_SECRET, GITHUB_WEBHOOK_SECRET, STRIPE_WEBHOOK_SECRET
-
-    Edge kernel (web/src/):
-    - Operator config externalized (web/src/operator/) — identity, persona, integrations, entity names
-    - TarotScript classify-cast primary (14-card aegis-intents deck, zero-inference, `where relevance intention`) → Workers AI/Groq fallback → complexity-tiered procedural memory → executor dispatch. Classifier source tracked per episode via [clf:X] tag.
-    - 8 executors: groq, direct, workers_ai, gpt_oss (GPT-OSS-120B), composite (Groq→CF→Groq→Claude pipeline), claude (Sonnet 4.6), claude_opus (Opus 4.6), claude_code
-    - Procedure keys are complexity-tiered: {classification}:{low|mid|high}
-    - Claude executor: Anthropic Messages API with MCP tool loop (max 10 rounds), SSE streaming variant
-    - BizOps MCP: Streamable HTTP transport via Service Binding (avoids 1042 error)
-    - McpRegistry: multi-namespace MCP resolution (bizops + cf_obs), parameterized prefix per client
-    - CF Observability MCP: https://observability.mcp.cloudflare.com/mcp — worker error rates, latency, volume
-    - GPT-OSS executor: GPT-OSS-120B via Workers AI binding with tool loop ($0.35/$0.75 per MTok)
-    - Composite executor: LLM Map-Reduce pipeline (Groq GPT-OSS plans → CF GPT-OSS gathers tools → Groq analyzes parallel → Claude synthesizes)
-    - Workers AI executor: Llama 3.3 70B via CF AI binding (~$0.005/query)
-    - Direct executor: heartbeat via dashboard_summary + CF observability (parallel) → Groq triage. 8 checks (5 BizOps + 3 infra).
-    - D1 memory: episodic, procedural, semantic — full three-tier system. Semantic writes deduped via Jaccard pre-write check (threshold 0.55) in memory-adapter.ts.
-    - Remote MCP server at /mcp — stateless JSON-RPC, 15 tools (read + write)
-    - CC Task Queue: D1 cc_tasks table + REST API + 5 MCP tools + scripts/taskrunner.sh (autonomous overnight sessions)
-    - Task governance: authority levels (operator/auto_safe/proposed), category routing, governance limits (5/repo, 8/day, dedup)
-    - Dreaming self-queue: extracts up to 3 task proposals per cycle, routes by category
-    - Branch-per-task PRs: non-operator tasks auto-create branches + PRs, auto-merge for docs/tests
-    - Dependency chain resolution: depends_on field, cascade cancel on failure
-    - Deploy pipeline: scripts/deploy.sh — headless Claude audit → wrangler deploy → /health verify
-    - Infrastructure compliance: self-improvement proposes scaffolding tasks for missing org standards (deploy scaffolds centralized in /deploy-stack skill, not per-repo)
-    - Docs drift detection: compares last_docs_sync_at watermark against repo commits, queues sync tasks
-    - ARGUS Proactive Layer: POST /api/webhook (unified ingestion, HMAC per source), argus-notify (hourly event classification + routing), argus-heartbeat (3h pattern detection over events table). D1 events table + digest_sections pipeline.
-    - Email consolidation: single daily "Co-Founder Brief" at 12 UTC. Heartbeat/operator-log/reflection folded in. Only voice funnel + ARGUS critical remain standalone.
-    - send_email in-process tool: sends via Resend API (stackbilt/personal profiles)
-    - GitHub repo aliases: resolveRepoName() maps local dir names to GitHub repo names, ORG_ALIASES normalizes org name variants
-    - code_task executor: falls through to Claude with GitHub tools instead of dead stub
-    - AI Gateway wiring ready (set AI_GATEWAY_ID to enable)
-    - Multi-repo self-improvement: scans aegis, edgestack-v2, charter, img-forge, stackbilt-auth
-    - Roundtable topic pipeline: queue_roundtable_topic auto-queues content, weekly generation
-    - Research Dispatch pipeline: arxiv cs.AI → keyword scoring → Claude generation → D1 draft → publish
-    - SSE streaming for Claude responses (executeClaudeChatStream)
-    - Conversation history in UI (persisted to D1, loaded via API)
-    - Email: single daily Co-Founder Brief at 12 UTC (work shipped, operator log, health, ARGUS events, co-founder's take, reflection, agenda). ARGUS critical + voice funnel are standalone real-time.
-
-    Content platforms (shared ROUNDTABLE_DB binding):
-    - Roundtable discussions: blog.stackbilt.dev/roundtable/[slug]
-    - Research Dispatches: blog.stackbilt.dev/dispatch/[slug]
-
-    Verified patterns (e2e tested 2026-03-02, updated 2026-03-19):
-    - greeting → classify-cast → gpt_oss: ~600ms, $0.0001
-    - bizops_read → classify-cast → claude: ~17s, $0.21
-    - symbolic_consultation → classify-cast → tarotscript: ~3.7s, $0.001
-    - support_triage → classify-cast → tarotscript: ~170ms, $0.001
-    - memory_recall → classify-cast → gpt_oss: ~19s, $0.05
-    - heartbeat → direct: 1.9s, $0.002
-
-    Local daemon (src/):
-    - CLI REPL, Claude Agent SDK, BizOps MCP, heartbeat scheduler, code executor
-    - Fully functional but requires local machine running
-    - Phase 1 complete, not actively needed now that edge kernel is live
+    See docs/getting-started.md for deployment instructions.
+    See docs/architecture.md for system design overview.
 
   NEXT: >
-    1. Classify-cast soak test: monitor through 2026-03-22, check classify_cast_correction_rate in cognitive-metrics
-    2. img-forge launch: DMCA registration → bank docs → registered agent docs → flip billing on
-    3. Background learner unification (#210): consolidation + dreaming + implicit feedback → single typed pipeline
-    4. Docs site: bootstrap tasks seeding docs/ in product repos, then run docs-sync.sh end-to-end
-    5. claude-tools.ts decomposition (#119) — god object, must split before adding more tools
-
-  BLOCKED: >
-    img-forge billing: code-complete, Stripe live. Blocked on DMCA agent registration + bank account docs (manual).
+    1. Deploy your instance (copy wrangler.toml.example, set secrets)
+    2. Customize operator config (web/src/operator/config.ts)
+    3. Configure integrations (BizOps, GitHub, email)
 
   DEPLOY_COMMANDS: >
     # Authenticate wrangler (from project root):
@@ -83,7 +21,7 @@ ADF: 0.1
     cd web && npx wrangler deploy
 
     # Run D1 migration (if schema changed):
-    npx wrangler d1 execute aegis-web --remote --file=schema.sql
+    npx wrangler d1 execute YOUR_DB_NAME --remote --file=schema.sql
 
     # Set a secret:
-    npx wrangler secret put SECRET_NAME --name aegis-web
+    npx wrangler secret put SECRET_NAME --name YOUR_WORKER_NAME

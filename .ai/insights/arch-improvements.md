@@ -6,8 +6,8 @@ Architecture learnings — structural changes that improved maintainability or e
 
 ### God object decomposition via directory modules
 - **Type**: arch_improvement
-- **Origin**: aegis-daemon@v1.11.1
-- **Applicable to**: [aegis-daemon, *]
+- **Origin**: aegis-oss@v1.11.1
+- **Applicable to**: [aegis-oss, *]
 - **Confidence**: 0.9
 - **Impact**: deployed
 - **Keywords**: god object, decomposition, module, directory, kernel, memory, scheduled
@@ -16,7 +16,7 @@ Large single-file modules (`kernel/memory.ts`, `kernel/scheduled.ts`, `claude.ts
 
 ### Extension over addition design philosophy
 - **Type**: arch_improvement
-- **Origin**: aegis-daemon@core.adf
+- **Origin**: aegis-oss@core.adf
 - **Applicable to**: [*]
 - **Confidence**: 0.85
 - **Impact**: deployed

@@ -89,12 +89,11 @@ const KEYWORD_SIGNALS: Array<{ card: CourtCard; weight: number; patterns: RegExp
 ];
 
 // Intent classification → default court card mapping
-// bizops_read / bizops_mutate are optional — only active when BizOps integration is enabled
 const CLASSIFICATION_DEFAULTS: Record<string, CourtCard> = {
   // Strategic
   self_improvement: 'king',
   goal_execution: 'king',
-  bizops_mutate: 'king',  // Optional: BizOps write operations
+  bizops_mutate: 'king',
   // Relational
   greeting: 'queen',
   user_correction: 'queen',
@@ -107,7 +106,7 @@ const CLASSIFICATION_DEFAULTS: Record<string, CourtCard> = {
   general_knowledge: 'page',
   web_research: 'page',
   symbolic_consultation: 'page',
-  bizops_read: 'page',    // Optional: BizOps read operations
+  bizops_read: 'page',
 };
 
 /**

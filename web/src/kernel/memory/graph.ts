@@ -11,10 +11,9 @@ type NodeType = 'concept' | 'project' | 'person' | 'decision' | 'pattern' | 'too
 
 export type SourceSystem = 'cognitive' | 'code' | 'manual';
 
-// Add your project names here for entity recognition in the knowledge graph
 const KNOWN_PROJECTS: Set<string> = new Set([
-  'aegis',
-  // 'my-project', 'my-service', etc.
+  'aegis', 'bizops',
+  // Add your project names here
 ]);
 
 const KNOWN_TOOLS: Set<string> = new Set([
@@ -24,9 +23,8 @@ const KNOWN_TOOLS: Set<string> = new Set([
   'brave search', 'astro', 'react', 'typescript', 'pnpm', 'npm',
 ]);
 
-// Add known people for entity recognition (first name + full name)
 const KNOWN_PEOPLE: Set<string> = new Set([
-  // 'operator', 'jane doe',
+  'alex',
 ]);
 
 const DECISION_MARKERS = /\b(decided|decision|chose|chosen|approved|rejected|switched to|migrated to|adopted)\b/i;
@@ -55,7 +53,7 @@ const TECH_TERMS = /\b(OAuth\s*2\.?1?|MCP|D1|KV|R2|CRIX|EIN|LLC|PBC|API|CLI|PKCE
 // Matches version references like v1.9.0, Phase 2, etc.
 const VERSION_REFS = /\b(v\d+\.\d+(?:\.\d+)?|Phase\s+\d+)\b/gi;
 
-// Matches product/project names with hyphens like my-service, my-project-v2
+// Matches product/project names with hyphens like my-project, demo-app-v2
 const HYPHENATED_NAMES = /\b([a-z]+-[a-z]+(?:-[a-z0-9]+)?)\b/gi;
 
 function extractEntities(fact: string): string[] {

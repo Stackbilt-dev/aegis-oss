@@ -75,7 +75,7 @@ function mockAnthropicFetch(output: Record<string, unknown>, usage = { input_tok
 
 describe('pickNextTopic', () => {
   it('returns queued topic and marks it as used', async () => {
-    const topic = { id: 'topic-1', topic: 'MCP Security', context: 'research', cta_product: 'edgestack' };
+    const topic = { id: 'topic-1', topic: 'MCP Security', context: 'research', cta_product: 'demo-app' };
     const db = createMockDb({ firstResults: [topic] });
 
     const result = await pickNextTopic(db as unknown as D1Database);
@@ -192,12 +192,12 @@ describe('generateRoundtable', () => {
   it('includes context in user prompt when provided', async () => {
     vi.stubGlobal('fetch', mockAnthropicFetch(validOutput));
 
-    await generateRoundtable('key', 'model', 'https://api.test', 'Topic', 'Some context', 'edgestack');
+    await generateRoundtable('key', 'model', 'https://api.test', 'Topic', 'Some context', 'demo-app');
 
     const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const body = JSON.parse(fetchCall[1].body);
     expect(body.messages[0].content).toContain('CONTEXT: Some context');
-    expect(body.messages[0].content).toContain('CTA_PRODUCT: edgestack');
+    expect(body.messages[0].content).toContain('CTA_PRODUCT: demo-app');
   });
 });
 
@@ -217,7 +217,7 @@ describe('writeRoundtable', () => {
       synthesis: 'synth',
     };
 
-    const id = await writeRoundtable(db as unknown as D1Database, output, 'edgestack');
+    const id = await writeRoundtable(db as unknown as D1Database, output, 'demo-app');
 
     expect(typeof id).toBe('string');
     // 1 roundtable INSERT + 2 contribution INSERTs
@@ -239,7 +239,7 @@ describe('writeRoundtable', () => {
 
     await writeRoundtable(db as unknown as D1Database, output, 'img-forge');
     // CTA URL should be img-forge URL
-    expect(db._queries[0].bindings).toContain('https://img-forge.stackbilt.dev');
+    expect(db._queries[0].bindings).toContain('https://img-forge.example.com');
   });
 
   it('falls back to general CTA URL for unknown product', async () => {
@@ -252,7 +252,7 @@ describe('writeRoundtable', () => {
     };
 
     await writeRoundtable(db as unknown as D1Database, output, 'unknown-product');
-    expect(db._queries[0].bindings).toContain('https://stackbilt.dev');
+    expect(db._queries[0].bindings).toContain('https://example.com');
   });
 
   it('passes null header image URL by default', async () => {
@@ -274,7 +274,7 @@ describe('queueRoundtableTopic', () => {
   it('inserts new topic when no duplicate exists', async () => {
     const db = createMockDb({ firstResults: [null] });
     const id = await queueRoundtableTopic(
-      db as unknown as D1Database, 'New Topic', 'context', 'edgestack', 'heartbeat',
+      db as unknown as D1Database, 'New Topic', 'context', 'demo-app', 'heartbeat',
     );
 
     expect(typeof id).toBe('string');

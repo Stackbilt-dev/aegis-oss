@@ -260,13 +260,14 @@ CREATE INDEX IF NOT EXISTS idx_shadow_reads_site ON shadow_reads(call_site, crea
 CREATE TABLE IF NOT EXISTS cc_tasks (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
-  repo TEXT NOT NULL,                            -- target repo path (e.g. aegis-daemon, edgestack-v2)
+  repo TEXT NOT NULL,                            -- target repo path (e.g. my-project, demo-app-v2)
   prompt TEXT NOT NULL,                          -- mission brief for Claude Code
   completion_signal TEXT,                        -- string to look for in output to confirm success
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
   priority INTEGER NOT NULL DEFAULT 50,          -- 0=highest, 100=lowest
-  depends_on TEXT,                               -- task ID this depends on (NULL = no dependency)
+  depends_on TEXT,                               -- task ID this depends on (NULL = no dependency) — single blocker, legacy
+  blocked_by TEXT,                               -- JSON array of task IDs that must complete first (DAG dependencies)
   max_turns INTEGER NOT NULL DEFAULT 25,         -- --max-turns for safety
   allowed_tools TEXT,                            -- JSON array of allowed tool patterns (NULL = default set)
   session_id TEXT,                               -- Claude Code session ID once started
@@ -287,7 +288,8 @@ CREATE TABLE IF NOT EXISTS cc_tasks (
     CHECK (category IN ('docs', 'tests', 'research', 'bugfix', 'feature', 'refactor', 'deploy')),
   branch TEXT,                                   -- git branch name (auto/{task_id:8})
   pr_url TEXT,                                   -- GitHub PR URL if one was created
-  github_issue_repo TEXT,                        -- source issue repo (e.g. 'Stackbilt-dev/aegis')
+  utility_json TEXT,                              -- PR utility scoring: {impact, novelty, signals[]}
+  github_issue_repo TEXT,                        -- source issue repo (e.g. 'my-org/aegis')
   github_issue_number INTEGER                    -- source issue number (repo-scoped)
 );
 
@@ -333,7 +335,7 @@ CREATE TABLE IF NOT EXISTS kg_nodes (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   source_system TEXT NOT NULL DEFAULT 'cognitive'
     CHECK (source_system IN ('cognitive', 'code', 'manual')),
-  source_ref TEXT,                           -- e.g. "aegis-daemon:src/kernel/dispatch.ts:45"
+  source_ref TEXT,                           -- e.g. "my-project:src/kernel/dispatch.ts:45"
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -410,3 +412,78 @@ CREATE TABLE IF NOT EXISTS feedback (
 
 CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at);
 CREATE INDEX IF NOT EXISTS idx_feedback_category ON feedback(category);
+
+-- ─── Feed Watcher ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS watched_feeds (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+  url TEXT NOT NULL UNIQUE,
+  title TEXT,
+  category TEXT NOT NULL DEFAULT 'general',
+  last_fetched_at TEXT,
+  last_entry_id TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS feed_entries (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+  feed_id TEXT NOT NULL REFERENCES watched_feeds(id),
+  entry_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  link TEXT,
+  summary TEXT,
+  published_at TEXT,
+  ingested_at TEXT NOT NULL DEFAULT (datetime('now')),
+  recorded_to_memory INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(feed_id, entry_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_feed_entries_feed ON feed_entries(feed_id);
+CREATE INDEX IF NOT EXISTS idx_feed_entries_ingested ON feed_entries(ingested_at);
+
+-- ─── Project Board ──────────────────────────────────────────────
+-- D1 cache of GitHub Projects v2 board state.
+-- Written by ARGUS webhooks (real-time) and board-sync (hourly reconciliation).
+-- Read by Overworld snapshot endpoint.
+
+CREATE TABLE IF NOT EXISTS board_items (
+  id TEXT PRIMARY KEY,                                          -- GitHub Projects item node ID
+  project_id TEXT NOT NULL,                                     -- GitHub Projects project node ID
+  content_type TEXT NOT NULL CHECK (content_type IN ('issue', 'pr')),
+  content_node_id TEXT NOT NULL,                                -- GitHub node ID of the issue/PR
+  repo TEXT NOT NULL,                                           -- 'my-org/aegis' format
+  number INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'backlog'
+    CHECK (status IN ('backlog', 'queued', 'in_progress', 'blocked', 'shipped')),
+  labels TEXT NOT NULL DEFAULT '[]',                            -- JSON array
+  assignee TEXT,
+  cc_task_id TEXT,                                              -- FK to cc_tasks.id if linked
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_board_status ON board_items(status);
+CREATE INDEX IF NOT EXISTS idx_board_repo ON board_items(repo);
+CREATE INDEX IF NOT EXISTS idx_board_content ON board_items(content_node_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_board_repo_number ON board_items(repo, number);
+
+-- ─── Content Queue (Content Drip) ─────────────────────────────
+
+CREATE TABLE IF NOT EXISTS content_queue (
+  id TEXT PRIMARY KEY,
+  platform TEXT NOT NULL DEFAULT 'bluesky',
+  text TEXT NOT NULL,
+  image_url TEXT,
+  image_alt TEXT,
+  link_url TEXT,
+  scheduled_at TEXT NOT NULL,
+  published_at TEXT,
+  status TEXT NOT NULL DEFAULT 'scheduled'
+    CHECK (status IN ('scheduled', 'published', 'failed', 'cancelled')),
+  post_url TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_content_queue_status ON content_queue(status, scheduled_at);

@@ -3,6 +3,8 @@ export { PROCEDURE_MIN_SUCCESSES, PROCEDURE_MIN_SUCCESS_RATE, complexityTier, pr
 export { normalizeTopic, tokenize, jaccardSimilarity, recordMemory, searchMemoryByKeywords, getMemoryEntries, recallMemory, computeEwaScore, getAllMemoryForContext } from './semantic.js';
 export { pruneMemory } from './pruning.js';
 export { consolidateEpisodicToSemantic } from './consolidation.js';
+export { publishInsight, validateInsight, promoteInsight, type InsightType, type ValidationStage, type InsightPayload } from './insights.js';
+export { listInsights, getInsightDetail, getInsightStats, archiveInsight } from './insights.js';
 export { type AgendaItem, type HeartbeatResult, getRecentHeartbeats, getActiveAgendaItems, addAgendaItem, resolveAgendaItem, PROPOSED_ACTION_PREFIX, getAgendaContext, getRecentHeartbeatContext } from './agenda.js';
 export { type AgentGoal, type AgentAction, getActiveGoals, addGoal, updateGoalStatus, touchGoal, recordGoalAction, sanitizeActionOutcome, downgradeGoalAuthority, getGoalActions } from './goals.js';
 export { extractNodes, createEdges, activateGraph } from './graph.js';

@@ -3,6 +3,38 @@ import { getActiveGoals, touchGoal, recordGoalAction, getGoalActions, downgradeG
 
 // ─── Autonomous Goal Loop (#14, #28) ─────────────────────────
 
+// Standing Orders: structured context for goal execution.
+// Stored in agent_goals.context_json. Defines scope, guardrails,
+// and escalation rules so goals operate with clear boundaries.
+export interface GoalContext {
+  scope?: string[];          // What this goal IS authorized to do
+  guardrails?: string[];     // What this goal must NOT do
+  escalation?: string[];     // When to stop and flag for human attention
+  triggers?: string[];       // Additional trigger conditions beyond schedule
+  deadline?: string;         // ISO date — auto-complete goal after this date
+}
+
+function formatStandingOrders(ctx: GoalContext): string {
+  const sections: string[] = [];
+
+  if (ctx.scope?.length) {
+    sections.push(`Scope (what you MAY do):\n${ctx.scope.map(s => `  - ${s}`).join('\n')}`);
+  }
+  if (ctx.guardrails?.length) {
+    sections.push(`Guardrails (what you must NOT do):\n${ctx.guardrails.map(g => `  - ${g}`).join('\n')}`);
+  }
+  if (ctx.escalation?.length) {
+    sections.push(`Escalation (stop and flag if):\n${ctx.escalation.map(e => `  - ${e}`).join('\n')}`);
+  }
+  if (ctx.triggers?.length) {
+    sections.push(`Additional triggers:\n${ctx.triggers.map(t => `  - ${t}`).join('\n')}`);
+  }
+
+  return sections.length > 0
+    ? `\nStanding Orders:\n${sections.join('\n')}`
+    : '';
+}
+
 export const MAX_GOALS_PER_CYCLE = 3;
 
 // Approved tools for auto_low execution — reversible, low-risk actions only
@@ -56,6 +88,26 @@ export async function runGoalLoop(env: EdgeEnv): Promise<void> {
 }
 
 export async function runSingleGoal(env: EdgeEnv, goal: AgentGoal): Promise<void> {
+  // Parse standing orders from context_json
+  let goalContext: GoalContext | null = null;
+  if (goal.context_json) {
+    try {
+      goalContext = JSON.parse(goal.context_json) as GoalContext;
+    } catch {
+      console.warn(`[goals] Failed to parse context_json for "${goal.title}"`);
+    }
+  }
+
+  // Check deadline — auto-complete expired goals
+  if (goalContext?.deadline) {
+    const deadlineMs = new Date(goalContext.deadline).getTime();
+    if (!isNaN(deadlineMs) && Date.now() > deadlineMs) {
+      console.log(`[goals] Goal "${goal.title}" past deadline (${goalContext.deadline}), marking completed`);
+      await env.db.prepare("UPDATE agent_goals SET status = 'completed', completed_at = datetime('now') WHERE id = ?").bind(goal.id).run();
+      return;
+    }
+  }
+
   const isAutoLow = goal.authority_level === 'auto_low';
 
   const authorityInstructions = isAutoLow
@@ -69,11 +121,13 @@ export async function runSingleGoal(env: EdgeEnv, goal: AgentGoal): Promise<void
   Maximum ${AUTO_LOW_MAX_ACTIONS_PER_RUN} autonomous actions per run.`
     : 'Authority: propose — create [PROPOSED ACTION] agenda items, do not execute autonomously.';
 
+  const standingOrders = goalContext ? formatStandingOrders(goalContext) : '';
+
   const prompt = `You are running the autonomous goal loop. Evaluate the following goal and take appropriate action.
 
 **Goal #${goal.id}: ${goal.title}**
 ${goal.description ? `Description: ${goal.description}` : ''}
-${authorityInstructions}
+${authorityInstructions}${standingOrders}
 Run count: ${goal.run_count}
 
 Procedure:

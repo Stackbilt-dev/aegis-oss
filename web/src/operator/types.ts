@@ -27,7 +27,7 @@ export interface OperatorConfig {
   products?: Product[]; // Fallback only — canonical source is BizOps project registry via CognitiveState
   selfModel: SelfModel;
   integrations: {
-    bizops: { enabled: boolean; fallbackUrl: string; toolPrefix: string }; // Optional: set enabled=false to disable
+    bizops: { enabled: boolean; fallbackUrl: string; toolPrefix: string };
     github: { enabled: boolean };
     brave: { enabled: boolean };
     email: {

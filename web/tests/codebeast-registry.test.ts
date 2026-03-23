@@ -5,9 +5,9 @@ import { describe, it, expect, vi } from 'vitest';
 // ─── Mock operator config ─────────────────────────────────────
 vi.mock('../src/operator/index.js', () => ({
   operatorConfig: {
-    identity: { name: 'AEGIS', possessive: "Kurt's" },
+    identity: { name: 'AEGIS', possessive: "Alex's" },
     persona: { tagline: 'test', traits: [], channelNote: '' },
-    entities: { names: ['StackBilt LLC'], memoryTopics: [] },
+    entities: { names: ['ExampleCo LLC'], memoryTopics: [] },
     integrations: {
       bizops: { enabled: true, toolPrefix: 'bizops', fallbackUrl: 'https://bizops.test' },
       github: { enabled: false },
@@ -143,7 +143,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     RESEND_API_KEY: 'rs-key',
     RESEND_API_KEY_PERSONAL: 'rs-p-key',
     GITHUB_TOKEN: 'gh-tok',
-    GITHUB_REPO: 'Stackbilt-dev/aegis',
+    GITHUB_REPO: 'ExampleOrg/aegis',
     BRAVE_API_KEY: 'brave-key',
     AEGIS_NOTIFY_EMAIL: 'test@test.com',
     AEGIS_BASE_URL: '',

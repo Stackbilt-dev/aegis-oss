@@ -16,13 +16,15 @@ const config: OperatorConfig = {
     channelNote: 'You are in web chat mode. {name} is messaging from a mobile/web interface.',
   },
   entities: {
-    names: [],       // Add your org/entity names here
-    memoryTopics: [], // Add memory topics relevant to your entities
+    names: [],
+    memoryTopics: [],
   },
-  products: [],      // Define your products or leave empty (canonical source is BizOps if enabled)
+  products: [
+    { name: 'Example Product', description: 'Your product here', model: 'proprietary_saas', status: 'development' },
+  ],
   selfModel: {
     identity: 'AEGIS — autonomous cognitive agent',
-    role: 'Autonomous operator and technical co-founder',
+    role: 'Co-founder and autonomous operator',
     stakes: 'Economic alignment with the business',
     principles: ['Operator mindset', 'Revenue awareness', 'Security first'],
     interests: ['AI infrastructure', 'Edge computing'],
@@ -34,25 +36,24 @@ const config: OperatorConfig = {
     },
   },
   integrations: {
-    // BizOps MCP integration — optional. Set enabled: true and provide fallbackUrl if you run a BizOps service.
     bizops: {
-      enabled: false,
-      fallbackUrl: '',           // e.g. 'https://your-bizops-worker.example.com/mcp'
-      toolPrefix: 'BizOps',
+      enabled: true,
+      fallbackUrl: 'https://your-bizops.example.com/mcp',
+      toolPrefix: 'BizOps Copilot',
     },
     github: { enabled: true },
     brave: { enabled: true },
     email: {
       profiles: {
-        default: { from: 'AEGIS <agent@example.com>', defaultTo: 'admin@example.com', keyEnvField: 'resendApiKey' },
+        primary: { from: 'AEGIS <agent@example.com>', defaultTo: 'admin@example.com', keyEnvField: 'resendApiKey' },
       },
-      defaultProfile: 'default',
+      defaultProfile: 'primary',
     },
     goals: { enabled: true },
     cfObservability: { enabled: true },
-    imgForge: { enabled: false, baseUrl: '' }, // Optional: set to your img-forge service URL
+    imgForge: { enabled: true, baseUrl: 'https://your-image-service.example.com' },
   },
-  baseUrl: 'https://your-aegis-worker.example.com',
+  baseUrl: 'https://your-aegis-worker.your-subdomain.workers.dev',
   userAgent: 'AEGIS/1.0 (AI research assistant)',
 };
 

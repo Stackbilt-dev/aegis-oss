@@ -30,7 +30,7 @@ function arcHash(arc: string): string {
 const NARRATIVE_SYSTEM = `You maintain narrative arcs for a persistent AI agent's memory. A narrative is NOT a fact — it's a thread: an ongoing situation with tension, progress, and resolution.
 
 Good narratives: "LLC formation blocked on EIN wait", "OAuth migration across products", "Cost optimization push"
-Bad narratives: "Operator uses Cloudflare" (fact, not story), "Had a conversation about billing" (event, not arc)
+Bad narratives: "Uses Cloudflare" (fact, not story), "Had a conversation about billing" (event, not arc)
 
 Given recent episodes and existing narratives, return a JSON array of operations:
 

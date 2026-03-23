@@ -23,10 +23,10 @@ describe('task intelligence', () => {
   it('classifies missing repos as non-retryable system-contract failures', () => {
     const autopsy = classifyTaskFailure({
       title: 'Scaffold deploy pipeline',
-      repo: 'kurtovermier.com',
-      error: 'Repo not found: kurtovermier.com',
+      repo: 'user-website.example',
+      error: 'Repo not found: user-website.example',
       preflight: {
-        repo: 'kurtovermier.com',
+        repo: 'user-website.example',
         repo_exists: false,
         warnings: ['Resolved repo path does not exist on this runner'],
       },
@@ -41,7 +41,7 @@ describe('task intelligence', () => {
     const autopsy = classifyTaskFailure({
       category: 'tests',
       preflight: {
-        repo: 'aegis-daemon',
+        repo: 'my-project',
         repo_exists: true,
         warnings: ['No obvious test command detected in root/web/e2e package.json'],
       },

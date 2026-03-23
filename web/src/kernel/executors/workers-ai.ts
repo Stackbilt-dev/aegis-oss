@@ -26,20 +26,19 @@ export async function executeGptOss(
 ): Promise<{ text: string; cost: number }> {
   if (!env.ai) throw new Error('Workers AI binding not available');
   const registry = buildMcpRegistry(env);
-  // BizOps MCP client — optional, only created when token is available
-  const mcpClient = env.bizopsToken ? new McpClient({
+  const mcpClient = new McpClient({
     url: operatorConfig.integrations.bizops.fallbackUrl,
     token: env.bizopsToken,
     prefix: 'bizops',
     fetcher: env.bizopsFetcher,
     rpcPath: '/rpc',
-  }) : undefined;
+  });
 
   return executeWorkersAiChat(
     {
       ai: env.ai,
       model: env.gptOssModel,
-      mcpClient: mcpClient as McpClient, // type assertion — handled downstream when undefined
+      mcpClient,
       mcpRegistry: registry,
       db: env.db,
       channel: 'web',

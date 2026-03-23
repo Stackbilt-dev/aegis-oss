@@ -57,7 +57,7 @@ describe('extractNodes', () => {
       runMeta: [{ last_row_id: 1 }, { last_row_id: 2 }],
     });
 
-    const ids = await extractNodes(db, 'Kurt uses aegis for testing', 'general');
+    const ids = await extractNodes(db, 'Alex uses aegis for testing', 'general');
     expect(ids.length).toBeGreaterThanOrEqual(1);
 
     // Verify INSERT includes source_system = 'cognitive'
@@ -71,7 +71,7 @@ describe('extractNodes', () => {
 
   it('updates existing nodes with updated_at', async () => {
     const db = createMockDb({
-      // first() calls: existing node found for "kurt", null for topic
+      // first() calls: existing node found for "alex", null for topic
       firstResults: [
         { id: 42, memory_ids: '[]' },
         null,
@@ -82,7 +82,7 @@ describe('extractNodes', () => {
       ],
     });
 
-    const ids = await extractNodes(db, 'Kurt is the operator', 'ops');
+    const ids = await extractNodes(db, 'Alex is the operator', 'ops');
     expect(ids).toContain(42);
 
     const updateQueries = db._queries.filter(q => q.sql.includes('UPDATE kg_nodes'));

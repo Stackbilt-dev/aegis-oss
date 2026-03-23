@@ -7,19 +7,25 @@ const MAX_RETRIES = 2;
 const RETRY_BASE_MS = 500;
 
 // Local directory name → GitHub repo name (when they differ)
-// Add aliases here to prevent 404 loops in goal execution.
+// BizOps may list projects with names that don't match GitHub repos —
+// add aliases here to prevent 404 loops in goal execution.
 const REPO_ALIASES: Record<string, string> = {
-  // 'local-name': 'github-repo-name',
+  'my-project': 'aegis',
+  'bizops-copilot': 'example-app',
+  // Add your repo aliases here,
+  // 'docs': 'docs',
 };
 
 // Known org name variants that should resolve to the canonical GitHub org.
-// LLMs in goal loops may guess alternate casings — add aliases here.
+// LLMs in goal loops often guess shortened org names instead of the full canonical org.
 const ORG_ALIASES: Record<string, string> = {
-  // 'my-org': 'My-Org',
+  'exampleorg': 'ExampleOrg',
+  'Exampleorg': 'ExampleOrg',
+  'exampleorg-dev': 'ExampleOrg',
 };
 
 /** Normalize a repo slug: resolve aliases and ensure org/repo format. */
-export function resolveRepoName(repo: string, defaultOrg = 'Your-Org'): string {
+export function resolveRepoName(repo: string, defaultOrg = 'ExampleOrg'): string {
   const parts = repo.split('/');
   const rawOrg = parts.length > 1 ? parts[0] : defaultOrg;
   const org = ORG_ALIASES[rawOrg] ?? rawOrg;

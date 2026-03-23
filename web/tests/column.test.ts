@@ -177,11 +177,11 @@ describe('writeColumn', () => {
     expect(db._queries[0].sql).toContain('NULL');
   });
 
-  it('uses stackbilt.dev as CTA URL', async () => {
+  it('uses example.com as CTA URL', async () => {
     const db = createMockDb();
     const output: ColumnOutput = { title: 'T', slug: 's', meta_description: 'd', body: 'b' };
 
     await writeColumn(db as unknown as D1Database, output);
-    expect(db._queries[0].bindings).toContain('https://stackbilt.dev');
+    expect(db._queries[0].bindings).toContain('https://example.com');
   });
 });

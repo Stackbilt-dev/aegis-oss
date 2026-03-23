@@ -5,7 +5,7 @@ import { addAgendaItem } from '../kernel/memory/agenda.js';
 
 export const feedback = new Hono<{ Bindings: Env }>();
 
-// CORS preflight for cross-origin feedback submissions (EdgeStack UI → AEGIS)
+// CORS preflight for cross-origin feedback submissions (Client App UI → AEGIS)
 feedback.options('/api/feedback', (c) => {
   return new Response(null, {
     status: 204,
@@ -86,15 +86,14 @@ feedback.post('/api/feedback', async (c) => {
         }
 
         const bizops = new McpClient({
-          url: 'https://bizops.example.com/mcp', // Replace with your BizOps endpoint
+          url: 'https://your-bizops.example.com/mcp',
           token: c.env.BIZOPS_TOKEN,
           prefix: 'bizops',
           fetcher: c.env.BIZOPS,
           rpcPath: '/rpc',
         });
 
-        // Replace with your org ID from BizOps
-        const ORG_ID = 'your-org-id-here';
+        const STACKBILT_ORG_ID = 'f876b6eb-332f-44a8-9683-342b2147d98b';
 
         // Upsert contact
         let contactId: string | undefined;
@@ -112,7 +111,7 @@ feedback.post('/api/feedback', async (c) => {
           try {
             const name = email.split('@')[0] || 'Anonymous';
             const createResult = await bizops.callTool('create_contact', {
-              org_id: ORG_ID,
+              org_id: STACKBILT_ORG_ID,
               name,
               email,
               source: 'FEEDBACK',
@@ -138,7 +137,7 @@ feedback.post('/api/feedback', async (c) => {
           ].filter(Boolean).join('\n');
 
           await bizops.callTool('log_interaction', {
-            org_id: ORG_ID,
+            org_id: STACKBILT_ORG_ID,
             contact_id: contactId,
             type: 'FEEDBACK',
             direction: 'INBOUND',

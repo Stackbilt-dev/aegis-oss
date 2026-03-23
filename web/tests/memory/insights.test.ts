@@ -86,7 +86,7 @@ describe('publishInsight', () => {
       firstResults: [null], // no hash match
     });
     const result = await publishInsight(db, baseInsight({
-      fact: 'The file at /mnt/c/Users/kover/test.ts has a bug pattern',
+      fact: 'The file at /home/user/test.ts has a bug pattern',
     }));
     expect(result.published).toBe(false);
     expect(result.reason).toContain('context-specific');

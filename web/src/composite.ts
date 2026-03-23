@@ -344,10 +344,9 @@ export async function executeComposite(
   const subrequests = { gather: 0, analyze: 0, synthesize: 0 };
 
   // Build context to get tool list
-  // BizOps MCP client is optional — create a no-op client if not configured
   const mcpClient = new McpClient({
-    url: env.bizopsToken ? operatorConfig.integrations.bizops.fallbackUrl : '',
-    token: env.bizopsToken || '',
+    url: operatorConfig.integrations.bizops.fallbackUrl,
+    token: env.bizopsToken,
     prefix: 'bizops',
     fetcher: env.bizopsFetcher,
     rpcPath: '/rpc',

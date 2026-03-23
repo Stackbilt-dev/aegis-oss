@@ -1,0 +1,49 @@
+name: Governance Check
+
+on:
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  governance:
+    name: Charter
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Validate Commits
+        run: npx charter validate --ci --format text
+
+      - name: Drift Scan
+        run: npx charter drift --ci --format text
+
+      - name: ADF Wiring & Pointer Integrity
+        run: npx charter doctor --adf-only --ci --format text
+        if: hashFiles('.ai/manifest.adf') != ''
+
+      - name: ADF Evidence
+        run: npx charter adf evidence --auto-measure --ci --format text
+        if: hashFiles('.ai/manifest.adf') != ''
+
+      - name: Audit Report
+        run: npx charter audit --format json > /tmp/audit.json
+        if: always()

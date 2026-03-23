@@ -6,20 +6,19 @@ import type { EdgeEnv } from '../dispatch.js';
 import { buildMcpRegistry } from './index.js';
 
 function buildClaudeConfig(env: EdgeEnv, intent: KernelIntent, model: string, registry: McpRegistry) {
-  // BizOps MCP client — optional, only created when token is available
-  const mcpClient = env.bizopsToken ? new McpClient({
+  const mcpClient = new McpClient({
     url: operatorConfig.integrations.bizops.fallbackUrl,
     token: env.bizopsToken,
     prefix: 'bizops',
     fetcher: env.bizopsFetcher,
     rpcPath: '/rpc',
-  }) : undefined;
+  });
 
   return {
     apiKey: env.anthropicApiKey,
     model,
     baseUrl: env.anthropicBaseUrl,
-    mcpClient: mcpClient as McpClient, // type assertion — handled downstream
+    mcpClient,
     mcpRegistry: registry,
     db: env.db,
     channel: 'web' as const,
@@ -54,19 +53,18 @@ export async function executeClaudeStream(
   onDelta: (text: string) => void,
 ): Promise<{ text: string; cost: number }> {
   const registry = buildMcpRegistry(env);
-  // BizOps MCP client — optional, only created when token is available
-  const mcpClient = env.bizopsToken ? new McpClient({
+  const mcpClient = new McpClient({
     url: operatorConfig.integrations.bizops.fallbackUrl,
     token: env.bizopsToken,
     prefix: 'bizops',
     fetcher: env.bizopsFetcher,
     rpcPath: '/rpc',
-  }) : undefined;
+  });
 
   return executeClaudeChatStream(
     {
       ...buildClaudeConfig(env, intent, intent.classified === 'claude_opus' ? env.opusModel : env.claudeModel, registry),
-      mcpClient: mcpClient as McpClient, // type assertion — handled downstream
+      mcpClient,
       resendApiKeys: { resendApiKey: env.resendApiKey, resendApiKeyPersonal: env.resendApiKeyPersonal },
     },
     intent.raw,

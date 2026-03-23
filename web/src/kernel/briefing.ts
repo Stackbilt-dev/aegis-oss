@@ -1,6 +1,6 @@
-// Re-entry Briefing: "Last time on the operator's dashboard"
+// Re-entry Briefing: "Last time on the operator's empire"
 // Generates a concise situational briefing when the operator starts a session.
-// What happened, what needs attention, what's AEGIS working on.
+// Thinks like the operator: what happened, what needs me, what's AEGIS working on.
 // No fluff, no preamble. Answer before the question is asked.
 
 import type { EdgeEnv } from './dispatch.js';

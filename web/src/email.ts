@@ -5,7 +5,7 @@ import { operatorConfig } from './operator/index.js';
 // ─── Email profile resolution ───────────────────────────────
 // Maps profile names to { apiKey, from } using operator config + env keys.
 
-export type EmailProfile = 'default' | 'personal' | 'stackbilt'; // 'stackbilt' kept for backward compat
+export type EmailProfile = string;
 
 interface ResolvedSender { apiKey: string; from: string; defaultTo: string }
 
@@ -701,14 +701,14 @@ export async function sendOperatorLog(
 }
 
 // ─── Welcome Email ──────────────────────────────────────────
-// Sent when a new user signs up via the platform.
+// Sent when a new user signs up via the Stackbilt platform.
 
 export async function sendWelcomeEmail(
   apiKeys: { resendApiKey: string; resendApiKeyPersonal: string },
   recipientEmail: string,
   recipientName?: string,
 ): Promise<void> {
-  const sender = getDefaultSender(apiKeys);
+  const sender = resolveEmailProfile(operatorConfig.integrations.email.defaultProfile, apiKeys);
   const displayName = recipientName || recipientEmail.split('@')[0];
 
   const html = `<!DOCTYPE html>
@@ -716,23 +716,41 @@ export async function sendWelcomeEmail(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
-<body style="background:#0a0a0f;margin:0;padding:32px 16px;font-family:system-ui,sans-serif">
+<body style="background:#0a0a0f;margin:0;padding:32px 16px;font-family:'Outfit',system-ui,sans-serif">
   <div style="max-width:560px;margin:0 auto">
 
     <!-- Header -->
     <div style="text-align:center;margin-bottom:32px">
-      <h1 style="font-size:28px;color:#c4956a;margin:0 0 4px;font-weight:400">Welcome</h1>
-      <p style="font-size:13px;color:#666;margin:0">Your account is ready</p>
+      <h1 style="font-family:'DM Serif Display',serif;font-size:28px;color:#c4956a;margin:0 0 4px;font-weight:400">${operatorConfig.orgName || 'AEGIS'}</h1>
+      <p style="font-size:13px;color:#666;margin:0">${operatorConfig.tagline || ''}</p>
     </div>
 
     <!-- Body -->
     <div style="background:#111;border:1px solid #222;border-radius:8px;padding:32px">
-      <h2 style="font-size:22px;color:#e0e0e0;margin:0 0 16px;font-weight:400">Welcome, ${displayName}</h2>
+      <h2 style="font-family:'DM Serif Display',serif;font-size:22px;color:#e0e0e0;margin:0 0 16px;font-weight:400">Welcome, ${displayName}</h2>
 
       <p style="font-size:15px;line-height:1.7;color:#b0b0c0;margin:0 0 20px">
-        Your account is live. You can start using the platform right away.
+        Your account is live. Here's what you can do right now:
       </p>
+
+      <div style="margin-bottom:24px">
+        <div style="display:flex;margin-bottom:12px">
+          <span style="color:#c4956a;font-size:14px;margin-right:10px;line-height:1.6">&#9670;</span>
+          <div>
+            <p style="font-size:14px;color:#e0e0e0;margin:0"><strong>img-forge</strong> — AI image generation via MCP</p>
+            <p style="font-size:13px;color:#888;margin:4px 0 0">Generate images from any AI tool that supports MCP servers.</p>
+          </div>
+        </div>
+        <div style="display:flex;margin-bottom:12px">
+          <span style="color:#c4956a;font-size:14px;margin-right:10px;line-height:1.6">&#9670;</span>
+          <div>
+            <p style="font-size:14px;color:#e0e0e0;margin:0"><strong>Scaffold</strong> — Architecture scaffolding</p>
+            <p style="font-size:13px;color:#888;margin:4px 0 0">Scaffold full-stack projects with opinionated best practices.</p>
+          </div>
+        </div>
+      </div>
 
       <p style="font-size:14px;color:#b0b0c0;margin:0 0 8px">
         Your free tier includes <strong style="color:#e0e0e0">25 credits</strong> — enough to explore without a credit card.
@@ -740,15 +758,20 @@ export async function sendWelcomeEmail(
 
       <!-- CTA -->
       <div style="text-align:center;margin:28px 0 8px">
-        <a href="https://example.com/dashboard" style="display:inline-block;background:#c4956a;color:#0a0a0f;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-decoration:none;padding:12px 32px;border-radius:6px">Open Dashboard</a>
+        <a href="${operatorConfig.baseUrl}/dashboard" style="display:inline-block;background:#c4956a;color:#0a0a0f;font-family:'Outfit',system-ui,sans-serif;font-size:15px;font-weight:600;text-decoration:none;padding:12px 32px;border-radius:6px">Open Dashboard</a>
       </div>
+      <p style="text-align:center;font-size:12px;color:#666;margin:0">
+        MCP endpoint: your-mcp.example.com/mcp
+      </p>
     </div>
 
     <!-- Footer -->
     <div style="text-align:center;margin-top:28px;padding-top:20px;border-top:1px solid #1a1a1a">
-      <p style="font-size:12px;color:#555;margin:0 0 4px">Your Organization</p>
+      <p style="font-size:12px;color:#555;margin:0 0 4px">${operatorConfig.orgName || 'AEGIS'}</p>
       <p style="font-size:11px;color:#444;margin:0">
-        <a href="https://example.com/unsubscribe?email=${encodeURIComponent(recipientEmail)}" style="color:#666;text-decoration:none">Unsubscribe</a>
+        <a href="${operatorConfig.baseUrl}" style="color:#666;text-decoration:none">${operatorConfig.baseUrl}</a>
+        &nbsp;·&nbsp;
+        <a href="${operatorConfig.baseUrl}/unsubscribe?email=${encodeURIComponent(recipientEmail)}" style="color:#666;text-decoration:none">Unsubscribe</a>
       </p>
     </div>
 
@@ -756,5 +779,5 @@ export async function sendWelcomeEmail(
 </body>
 </html>`;
 
-  await resendPost(sender.apiKey, sender.from, recipientEmail, 'Welcome', html);
+  await resendPost(sender.apiKey, sender.from, recipientEmail, 'Welcome to Stackbilt', html);
 }

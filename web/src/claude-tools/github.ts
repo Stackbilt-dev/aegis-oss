@@ -24,6 +24,7 @@ import {
   resolveRepoName,
 } from '../github.js';
 import { addAgendaItem } from '../kernel/memory/index.js';
+import { ensureOnBoard } from '../kernel/board.js';
 
 // ─── Tool definitions ────────────────────────────────────────
 
@@ -334,6 +335,15 @@ export async function handleGithubTool(
       githubToken, targetRepo, i.title, i.body,
       i.labels ?? ['self-improvement'],
     );
+
+    // Add to project board
+    const projectIdRow = await db.prepare(
+      "SELECT received_at FROM web_events WHERE event_id = 'board_project_id'"
+    ).first<{ received_at: string }>();
+    if (projectIdRow?.received_at) {
+      await ensureOnBoard(db, githubToken, projectIdRow.received_at, targetRepo, number, i.title, 'backlog').catch(() => {});
+    }
+
     return `Created GitHub issue #${number}: ${url}`;
   }
 

@@ -7,16 +7,16 @@ import { DEFAULT_WATCH_REPOS, getWatchRepos } from '../src/kernel/scheduled/self
 // ─── DEFAULT_WATCH_REPOS Tests ───────────────────────────────
 
 describe('DEFAULT_WATCH_REPOS', () => {
-  it('includes core Stackbilt repos', () => {
+  it('includes core repos', () => {
     expect(DEFAULT_WATCH_REPOS).toContain('aegis');
-    expect(DEFAULT_WATCH_REPOS).toContain('edgestack_v2');
+    expect(DEFAULT_WATCH_REPOS).toContain('demo_app_v2');
     expect(DEFAULT_WATCH_REPOS).toContain('charter');
     expect(DEFAULT_WATCH_REPOS).toContain('img-forge');
   });
 
   it('includes auth and bizops repos', () => {
-    expect(DEFAULT_WATCH_REPOS).toContain('stackbilt-auth');
-    expect(DEFAULT_WATCH_REPOS).toContain('businessops-copilot');
+    expect(DEFAULT_WATCH_REPOS).toContain('example-auth');
+    expect(DEFAULT_WATCH_REPOS).toContain('bizops-copilot');
   });
 
   it('has 6 default repos', () => {
@@ -28,14 +28,14 @@ describe('DEFAULT_WATCH_REPOS', () => {
 
 describe('getWatchRepos', () => {
   it('prefixes repos with org from env repo', () => {
-    const repos = getWatchRepos('Stackbilt-dev/aegis');
+    const repos = getWatchRepos('ExampleOrg/aegis');
     for (const repo of repos) {
-      expect(repo).toMatch(/^Stackbilt-dev\//);
+      expect(repo).toMatch(/^ExampleOrg\//);
     }
   });
 
   it('returns all default repos when cache is empty', () => {
-    const repos = getWatchRepos('Stackbilt-dev/aegis');
+    const repos = getWatchRepos('ExampleOrg/aegis');
     expect(repos.length).toBeGreaterThanOrEqual(DEFAULT_WATCH_REPOS.length);
   });
 
@@ -104,13 +104,13 @@ describe('task execution pattern analysis', () => {
   it('flags repos with > 3 failures as high failure rate', () => {
     const repoFailures = [
       { repo: 'aegis', fails: 2 },
-      { repo: 'edgestack-v2', fails: 5 },
+      { repo: 'demo-app-v2', fails: 5 },
       { repo: 'charter', fails: 1 },
     ];
 
     const highFailure = repoFailures.filter(r => r.fails > 3);
     expect(highFailure).toHaveLength(1);
-    expect(highFailure[0].repo).toBe('edgestack-v2');
+    expect(highFailure[0].repo).toBe('demo-app-v2');
   });
 
   it('flags exit codes accounting for >= 30% of exits', () => {

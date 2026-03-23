@@ -52,7 +52,7 @@ describe('dreaming task proposal validation', () => {
   it('accepts valid task proposals', () => {
     expect(validateTask({
       title: 'Add logging',
-      repo: 'aegis-daemon',
+      repo: 'my-project',
       prompt: 'Add structured logging to dispatch.ts',
       category: 'feature',
       rationale: 'Needed for debugging',

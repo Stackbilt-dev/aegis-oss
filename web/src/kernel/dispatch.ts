@@ -85,7 +85,7 @@ async function fetchRelevantInsights(
   if (top.length === 0) return null;
 
   const lines = top.map(i => `- [${i.type}] (from ${i.origin}) ${i.fact}`);
-  return `[Cross-Repo Intelligence — validated patterns from your organization's ecosystem]\n${lines.join('\n')}`;
+  return `[Cross-Repo Intelligence — validated patterns from the Stackbilt ecosystem]\n${lines.join('\n')}`;
 }
 
 // ─── Edge Environment ────────────────────────────────────────
@@ -126,6 +126,9 @@ export interface EdgeEnv {
   mindspringFetcher?: Fetcher;
   mindspringToken?: string;
   devtoApiKey?: string;
+  gaCredentials?: string;
+  blueskyHandle?: string;
+  blueskyAppPassword?: string;
 }
 
 // ─── Intent Construction ─────────────────────────────────────
@@ -472,6 +475,96 @@ async function probeAndExecute(
   return { text, cost, meta, outcome, probeResult };
 }
 
+// ─── Shadow Exploration (#290) ───────────────────────────────
+// On ~5% of expensive dispatches, background-test a cheaper executor.
+// If the cheaper tier produces quality output, record it as a candidate
+// in procedural memory. Promotion happens automatically via the
+// candidate_executor probation system in upsertProcedure().
+
+const SHADOW_EXPLORATION_RATE = 0.05; // 5% of eligible dispatches
+
+// Expensive → cheaper executor demotion map
+const SHADOW_DEMOTION: Partial<Record<Executor, Executor>> = {
+  claude_opus: 'claude',
+  claude: 'gpt_oss',
+  composite: 'gpt_oss',
+  gpt_oss: 'workers_ai',
+};
+
+// Skip shadow exploration for these classifications
+const SHADOW_SKIP = new Set([
+  'heartbeat', 'greeting', 'code_task', 'self_improvement',
+  'goal_execution', 'user_correction',
+]);
+
+function shadowEligible(executor: Executor, classification: string, intent: KernelIntent): boolean {
+  if (SHADOW_SKIP.has(classification)) return false;
+  if (intent.source.channel === 'internal') return false;
+  if (!SHADOW_DEMOTION[executor]) return false;
+  return Math.random() < SHADOW_EXPLORATION_RATE;
+}
+
+// Quality gate: is the shadow output good enough to count as a success?
+function shadowQualityPass(primaryText: string, shadowText: string): boolean {
+  // Too short = likely error or refusal
+  if (shadowText.length < 20) return false;
+  // Length ratio: shadow should be at least 30% of primary length
+  if (shadowText.length < primaryText.length * 0.3) return false;
+  // Error patterns
+  const errorPatterns = /^error:|i cannot|i'm unable|as an ai|i don't have/i;
+  if (errorPatterns.test(shadowText.trim())) return false;
+  return true;
+}
+
+async function tryShadowExploration(
+  ctx: AugmentedContext,
+  intent: KernelIntent,
+  env: EdgeEnv,
+  primaryText: string,
+): Promise<void> {
+  const primaryExecutor = ctx.plan.executor;
+  const shadowExecutor = SHADOW_DEMOTION[primaryExecutor];
+  if (!shadowExecutor) return;
+
+  try {
+    // Clone intent to avoid mutation
+    const shadowIntent: KernelIntent = { ...intent, classified: shadowExecutor };
+    let result: { text: string; cost: number };
+
+    switch (shadowExecutor) {
+      case 'gpt_oss':
+        result = await executeGptOss(shadowIntent, env);
+        break;
+      case 'workers_ai':
+        result = await executeWorkersAi(shadowIntent, env);
+        break;
+      case 'claude':
+        result = await executeClaude(shadowIntent, env);
+        break;
+      default:
+        return;
+    }
+
+    const passed = shadowQualityPass(primaryText, result.text);
+    const outcome = passed ? 'success' : 'failure';
+
+    // Record to procedural memory as the shadow executor —
+    // upsertProcedure's probation system handles candidate tracking
+    await upsertProcedure(
+      env.db, ctx.procKey, shadowExecutor,
+      JSON.stringify({ executor: shadowExecutor }),
+      outcome, 0, result.cost,
+    );
+
+    console.log(
+      `[shadow] ${ctx.classification}: ${primaryExecutor} → ${shadowExecutor} = ${outcome}` +
+      ` (primary: ${primaryText.length} chars, shadow: ${result.text.length} chars)`,
+    );
+  } catch (err) {
+    console.warn('[shadow] exploration failed (non-fatal):', err instanceof Error ? err.message : String(err));
+  }
+}
+
 // ─── Shared Finalization ─────────────────────────────────────
 
 function buildResult(
@@ -510,13 +603,18 @@ export async function dispatch(intent: KernelIntent, env: EdgeEnv): Promise<Disp
   const latencyMs = Date.now() - startMs;
   await recordOutcome(env, intent, ctx.classification, ctx.procKey, ctx.plan, ctx.existingProcedure, exec.text, exec.cost, latencyMs, ctx.nearMiss, exec.outcome, ctx.reclassified);
 
-  // Background shadow read
-  if (env.memoryBinding && env.ctx) {
-    env.ctx.waitUntil(
-      getAllMemoryForContext(env.memoryBinding).catch(err => {
-        console.warn('[dispatch] Background shadow read failed:', err instanceof Error ? err.message : String(err));
-      }),
-    );
+  // Background: shadow exploration + shadow read
+  if (env.ctx) {
+    if (exec.outcome === 'success' && shadowEligible(ctx.plan.executor as Executor, ctx.classification, intent)) {
+      env.ctx.waitUntil(tryShadowExploration(ctx, intent, env, exec.text));
+    }
+    if (env.memoryBinding) {
+      env.ctx.waitUntil(
+        getAllMemoryForContext(env.memoryBinding).catch(err => {
+          console.warn('[dispatch] Background shadow read failed:', err instanceof Error ? err.message : String(err));
+        }),
+      );
+    }
   }
 
   return buildResult(ctx, intent, exec, latencyMs);
@@ -538,13 +636,18 @@ export async function dispatchStream(
   const latencyMs = Date.now() - startMs;
   await recordOutcome(env, intent, ctx.classification, ctx.procKey, ctx.plan, ctx.existingProcedure, exec.text, exec.cost, latencyMs, ctx.nearMiss, exec.outcome, ctx.reclassified);
 
-  // Background shadow read
-  if (env.memoryBinding && env.ctx) {
-    env.ctx.waitUntil(
-      getAllMemoryForContext(env.memoryBinding).catch(err => {
-        console.warn('[dispatch] Background shadow read failed:', err instanceof Error ? err.message : String(err));
-      }),
-    );
+  // Background: shadow exploration + shadow read
+  if (env.ctx) {
+    if (exec.outcome === 'success' && shadowEligible(ctx.plan.executor as Executor, ctx.classification, intent)) {
+      env.ctx.waitUntil(tryShadowExploration(ctx, intent, env, exec.text));
+    }
+    if (env.memoryBinding) {
+      env.ctx.waitUntil(
+        getAllMemoryForContext(env.memoryBinding).catch(err => {
+          console.warn('[dispatch] Background shadow read failed:', err instanceof Error ? err.message : String(err));
+        }),
+      );
+    }
   }
 
   return buildResult(ctx, intent, exec, latencyMs);

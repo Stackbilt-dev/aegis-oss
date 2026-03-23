@@ -33,7 +33,7 @@ ADF: 0.1
 
   Local (src/agent/) — optional:
     - session.ts: sendMessage(channel, threadId, text) → TurnResult via Claude SDK query()
-    - system-prompt.ts: buildSystemPrompt() — Kurt persona + memory entries + channel context
+    - system-prompt.ts: buildSystemPrompt() — operator persona + memory entries + channel context
     - hooks.ts: makePreToolUseHook(channel), makeStopHook()
     - tools.ts: In-process SDK MCP server (aegis_memory) with record_memory_entry tool
     - code-executor.ts: Spawns Claude Code CLI in target repo, resolves repo from semantic memory
@@ -47,7 +47,7 @@ ADF: 0.1
       dashboard_summary, weekly_ops_briefing, ask_advisor, veil_check,
       register_project, list_projects, get_project, update_project
     - Edge: Service Binding (env.BIZOPS.fetch), MCP Streamable HTTP, Bearer auth
-    - Local: HTTP transport to https://businessops-copilot.kurt-5be.workers.dev/mcp, Bearer auth
+    - Local: HTTP transport to https://your-bizops-worker.your-subdomain.workers.dev/mcp, Bearer auth
 
   aegis_memory (local only):
     - In-process SDK MCP server (createSdkMcpServer)
@@ -120,7 +120,7 @@ ADF: 0.1
 
   Required GitHub token scopes: repo (or fine-grained: Contents read/write, Issues write, Pull requests write, Actions read, Metadata read)
   Secret: GITHUB_TOKEN — set via `wrangler secret put GITHUB_TOKEN --name aegis-web`
-  Var: GITHUB_REPO = "Stackbilt-dev/aegis" (in wrangler.toml [vars])
+  Var: GITHUB_REPO = "your-org/aegis" (in wrangler.toml [vars])
 
 🔌 MCP_SERVER_ENDPOINT [advisory]:
   Stateless remote MCP server at /mcp — exposes AEGIS tools to external MCP clients (Claude Code, Claude Desktop, etc.).
@@ -151,7 +151,7 @@ ADF: 0.1
     - aegis_cancel_cc_task: Cancel a pending CC task
 
   Client config (Claude Code .claude/settings.json):
-    { "mcpServers": { "aegis": { "type": "url", "url": "https://aegis-web.kurt-5be.workers.dev/mcp", "headers": { "Authorization": "Bearer <AEGIS_TOKEN>" } } } }
+    { "mcpServers": { "aegis": { "type": "url", "url": "https://your-aegis-worker.your-subdomain.workers.dev/mcp", "headers": { "Authorization": "Bearer <AEGIS_TOKEN>" } } } }
 
 🔐 SECURITY [load-bearing]:
   - CLI channel: full tool access (god mode — user is at keyboard)

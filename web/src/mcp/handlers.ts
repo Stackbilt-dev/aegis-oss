@@ -297,15 +297,16 @@ export async function toolAegisCreateCcTask(args: Record<string, unknown>, env: 
   const completionSignal = (args.completion_signal as string) ?? 'TASK_COMPLETE';
   const priority = (args.priority as number) ?? 50;
   const dependsOn = (args.depends_on as string) ?? null;
+  const blockedBy = Array.isArray(args.blocked_by) && args.blocked_by.length ? args.blocked_by as string[] : null;
   const maxTurns = (args.max_turns as number) ?? 25;
 
   const category = ['docs', 'tests', 'research', 'bugfix', 'feature', 'refactor', 'deploy'].includes(args.category as string ?? '') ? args.category as string : 'feature';
   const authority = ['proposed', 'auto_safe', 'operator'].includes(args.authority as string ?? '') ? args.authority as string : 'operator';
 
   await env.db.prepare(`
-    INSERT INTO cc_tasks (id, title, repo, prompt, completion_signal, priority, depends_on, max_turns, created_by, authority, category)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'aegis', ?, ?)
-  `).bind(id, title.trim(), repo.trim(), prompt.trim(), completionSignal, priority, dependsOn, maxTurns, authority, category).run();
+    INSERT INTO cc_tasks (id, title, repo, prompt, completion_signal, priority, depends_on, blocked_by, max_turns, created_by, authority, category)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'aegis', ?, ?)
+  `).bind(id, title.trim(), repo.trim(), prompt.trim(), completionSignal, priority, dependsOn, blockedBy ? JSON.stringify(blockedBy) : null, maxTurns, authority, category).run();
 
   return { content: [{ type: 'text', text: `Queued task "${title}" → ${repo} (ID: ${id}, priority: ${priority}, authority: ${authority}, category: ${category})` }] };
 }
@@ -534,7 +535,7 @@ async function syndicateToDevto(
           tags: devtoTags,
           canonical_url: post.canonicalUrl,
           description: post.description.slice(0, 150) || undefined,
-          series: 'Engineering Blog', // Customize with your series name
+          series: 'Stackbilt Engineering',
         },
       }),
     });

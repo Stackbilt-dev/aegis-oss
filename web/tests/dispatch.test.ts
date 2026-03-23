@@ -67,9 +67,9 @@ describe('Dispatch — static', () => {
 // Mock operator config
 vi.mock('../src/operator/index.js', () => ({
   operatorConfig: {
-    identity: { name: 'AEGIS', possessive: "Kurt's" },
+    identity: { name: 'AEGIS', possessive: "Alex's" },
     persona: { tagline: 'test', traits: [], channelNote: '' },
-    entities: { names: ['StackBilt LLC'], memoryTopics: [] },
+    entities: { names: ['ExampleCo LLC'], memoryTopics: [] },
     integrations: {
       bizops: { enabled: true, toolPrefix: 'bizops', fallbackUrl: '' },
       github: { enabled: false },
@@ -167,7 +167,7 @@ function makeEdgeEnv(overrides: Partial<EdgeEnv> = {}): EdgeEnv {
     resendApiKey: 'rs-test',
     resendApiKeyPersonal: 'rs-personal-test',
     githubToken: 'gh-test',
-    githubRepo: 'Stackbilt-dev/aegis',
+    githubRepo: 'ExampleOrg/aegis',
     braveApiKey: 'brave-test',
     notifyEmail: 'test@test.com',
     baseUrl: 'https://your-agent.workers.dev',
@@ -767,7 +767,7 @@ describe('dispatch — CRIX insight injection', () => {
   it('injects relevant insights into intent.raw when memoryBinding available', async () => {
     setupRoute('gpt_oss', 'general_knowledge');
     const mockRecall = vi.fn().mockResolvedValue([
-      { content: '[pattern] (from edgestack) Deploy using wrangler deploy command' },
+      { content: '[pattern] (from demo-app) Deploy using wrangler deploy command' },
       { content: '[antipattern] (from img-forge) Never use direct D1 access from frontend' },
     ]);
 

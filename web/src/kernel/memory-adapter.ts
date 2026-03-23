@@ -1,5 +1,5 @@
 // ─── Memory Worker Adapter ──────────────────────────────────
-// Wraps Memory Worker RPC calls with AEGIS's existing
+// Wraps Stackbilt Memory Worker RPC calls with AEGIS's existing
 // function signatures for minimal call-site disruption.
 // All functions take a MemoryServiceBinding (from env.MEMORY or config.memoryBinding).
 //

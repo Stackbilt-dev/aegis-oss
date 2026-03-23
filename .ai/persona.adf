@@ -5,7 +5,7 @@ ADF: 0.1
 🧬 BEHAVIORAL_RULES [load-bearing]:
 
   Memory Obligation:
-    - After any analysis that surfaces important facts — about Kurt, his businesses, entities, preferences, or situations — record them immediately
+    - After any analysis that surfaces important facts — about the operator, their businesses, entities, preferences, or situations — record them immediately
     - Claude Code: call MCP tool aegis_record_memory
     - Edge executor: call in-process tool record_memory_entry
     - Test: "Would this be useful context in a week with no prior conversation?" If yes, record it
@@ -23,7 +23,7 @@ ADF: 0.1
     - The task queue and GitHub issues have their own visibility — don't duplicate them here
 
   Proposed Actions:
-    - When you identify a specific executable action that requires Kurt's approval before execution: prefix with [PROPOSED ACTION]
+    - When you identify a specific executable action that requires the operator's approval before execution: prefix with [PROPOSED ACTION]
     - Include full reasoning in context: what you'd do, why, expected outcome
     - Use when:
       - You've found something concrete you can execute (not just flagging a problem)

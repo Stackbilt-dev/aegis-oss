@@ -4,17 +4,19 @@
 // safe for the public blog. Applies regex-based redactions in a single pass.
 
 // ─── Known internal entities (replace with generic labels) ───
-// Add your internal entity patterns below for blog sanitization.
-// These replace company/person names with generic labels before publishing.
 const ENTITY_MAP: [RegExp, string][] = [
   // Company / product names that reveal internal structure
-  // [/Your\s+Company\s+LLC/gi, '[Company]'],
+  [/ExampleCo\s+LLC/gi, '[Company]'],
+  [/Citizens\s+Reunited,?\s*PBC/gi, '[Partner Org]'],
+  [/Citizens\s+Reunited/gi, '[Partner Org]'],
 
   // People — full names only (first names are OK per journal guidelines)
-  // [/Jane\s+Doe/gi, '[Operator]'],
+  [/Jane\s+Doe/gi, '[Operator]'],
+  [/John\s+Doe/gi, '[Client]'],
 
   // Internal service names that shouldn't be public
-  // [/my-internal-service/gi, '[internal-service]'],
+  [/bizops-copilot/gi, '[internal-service]'],
+  [/aegis-memory/gi, '[memory-service]'],
 ];
 
 // ─── Regex patterns for sensitive data ───────────────────────
