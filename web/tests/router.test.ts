@@ -97,7 +97,7 @@ describe('Router', () => {
       const { plan } = await route(intent, mockDb, 'fake-key', 'fake-model');
 
       expect(intent.classified).toBe('greeting');
-      expect(plan.executor).toBe('groq');
+      expect(plan.executor).toBe('gpt_oss');
       expect(intent.complexity).toBe(0);
       expect(intent.needsTools).toBe(false);
     });
@@ -143,10 +143,10 @@ describe('Router', () => {
       expect(plan.executor).toBe('direct');
     });
 
-    it('greeting → groq', async () => {
+    it('greeting → gpt_oss', async () => {
       mockAskGroq.mockResolvedValue(jsonClass('greeting', 0, false, 0.95));
       const { plan } = await route(makeIntent('hi'), mockDb, 'k', 'm');
-      expect(plan.executor).toBe('groq');
+      expect(plan.executor).toBe('gpt_oss');
     });
 
     it('code_task → claude_code', async () => {
@@ -489,7 +489,7 @@ describe('Router', () => {
 
       const { plan } = await route(makeIntent('hi'), mockDb, 'k', 'm');
       expect(plan.reasoning).toContain('broken');
-      expect(plan.executor).toBe('groq'); // DEFAULT_ROUTES['greeting']
+      expect(plan.executor).toBe('gpt_oss'); // DEFAULT_ROUTES['greeting']
     });
 
     it('falls to Phase 3 when procedure has insufficient successes', async () => {
@@ -568,7 +568,7 @@ describe('Router', () => {
 
       const { plan } = await route(makeIntent('hello'), mockDb, 'k', 'm', undefined, mockAi);
       expect(mockAi.run).toHaveBeenCalled();
-      expect(plan.executor).toBe('groq'); // greeting → groq
+      expect(plan.executor).toBe('gpt_oss'); // greeting → gpt_oss
       expect(mockAskGroq).not.toHaveBeenCalled();
     });
 

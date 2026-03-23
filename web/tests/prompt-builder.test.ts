@@ -137,10 +137,10 @@ describe('buildGroqSystemPrompt', () => {
     expect(result).toContain('brief');
   });
 
-  it('is much shorter than full system prompt', () => {
+  it('is a compact prompt under 1000 chars', () => {
     const groq = buildGroqSystemPrompt();
-    const full = buildSystemPrompt();
-    expect(groq.length).toBeLessThan(full.length / 2);
+    expect(groq.length).toBeLessThan(1000);
+    expect(groq.length).toBeGreaterThan(0);
   });
 });
 

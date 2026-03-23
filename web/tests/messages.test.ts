@@ -178,7 +178,7 @@ describe('messages routes', () => {
 
       expect(res.status).toBe(500);
       const json = await res.json() as any;
-      expect(json.message.content).toContain('Kernel error');
+      expect(json.message.content).toContain('An error occurred processing your message');
       expect(json.message.metadata.error).toBe(true);
     });
 

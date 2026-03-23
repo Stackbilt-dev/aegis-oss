@@ -96,6 +96,10 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 const { executeComposite } = await import('../src/composite.js');
+const { buildContext: _buildContext, handleInProcessTool: _handleInProcessTool, callMcpWithRetry: _callMcpWithRetry, resolveMcpTool: _resolveMcpTool } = await import('../src/claude.js');
+const { extractText: _extractText, extractToolCalls: _extractToolCalls, extractUsage: _extractUsage } = await import('../src/workers-ai-chat.js');
+const { getConversationHistory: _getConversationHistory, budgetConversationHistory: _budgetConversationHistory } = await import('../src/kernel/memory/index.js');
+const { getCognitiveState: _getCognitiveState, formatCognitiveContext: _formatCognitiveContext } = await import('../src/kernel/cognition.js');
 
 function makeIntent(text: string): KernelIntent {
   return {
@@ -149,7 +153,25 @@ function makeEnv(overrides?: Partial<EdgeEnv>): EdgeEnv {
 
 describe('executeComposite', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    // Re-establish mocks that clearAllMocks wipes
+    vi.mocked(_buildContext).mockResolvedValue({
+      systemPrompt: 'Test system prompt',
+      tools: [
+        { name: 'dashboard_summary', description: 'Get BizOps dashboard', input_schema: { type: 'object', properties: {} } },
+      ],
+    } as any);
+    vi.mocked(_handleInProcessTool).mockResolvedValue(null);
+    vi.mocked(_callMcpWithRetry).mockResolvedValue('{"data":"test"}');
+    vi.mocked(_resolveMcpTool).mockReturnValue(null);
+    mockExecuteWorkersAiChat.mockResolvedValue({ text: 'Workers AI fallback', cost: 0.002 });
+    vi.mocked(_extractText).mockReturnValue('gathered data');
+    vi.mocked(_extractToolCalls).mockReturnValue([]);
+    vi.mocked(_extractUsage).mockReturnValue({ prompt_tokens: 100, completion_tokens: 50 });
+    vi.mocked(_getConversationHistory).mockResolvedValue([]);
+    vi.mocked(_budgetConversationHistory).mockReturnValue([]);
+    vi.mocked(_getCognitiveState).mockResolvedValue(null);
+    vi.mocked(_formatCognitiveContext).mockReturnValue('');
   });
 
   it('falls back to gpt_oss when orchestration fails', async () => {

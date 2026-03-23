@@ -425,7 +425,7 @@ describe('handleInProcessTool — core tools', () => {
     );
     expect(result).toContain('Recorded');
     expect(result).toContain('test fact');
-    expect(mockRecordMemory).toHaveBeenCalledWith(binding, 'project', 'test fact', 0.9, 'test', db);
+    expect(mockRecordMemory).toHaveBeenCalledWith(binding, 'project', 'test fact', 0.9, 'test');
   });
 
   it('record_memory_entry returns error without binding', async () => {

@@ -12,10 +12,10 @@ import {
   type ContentBlock,
   type Message,
   type ApiResponse,
-} from './claude-tools.js';
+} from './claude-tools/index.js';
 
 // Re-export for external consumers
-export { buildContext, handleInProcessTool, resolveMcpTool, type ClaudeConfig } from './claude-tools.js';
+export { buildContext, handleInProcessTool, resolveMcpTool, type ClaudeConfig } from './claude-tools/index.js';
 
 // ─── Anthropic SSE streaming ─────────────────────────────────
 

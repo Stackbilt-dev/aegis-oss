@@ -34,11 +34,12 @@ describe('AUTO_LOW_APPROVED_TOOLS', () => {
     expect(AUTO_LOW_APPROVED_TOOLS.has('add_agenda_item')).toBe(true);
   });
 
-  it('includes read-only BizOps tools', () => {
-    expect(AUTO_LOW_APPROVED_TOOLS.has('compliance_items')).toBe(true);
-    expect(AUTO_LOW_APPROVED_TOOLS.has('compliance_status')).toBe(true);
-    expect(AUTO_LOW_APPROVED_TOOLS.has('document_status')).toBe(true);
-    expect(AUTO_LOW_APPROVED_TOOLS.has('dashboard_summary')).toBe(true);
+  it('does not include BizOps tools (OSS build)', () => {
+    // BizOps tools removed from AUTO_LOW in OSS — only memory/agenda tools allowed
+    expect(AUTO_LOW_APPROVED_TOOLS.has('compliance_items')).toBe(false);
+    expect(AUTO_LOW_APPROVED_TOOLS.has('compliance_status')).toBe(false);
+    expect(AUTO_LOW_APPROVED_TOOLS.has('document_status')).toBe(false);
+    expect(AUTO_LOW_APPROVED_TOOLS.has('dashboard_summary')).toBe(false);
   });
 
   it('does not include write BizOps tools', () => {

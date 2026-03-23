@@ -234,12 +234,12 @@ describe('recall-baseline: extractNodes', () => {
       runMeta: [{ last_row_id: 1 }, { last_row_id: 2 }],
     });
 
-    await extractNodes(db, 'kurt approved the change', 'general');
+    await extractNodes(db, 'alex approved the change', 'general');
 
     const inserts = db._queries.filter(q => q.sql.includes('INSERT INTO kg_nodes'));
-    // "kurt" should be classified as 'person'
-    const kurtInsert = inserts.find(q => q.bindings.includes('kurt'));
-    expect(kurtInsert?.bindings).toContain('person');
+    // "alex" should be classified as 'person'
+    const alexInsert = inserts.find(q => q.bindings.includes('alex'));
+    expect(alexInsert?.bindings).toContain('person');
   });
 
   it('classifies known projects correctly', async () => {
@@ -301,12 +301,12 @@ describe('recall-baseline: extractNodes', () => {
   it('adds topic when other entities exist but topic is not among them', async () => {
     // When entities ARE extracted, the topic gets appended if not already present
     const db = createMockDb({
-      // "kurt" is a known person → 1 entity. Topic "billing" added → 2 entities total.
+      // "alex" is a known person → 1 entity. Topic "billing" added → 2 entities total.
       firstResults: [null, null],  // both new
       runMeta: [{ last_row_id: 1 }, { last_row_id: 2 }],
     });
 
-    const ids = await extractNodes(db, 'kurt mentioned something', 'billing');
+    const ids = await extractNodes(db, 'alex mentioned something', 'billing');
     expect(ids).toHaveLength(2);
     const inserts = db._queries.filter(q => q.sql.includes('INSERT INTO kg_nodes'));
     expect(inserts.some(q => q.bindings.includes('billing'))).toBe(true);
@@ -326,7 +326,7 @@ describe('recall-baseline: extractNodes', () => {
   it('upserts existing nodes (increments activation)', async () => {
     const db = createMockDb({
       firstResults: [
-        { id: 42, memory_ids: '[]' }, // existing "kurt" node
+        { id: 42, memory_ids: '[]' }, // existing "alex" node
         null,                          // new topic node
       ],
       runMeta: [
@@ -335,7 +335,7 @@ describe('recall-baseline: extractNodes', () => {
       ],
     });
 
-    const ids = await extractNodes(db, 'kurt said hello', 'general');
+    const ids = await extractNodes(db, 'alex said hello', 'general');
     expect(ids).toContain(42);
 
     const updates = db._queries.filter(q => q.sql.includes('UPDATE kg_nodes'));

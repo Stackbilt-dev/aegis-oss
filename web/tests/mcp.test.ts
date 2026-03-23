@@ -328,7 +328,7 @@ describe('MCP Tool Handlers', () => {
     mockUpdateGoalStatus.mockResolvedValue(undefined);
     mockGetActiveGoals.mockResolvedValue([]);
     mockGetMemoryEntries.mockResolvedValue([]);
-    mockRecordMemory.mockResolvedValue(undefined);
+    mockRecordMemory.mockResolvedValue({ fragment_id: 'test-fragment-id' });
   });
 
   // ─── aegis_chat ──────────────────────────────────────────
@@ -380,18 +380,18 @@ describe('MCP Tool Handlers', () => {
       expect(Array.isArray(parsed)).toBe(true);
     });
 
-    it('clamps limit between 1 and 50', async () => {
+    it('clamps limit between 1 and 50 (query fetches limit*2 for filtering)', async () => {
       const env = makeEnv();
-      // Exceeds max
+      // Exceeds max → clamped to 50, SQL gets limit*2=100
       await handlers.toolAegisConversations({ limit: 100 }, env as any);
       const q1 = (env._mockDb as any)._queries[0];
-      expect(q1.bindings[0]).toBe(50);
+      expect(q1.bindings[0]).toBe(100); // 50 * 2
 
-      // 0 is falsy, so || 20 kicks in, then clamped to 20
+      // 0 is falsy, so || 20 kicks in, SQL gets 20*2=40
       const env2 = makeEnv();
       await handlers.toolAegisConversations({ limit: 0 }, env2 as any);
       const q2 = (env2._mockDb as any)._queries[0];
-      expect(q2.bindings[0]).toBe(20);
+      expect(q2.bindings[0]).toBe(40); // 20 * 2
     });
   });
 
@@ -539,10 +539,10 @@ describe('MCP Tool Handlers', () => {
 
     it('records memory with defaults', async () => {
       const env = makeEnv();
-      const result = await handlers.toolAegisRecordMemory({ topic: 'project', fact: 'Uses TypeScript' }, env as any);
+      const result = await handlers.toolAegisRecordMemory({ topic: 'project', fact: 'The project uses TypeScript for all modules' }, env as any);
       expect(result.isError).toBeUndefined();
       expect(mockRecordMemory).toHaveBeenCalledWith(
-        env.memoryBinding, 'project', 'Uses TypeScript', 0.8, 'claude_code', env.db,
+        env.memoryBinding, 'project', 'The project uses TypeScript for all modules', 0.8, 'claude_code',
       );
       expect(result.content[0].text).toContain('Recorded');
     });
@@ -550,11 +550,11 @@ describe('MCP Tool Handlers', () => {
     it('uses provided confidence and source', async () => {
       const env = makeEnv();
       await handlers.toolAegisRecordMemory(
-        { topic: 'pref', fact: 'Likes dark mode', confidence: 0.95, source: 'direct' },
+        { topic: 'operator_preferences', fact: 'Operator prefers dark mode for all UIs', confidence: 0.95, source: 'direct' },
         env as any,
       );
       expect(mockRecordMemory).toHaveBeenCalledWith(
-        env.memoryBinding, 'pref', 'Likes dark mode', 0.95, 'direct', env.db,
+        env.memoryBinding, 'operator_preferences', 'Operator prefers dark mode for all UIs', 0.95, 'direct',
       );
     });
   });
@@ -818,7 +818,7 @@ describe('MCP Tool Handlers', () => {
       const env = { ...makeEnv(), db: db as unknown as D1Database };
       const result = await handlers.toolAegisCancelCcTask({ id: 'task-999' }, env as any);
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('not found or not in pending');
+      expect(result.content[0].text).toContain('not found or not in a cancellable status');
     });
   });
 

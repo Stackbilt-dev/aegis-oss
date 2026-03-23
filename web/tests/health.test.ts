@@ -64,7 +64,7 @@ function createApp(db: ReturnType<typeof createMockDb>) {
 
   const originalFetch = app.fetch.bind(app);
   app.fetch = (req: Request, ...rest: any[]) => {
-    const env = { DB: db, AEGIS_TOKEN: 'test-token', MEMORY: {} };
+    const env = { DB: db, AEGIS_TOKEN: 'test-token', MEMORY: { health: () => Promise.resolve({ active_fragments: 0 }) } };
     const ctx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
     return originalFetch(req, env, ctx);
   };
@@ -184,7 +184,6 @@ describe('health routes', () => {
         allResults: [[]],
         firstResults: [
           null,      // lastDocSync
-          { c: 42 }, // memoryRow
           { c: 3 },  // agendaRow
           { c: 2 },  // goalRow
           { first_run: null }, // uptimeRow
@@ -208,7 +207,6 @@ describe('health routes', () => {
         allResults: [[]],
         firstResults: [
           null,               // lastDocSync
-          { c: 10 },          // memoryRow
           { c: 5 },           // agendaRow
           { c: 1 },           // goalRow
           { first_run: null }, // uptimeRow
@@ -220,7 +218,7 @@ describe('health routes', () => {
       expect(healthPage).toHaveBeenCalledWith(
         expect.objectContaining({
           version: '1.99.0',
-          memoryCount: 10,
+          memoryCount: 0, // from MEMORY.health() mock returning active_fragments: 0
           agendaCount: 5,
           goalCount: 1,
         }),

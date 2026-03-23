@@ -30,9 +30,7 @@ const {
   resolveEmailProfile,
   sendHeartbeatAlert,
   sendOperatorLog,
-  sendMorningBriefing,
   sendMemoryReflection,
-  sendStaleAgendaAlert,
 } = await import('../src/email.js');
 
 const apiKeys = { resendApiKey: 'rk_test_primary', resendApiKeyPersonal: 'rk_test_personal' };
@@ -110,82 +108,32 @@ describe('email send functions', () => {
     expect(body.html).toContain('Urgent');
   });
 
-  it('sendOperatorLog sends with worklog subject', async () => {
+  it('sendOperatorLog sends with Operator\'s Log subject', async () => {
     await sendOperatorLog(
       apiKeys,
       'admin@example.com',
       '## Summary\n\nShipped features.',
-      { episodes: 10, goalsRun: 3, totalCost: 0.1234 },
-      '2026-03-10',
+      { episodes: 10, goals: 3, tasksCompleted: 0, tasksFailed: 0, prs: 0 },
     );
 
     const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1]!.body) as string);
-    expect(body.subject).toContain('Worklog');
+    expect(body.subject).toContain("Operator's Log");
     expect(body.html).toContain('10 dispatches');
-    expect(body.html).toContain('$0.1234');
+    expect(body.html).toContain('3 goal runs');
   });
 
-  it('sendOperatorLog includes task stats when provided', async () => {
+  it('sendOperatorLog includes task stats in subject when provided', async () => {
     await sendOperatorLog(
       apiKeys,
       'admin@example.com',
       'Log content',
-      { episodes: 5, goalsRun: 2, tasksCompleted: 3, tasksFailed: 1, prsCreated: 2, totalCost: 0.05 },
-      '2026-03-10',
+      { episodes: 5, goals: 2, tasksCompleted: 3, tasksFailed: 1, prs: 2 },
     );
 
     const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1]!.body) as string);
-    expect(body.html).toContain('3 tasks shipped');
-    expect(body.html).toContain('1 failed');
-    expect(body.html).toContain('2 PRs');
-  });
-
-  it('sendMorningBriefing skips send when no tasks', async () => {
-    await sendMorningBriefing(apiKeys, [], [], []);
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it('sendMorningBriefing sends with failed tasks in subject', async () => {
-    const task = {
-      id: 'task-1',
-      title: 'Fix bug',
-      repo: 'aegis',
-      status: 'failed',
-      authority: 'auto_safe',
-      category: 'bugfix',
-      exit_code: 1,
-      error: 'Timeout',
-      result: null,
-      completed_at: '2026-03-10',
-    };
-
-    await sendMorningBriefing(apiKeys, [], [task], []);
-
-    const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1]!.body) as string);
+    expect(body.subject).toContain('3 shipped');
     expect(body.subject).toContain('1 failed');
-    expect(body.html).toContain('Fix bug');
-    expect(body.html).toContain('Timeout');
-  });
-
-  it('sendMorningBriefing shows proposed tasks', async () => {
-    const proposed = {
-      id: 'task-2',
-      title: 'Add feature',
-      repo: 'aegis',
-      status: 'pending',
-      authority: 'proposed',
-      category: 'feature',
-      exit_code: null,
-      error: null,
-      result: null,
-      completed_at: null,
-    };
-
-    await sendMorningBriefing(apiKeys, [], [], [proposed]);
-
-    const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1]!.body) as string);
-    expect(body.html).toContain('Awaiting approval');
-    expect(body.html).toContain('Add feature');
+    expect(body.subject).toContain('2 PRs');
   });
 
   it('sendMemoryReflection includes topic pills and memory count', async () => {
@@ -205,16 +153,8 @@ describe('email send functions', () => {
     expect(body.html).toContain('testing');
   });
 
-  it('sendStaleAgendaAlert includes stale item details', async () => {
-    await sendStaleAgendaAlert(
-      apiKeys,
-      [{ id: 5, item: 'Fix critical bug', context: 'Affects users', ageDays: 3.5 }],
-    );
-
-    const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1]!.body) as string);
-    expect(body.subject).toContain('ESCALATION');
-    expect(body.html).toContain('Fix critical bug');
-    expect(body.html).toContain('3d stale');
+  it.skip('sendStaleAgendaAlert includes stale item details (function removed from source)', async () => {
+    // sendStaleAgendaAlert has been removed from email.ts — folded into daily digest
   });
 
   it('uses explicit profile when provided', async () => {

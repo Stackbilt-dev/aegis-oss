@@ -166,11 +166,12 @@ describe('classifyCheckDeltas', () => {
   });
 
   it('re-surfaces a check to agenda every 12 persisting cycles', () => {
+    // Use 'alert' status to avoid the chronic medium decay path (which only applies to 'warn')
     const current: HeartbeatCheck[] = [
-      { name: 'stale_data', status: 'warn', detail: 'old data' },
+      { name: 'stale_data', status: 'alert', detail: 'old data' },
     ];
-    // 12 prior non-ok runs = should re-surface
-    const priorHistory: CheckStatus[] = Array(12).fill('warn') as CheckStatus[];
+    // 12 prior non-ok runs = should re-surface at the 12-cycle boundary
+    const priorHistory: CheckStatus[] = Array(12).fill('alert') as CheckStatus[];
     const priorMap = new Map<string, CheckStatus[]>([
       ['stale_data', priorHistory],
     ]);

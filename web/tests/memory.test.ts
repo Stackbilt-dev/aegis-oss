@@ -948,7 +948,7 @@ describe('insights.ts', () => {
       });
 
       const result = await publishInsight(db, {
-        fact: 'Bug in dispatch.ts: the handler returns undefined',
+        fact: 'Bug found in dispatch.ts at line 42: the handler returns undefined',
         insight_type: 'bug_signature',
         origin_repo: 'my-project',
         keywords: ['bug'],
@@ -1087,7 +1087,7 @@ describe('insights.ts', () => {
 
       const result = await promoteInsight(db, 'abc123', 'canonical');
       expect(result.success).toBe(false);
-      expect(result.reason).toContain('only forward transitions allowed');
+      expect(result.reason).toContain('canonical promotion requires expert stage');
     });
 
     it('rejects promotion from validated directly to canonical', async () => {
@@ -1160,10 +1160,12 @@ describe('insights.ts', () => {
       expect(db._queries[0].bindings).toContain('validated');
     });
 
-    it('applies default limit of 50', async () => {
+    it('returns all insights when no stage filter', async () => {
       const db = createMockDb({ allResults: [[]] });
       await listInsights(db);
-      expect(db._queries[0].bindings).toContain(50);
+      // No bindings when no stage filter is provided
+      expect(db._queries[0].bindings).toHaveLength(0);
+      expect(db._queries[0].sql).toContain('ORDER BY created_at DESC');
     });
   });
 });
@@ -1242,24 +1244,26 @@ describe('consolidation.ts', () => {
       const db = createMockDb({
         firstResults: [
           null, // watermark
-          null, // recordMemory phase 1 (no hash dup)
         ],
         allResults: [
           episodes,  // episodes query
-          [],        // existing memory query
-          [],        // recordMemory phase 2 (no semantic dup)
         ],
         runMeta: [
-          { changes: 1, last_row_id: 50 }, // recordMemory INSERT
           { changes: 1 }, // watermark update
         ],
       });
 
-      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3');
+      // ADD operations require memoryBinding (source uses memoryBinding.store)
+      const mockStore = vi.fn().mockResolvedValue(undefined);
+      const mockRecallFn = vi.fn().mockResolvedValue([]);
+      const memBinding = { store: mockStore, recall: mockRecallFn, forget: vi.fn(), health: vi.fn() };
 
-      // Should have recorded the memory
-      const insertQuery = db._queries.find(q => q.sql.includes('INSERT INTO memory_entries'));
-      expect(insertQuery).toBeDefined();
+      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3', undefined, memBinding as any);
+
+      // Should have stored via memoryBinding
+      expect(mockStore).toHaveBeenCalledWith('aegis', expect.arrayContaining([
+        expect.objectContaining({ content: expect.stringContaining('Version 1.30.1'), topic: 'aegis' }),
+      ]));
     });
 
     it('processes DELETE operations from Groq response', async () => {
