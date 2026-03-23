@@ -2,6 +2,7 @@ import { route } from './router.js';
 import { recordEpisode, retrogradeEpisode, upsertProcedure, addRefinement, degradeProcedure, getProcedure, procedureKey } from './memory/index.js';
 import { searchMemoryByKeywords, getAllMemoryForContext } from './memory-adapter.js';
 import { generateBriefing, formatBriefing } from './briefing.js';
+import { fetchRelevantInsights } from './insight-cache.js';
 import { probeConsistency } from '../groq.js';
 import { executeComposite } from '../composite.js';
 import { buildGroqSystemPrompt } from '../operator/prompt-builder.js';
@@ -19,75 +20,6 @@ import {
   executeTarotScript,
   buildMcpRegistry,
 } from './executors/index.js';
-
-// ─── Cross-Repo Insight Cache (CRIX #106) ───────────────────
-// In-memory cache with 1-hour TTL to avoid per-dispatch D1 queries
-let insightCache: { entries: Array<{ fact: string; type: string; origin: string }>; fetchedAt: number } | null = null;
-const INSIGHT_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const MAX_INSIGHTS_PER_DISPATCH = 3;
-
-async function fetchRelevantInsights(
-  env: EdgeEnv,
-  classification: string,
-  rawQuery: string,
-): Promise<string | null> {
-  // Refresh cache if stale or empty
-  const now = Date.now();
-  if (!insightCache || (now - insightCache.fetchedAt) > INSIGHT_CACHE_TTL_MS) {
-    try {
-      // Query Memory Worker for validated+ insights
-      // Use the recall RPC with insight topic filter
-      const fragments = await env.memoryBinding!.recall('aegis', {
-        topic: 'cross_repo_insights',
-        limit: 20,
-        min_confidence: 0.75,
-      });
-
-      insightCache = {
-        entries: fragments.map(f => {
-          // Parse structured insight metadata from content prefix convention:
-          // "[type:pattern] (from repo-name) actual fact text"
-          // Falls back to raw content if no prefix found
-          const prefixMatch = f.content.match(/^\[([^\]]+)\]\s*\(from\s+([^)]+)\)\s*(.+)$/s);
-          return {
-            fact: prefixMatch ? prefixMatch[3] : f.content,
-            type: prefixMatch ? prefixMatch[1] : 'pattern',
-            origin: prefixMatch ? prefixMatch[2] : 'unknown',
-          };
-        }),
-        fetchedAt: now,
-      };
-    } catch {
-      // Cache miss is non-fatal — skip insight injection
-      return null;
-    }
-  }
-
-  if (!insightCache || insightCache.entries.length === 0) return null;
-
-  // Simple keyword matching: extract words from the raw query and match against insight facts
-  const queryWords = new Set(
-    rawQuery.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length > 3)
-  );
-
-  const scored = insightCache.entries.map(entry => {
-    const factWords = entry.fact.toLowerCase().split(/\s+/);
-    const matches = factWords.filter(w => queryWords.has(w)).length;
-    return { ...entry, relevance: matches };
-  }).filter(e => e.relevance > 0);
-
-  scored.sort((a, b) => b.relevance - a.relevance);
-  const top = scored.slice(0, MAX_INSIGHTS_PER_DISPATCH);
-
-  if (top.length === 0) return null;
-
-  const lines = top.map(i => `- [${i.type}] (from ${i.origin}) ${i.fact}`);
-  return `[Cross-Repo Intelligence — validated patterns from the Stackbilt ecosystem]\n${lines.join('\n')}`;
-}
-
 // ─── Edge Environment ────────────────────────────────────────
 
 export interface EdgeEnv {

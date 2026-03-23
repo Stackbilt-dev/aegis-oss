@@ -167,31 +167,7 @@ export async function toolAegisMemory(args: Record<string, unknown>, env: EdgeEn
 }
 
 // ─── Memory write guardrails (#244, #245, #248) ─────────────
-// Prevent credential leaks and prompt injection via semantic memory.
-
-const SECRET_PATTERNS = [
-  /\b[a-zA-Z0-9_]*(?:token|key|secret|password|credential)[_:]?\s*[:=]\s*\S{16,}/i,
-  /\b(?:sk|pk|api|bearer|auth|token|secret|memory_admin|imgf|sb)_[a-zA-Z0-9]{16,}/,
-  /\bghp_[a-zA-Z0-9]{36}\b/,
-  /\bre_[a-zA-Z0-9]{20,}\b/,
-];
-
-const BLOCKED_TOPIC_PATTERNS = [
-  /^system[_-]?prompt/i,
-  /^system[_-]?override/i,
-  /^system[_-]?instruction/i,
-  /^instruction[_-]?override/i,
-  /^admin[_-]?override/i,
-];
-
-const MAX_FACT_LENGTH = 2000;
-
-function validateMemoryWrite(topic: string, fact: string): string | null {
-  if (fact.length > MAX_FACT_LENGTH) return `Fact exceeds max length (${fact.length}/${MAX_FACT_LENGTH})`;
-  if (BLOCKED_TOPIC_PATTERNS.some(p => p.test(topic))) return `Topic "${topic}" is not allowed — reserved namespace`;
-  if (SECRET_PATTERNS.some(p => p.test(fact))) return 'Fact appears to contain a secret/credential — refusing to store. Use wrangler secrets for sensitive values.';
-  return null;
-}
+import { validateMemoryWrite } from '../kernel/memory-guardrails.js';
 
 export async function toolAegisRecordMemory(args: Record<string, unknown>, env: EdgeEnv): Promise<ToolResult> {
   if (!env.memoryBinding) {
@@ -201,8 +177,8 @@ export async function toolAegisRecordMemory(args: Record<string, unknown>, env: 
   const fact = args.fact as string;
   if (!topic || !fact) return { content: [{ type: 'text', text: 'Error: topic and fact are required' }], isError: true };
 
-  const violation = validateMemoryWrite(topic, fact);
-  if (violation) return { content: [{ type: 'text', text: `Rejected: ${violation}` }], isError: true };
+  const guard = validateMemoryWrite(topic, fact);
+  if (!guard.allowed) return { content: [{ type: 'text', text: `Rejected: ${guard.reason}` }], isError: true };
 
   const confidence = (args.confidence as number) ?? 0.8;
   const source = (args.source as string) ?? 'claude_code';

@@ -3,6 +3,7 @@
 
 import type { EdgeEnv } from '../../dispatch.js';
 import { recordMemory as recordMemoryAdapter } from '../../memory-adapter.js';
+import { validateMemoryWrite } from '../../memory-guardrails.js';
 import { McpClient } from '../../../mcp-client.js';
 import { operatorConfig } from '../../../operator/index.js';
 import { askWorkersAiOrGroq, parseJsonResponse } from './llm.js';
@@ -188,26 +189,13 @@ export async function extractFacts(env: EdgeEnv, threadContents: string[]): Prom
 
 // ─── Fact Processing ─────────────────────────────────────────
 
-const BLOCKED_TOPIC_PREFIXES = ['synthesis_', 'cross_repo_insight'];
-const ALLOWED_TOPICS = new Set([
-  'aegis', 'infrastructure', 'compliance', 'content',
-  'bizops', 'finance', 'project', 'operator_preferences',
-  'meta_insight', 'feed_intel',
-]);
-
 export async function processFacts(env: EdgeEnv, result: DreamingResult): Promise<number> {
   let factsRecorded = 0;
 
   for (const fact of (result.facts ?? []).slice(0, 5)) {
-    if (!fact.topic || !fact.fact || fact.fact.length < 20) continue;
-
-    const topicLower = fact.topic.toLowerCase().trim();
-    if (BLOCKED_TOPIC_PREFIXES.some(p => topicLower.startsWith(p))) {
-      console.log(`[dreaming] Blocked polluting topic: ${fact.topic}`);
-      continue;
-    }
-    if (!ALLOWED_TOPICS.has(topicLower)) {
-      console.log(`[dreaming] Blocked unknown topic '${fact.topic}' — add to ALLOWED_TOPICS if legitimate`);
+    const guard = validateMemoryWrite(fact.topic, fact.fact, { enforceAllowlist: true });
+    if (!guard.allowed) {
+      console.log(`[dreaming] Blocked: ${guard.reason}`);
       continue;
     }
 
