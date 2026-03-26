@@ -1,5 +1,6 @@
 import { type EdgeEnv } from '../dispatch.js';
 import { consolidateEpisodicToSemantic, maintainProcedures, getAllProcedures, PROCEDURE_MIN_SUCCESSES, PROCEDURE_MIN_SUCCESS_RATE } from '../memory/index.js';
+import { garbageCollectTools, promoteHighUsageTools } from '../dynamic-tools.js';
 import { publishInsight, type InsightType } from '../memory/insights.js';
 import { pruneMemory } from '../memory-adapter.js';
 import { runCrossDomainSynthesis } from '../memory/synthesis.js';
@@ -15,6 +16,17 @@ export async function runMemoryConsolidation(env: EdgeEnv): Promise<void> {
     await pruneMemory(env.memoryBinding, env.db);
   }
   await maintainProcedures(env.db);
+
+  // Dynamic tools lifecycle: expire TTL'd tools, retire unused, promote high-use
+  try {
+    const gc = await garbageCollectTools(env.db);
+    const promoted = await promoteHighUsageTools(env.db);
+    if (gc.expired > 0 || gc.unused > 0 || promoted > 0) {
+      console.log(`[consolidation] Dynamic tools: ${gc.expired} expired, ${gc.unused} unused retired, ${promoted} promoted`);
+    }
+  } catch {
+    // Non-fatal — table may not exist yet
+  }
 
   // Emergent topic discovery: find orphaned facts that cluster into new topics
   if (env.memoryBinding) {

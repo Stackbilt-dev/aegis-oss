@@ -250,6 +250,17 @@ export interface DigestSections {
     top_sources: Array<{ source: string; medium: string; sessions: number }>;
     insights: string[];
   } | null;
+  devActivity: {
+    keys_created_24h: number;
+    keys_created_7d: number;
+    keys_created_all_time: number;
+    keys_active_24h: number;
+    keys_active_7d: number;
+    tier_breakdown: Array<{ tier: string; count: number }>;
+    recent_signups: Array<{ email: string; name: string; tier: string; created_at: string }>;
+    total_users: number;
+    total_tenants: number;
+  } | null;
   serviceAlerts: DigestServiceAlert[];
   agendaItems: DigestAgendaItem[];
   bizopsInteractions: number | null;
@@ -463,6 +474,51 @@ export async function sendDailyDigest(
     </div>`;
   }
 
+  // ── Section 3c3: DEVELOPER ACTIVITY ──
+  let devActivityHtml = '';
+  if (sections.devActivity) {
+    const d = sections.devActivity;
+    const tierBadges = d.tier_breakdown.map(t => {
+      const colors: Record<string, string> = { free: '#888', hobby: '#3dd6c8', pro: '#8b8bff', enterprise: '#f5a623' };
+      return `<span style="display:inline-block;background:${colors[t.tier] ?? '#555'};color:#0a0a0f;font-size:10px;font-weight:700;padding:2px 6px;border-radius:2px;margin-right:4px">${t.tier} ${t.count}</span>`;
+    }).join('');
+
+    const signupRows = d.recent_signups.slice(0, 10).map(s => `
+      <tr>
+        <td style="padding:4px 12px;font-size:12px;color:#ccc;border-bottom:1px solid #222">${s.name || '(no name)'}</td>
+        <td style="padding:4px 12px;font-size:12px;color:#888;border-bottom:1px solid #222">${s.email}</td>
+        <td style="padding:4px 12px;font-size:12px;color:#ccc;border-bottom:1px solid #222">${s.tier}</td>
+        <td style="padding:4px 12px;font-size:11px;color:#666;border-bottom:1px solid #222">${s.created_at.slice(0, 10)}</td>
+      </tr>`).join('');
+
+    devActivityHtml = `
+    <div style="margin-bottom:24px">
+      <p style="margin:0 0 10px;font-size:11px;color:#2dd4bf;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">Developer Activity</p>
+      <div style="background:#111;border:1px solid #222;border-radius:6px;padding:16px 20px">
+        <div style="display:flex;gap:24px;margin-bottom:12px">
+          <div><span style="font-size:24px;font-weight:700;color:#ccc">${d.total_users}</span><span style="font-size:12px;color:#666"> users</span></div>
+          <div><span style="font-size:24px;font-weight:700;color:#ccc">${d.total_tenants}</span><span style="font-size:12px;color:#666"> tenants</span></div>
+          <div><span style="font-size:24px;font-weight:700;color:${d.keys_active_24h > 0 ? '#2dd4a0' : '#888'}">${d.keys_active_24h}</span><span style="font-size:12px;color:#666"> active (24h)</span></div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:12px">
+          <tr><td style="padding:3px 0;font-size:11px;color:#888">Keys created (24h)</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${d.keys_created_24h}</td></tr>
+          <tr><td style="padding:3px 0;font-size:11px;color:#888">Keys created (7d)</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${d.keys_created_7d}</td></tr>
+          <tr><td style="padding:3px 0;font-size:11px;color:#888">Keys created (all-time)</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${d.keys_created_all_time}</td></tr>
+          <tr><td style="padding:3px 0;font-size:11px;color:#888">Active keys (7d)</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${d.keys_active_7d}</td></tr>
+        </table>
+        <div style="margin-bottom:12px">${tierBadges || '<span style="font-size:11px;color:#555">No active keys</span>'}</div>
+        ${signupRows ? `<p style="margin:12px 0 6px;font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px">Recent Signups (7d)</p>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr>
+            <th style="padding:4px 12px;font-size:10px;color:#666;text-align:left;text-transform:uppercase">Name</th>
+            <th style="padding:4px 12px;font-size:10px;color:#666;text-align:left;text-transform:uppercase">Email</th>
+            <th style="padding:4px 12px;font-size:10px;color:#666;text-align:left;text-transform:uppercase">Tier</th>
+            <th style="padding:4px 12px;font-size:10px;color:#666;text-align:left;text-transform:uppercase">Joined</th>
+          </tr></thead><tbody>${signupRows}</tbody></table>` : ''}
+      </div>
+    </div>`;
+  }
+
   // ── Section 3b2: SERVICE ALERTS ──
   let serviceAlertsHtml = '';
   if (sections.serviceAlerts.length > 0) {
@@ -544,6 +600,16 @@ export async function sendDailyDigest(
     const critAlerts = sections.serviceAlerts.filter(a => a.severity === 'critical');
     if (critAlerts.length > 0) {
       takes.push(`${critAlerts.length} critical service alert${critAlerts.length > 1 ? 's' : ''} from ${[...new Set(critAlerts.map(a => a.source))].join(', ')}. Review immediately.`);
+    }
+
+    // Developer activity signals
+    if (sections.devActivity) {
+      if (sections.devActivity.recent_signups.length > 0) {
+        takes.push(`${sections.devActivity.recent_signups.length} new signup${sections.devActivity.recent_signups.length !== 1 ? 's' : ''} this week. People are finding us.`);
+      }
+      if (sections.devActivity.keys_active_24h === 0 && sections.devActivity.keys_created_all_time > 0) {
+        takes.push('No active API keys in the last 24h. Users signed up but aren\'t hitting endpoints — check onboarding friction.');
+      }
     }
 
     // Memory reflection available
@@ -633,11 +699,12 @@ export async function sendDailyDigest(
   ];
   if (sections.eventNotifications.length > 0) stats.push(`${sections.eventNotifications.length} events`);
   if (sections.serviceAlerts.length > 0) stats.push(`${sections.serviceAlerts.length} alerts`);
+  if (sections.devActivity) stats.push(`${sections.devActivity.total_users} users`);
   if (sections.bizopsInteractions !== null) stats.push(`${sections.bizopsInteractions} interactions`);
 
   const statsHtml = `<p style="margin:0;padding:12px 0;font-size:11px;color:#555;border-top:1px solid #222;text-align:center">${stats.join(' · ')}</p>`;
 
-  const hasContent = metricsHtml || cofounderHtml || workShippedHtml || operatorLogHtml || healthHtml || eventsHtml || serviceAlertsHtml || analyticsHtml || reflectionHtml || awaitingHtml;
+  const hasContent = metricsHtml || cofounderHtml || workShippedHtml || operatorLogHtml || healthHtml || eventsHtml || serviceAlertsHtml || analyticsHtml || devActivityHtml || reflectionHtml || awaitingHtml;
 
   const html = `<!DOCTYPE html>
 <html>
@@ -648,7 +715,7 @@ export async function sendDailyDigest(
       <p style="margin:0 0 2px;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px">AEGIS — Co-Founder Brief</p>
       <p style="margin:0;font-size:18px;font-weight:600;color:#fff">${date}</p>
     </div>
-    ${hasContent ? `${metricsHtml}${cofounderHtml}${workShippedHtml}${operatorLogHtml}${healthHtml}${eventsHtml}${serviceAlertsHtml}${analyticsHtml}${reflectionHtml}${awaitingHtml}` : '<p style="font-size:13px;color:#888;margin-bottom:20px">No significant activity in the last 24 hours.</p>'}
+    ${hasContent ? `${metricsHtml}${cofounderHtml}${workShippedHtml}${operatorLogHtml}${healthHtml}${eventsHtml}${serviceAlertsHtml}${analyticsHtml}${devActivityHtml}${reflectionHtml}${awaitingHtml}` : '<p style="font-size:13px;color:#888;margin-bottom:20px">No significant activity in the last 24 hours.</p>'}
     ${statsHtml}
     <p style="margin:12px 0 0;font-size:11px;color:#444">aegis-web · daily digest · ${new Date().toISOString()}</p>
   </div>
