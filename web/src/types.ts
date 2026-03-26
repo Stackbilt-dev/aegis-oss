@@ -61,7 +61,7 @@ export interface Env {
   IMG_FORGE: Fetcher;
   IMG_FORGE_SB_SECRET: string;
 
-  // Stackbilt Memory Worker (Service Binding RPC)
+  // Memory Worker (Service Binding RPC)
   MEMORY: MemoryServiceBinding;
 
   // TarotScript Worker (symbolic consultation via Service Binding)
@@ -92,7 +92,7 @@ export interface Env {
   GA_CREDENTIALS: string; // JSON: { client_id, client_secret, refresh_token, property_id }
 }
 
-// ─── Memory Worker RPC interface (mirrors stackbilt-memory-worker MemoryService)
+// ─── Memory Worker RPC interface (mirrors MemoryService)
 export interface MemoryServiceBinding {
   store(tenantId: string, fragments: MemoryStoreRequest[]): Promise<MemoryStoreResult>;
   recall(tenantId: string, query: MemoryRecallQuery): Promise<MemoryFragmentResult[]>;
@@ -166,6 +166,19 @@ export interface MemoryStatsResult {
   topics: Array<{ topic: string; count: number }>;
   recalled_last_24h: number;
   strength_distribution: { low: number; medium: number; high: number };
+}
+
+// --- Auth Worker RPC interface (service binding)
+export interface AuthServiceBinding {
+  getDeveloperActivity(): Promise<DevActivityReport>;
+}
+
+export interface DevActivityReport {
+  total_users: number;
+  keys_active_24h: number;
+  keys_created_7d: number;
+  signups_7d: number;
+  api_calls_24h: number;
 }
 
 export interface MessageMetadata {

@@ -23,6 +23,14 @@ import { runFeedWatcher } from './feed-watcher.js';
 import { runCostReport } from './cost-report.js';
 import { runBoardSync } from './board-sync.js';
 import { runContentDrip } from './content-drip.js';
+import { runInboxProcessor } from './inbox-processor.js';
+import { runAgentDispatch } from './agent-dispatch.js';
+import { runConversationFactExtraction } from './conversation-facts.js';
+import { runEntropyDetection } from './entropy.js';
+import { runSocialEngagement } from './social-engage.js';
+import { runDevActivity } from './dev-activity.js';
+import { InMemoryErrorTracker } from '../../lib/observability/errors.js';
+import { getChainHead, writeTaskAuditRecord } from './task-audit.js';
 
 export function buildImgForgeConfig(env: EdgeEnv): ImgForgeConfig | undefined {
   if (!env.imgForgeFetcher || !env.imgForgeSbSecret || !operatorConfig.integrations.imgForge.enabled) {
@@ -35,9 +43,14 @@ export function buildImgForgeConfig(env: EdgeEnv): ImgForgeConfig | undefined {
   };
 }
 
-// ─── Task Runner Infrastructure ─────────────────────────────
+// --- Task Runner Infrastructure ---
 
 type TaskKind = 'heartbeat' | 'cron';
+
+// Per-cron-run error tracker -- aggregates/deduplicates errors within each cycle
+let errorTracker: InMemoryErrorTracker | null = null;
+// Chain head -- loaded once per cron run, updated after each task
+let chainHead: string | null = null;
 
 async function recordTaskRun(
   db: D1Database,
@@ -64,15 +77,39 @@ async function runTask(
   const start = Date.now();
   try {
     await fn(env);
-    await recordTaskRun(env.db, name, 'ok', Date.now() - start);
+    const duration = Date.now() - start;
+    await recordTaskRun(env.db, name, 'ok', duration);
+
+    // Audit chain: record successful execution
+    try {
+      if (chainHead !== null) {
+        chainHead = await writeTaskAuditRecord(env.db, {
+          taskName: name, status: 'ok', durationMs: duration, chainHead,
+        });
+      }
+    } catch { /* audit is best-effort */ }
   } catch (err) {
+    const duration = Date.now() - start;
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[${kind}] ${name} failed:`, msg);
-    await recordTaskRun(env.db, name, 'error', Date.now() - start, msg);
+    await recordTaskRun(env.db, name, 'error', duration, msg);
+
+    // Error tracker: aggregate for end-of-cycle summary
+    errorTracker?.track(err instanceof Error ? err : new Error(msg));
+
+    // Audit chain: record failure
+    try {
+      if (chainHead !== null) {
+        chainHead = await writeTaskAuditRecord(env.db, {
+          taskName: name, status: 'error', durationMs: duration,
+          errorMessage: msg, chainHead,
+        });
+      }
+    } catch { /* audit is best-effort */ }
   }
 }
 
-// ─── Heartbeat Phase ────────────────────────────────────────
+// --- Heartbeat Phase ---
 // Runs every hour, never skipped. Cheap operations that share
 // context and maintain system awareness. These are the pulse.
 
@@ -91,23 +128,35 @@ async function runHeartbeatPhase(env: EdgeEnv): Promise<void> {
     }
   }
 
-  // Awareness — lightweight monitors, always run
+  // Awareness -- lightweight monitors, always run
   await runTask(env, 'ci-watcher', 'heartbeat', runCiWatcher);
   await runTask(env, 'argus-notify', 'heartbeat', runArgusNotifications);
   await runTask(env, 'argus-heartbeat', 'heartbeat', runArgusHeartbeat);
   await runTask(env, 'cognitive-metrics', 'heartbeat', runCognitiveMetrics);
   await runTask(env, 'pr-automerge', 'heartbeat', runPrAutomerge);
 
+  // Agent inbox -- process unread messages from peer agents
+  await runTask(env, 'inbox', 'heartbeat', runInboxProcessor);
+
+  // Agent dispatch -- proactively route work to CodeBeast, MARA, Sera
+  await runTask(env, 'agent-dispatch', 'heartbeat', runAgentDispatch);
+
   // Memory maintenance
   await runTask(env, 'consolidation', 'heartbeat', runMemoryConsolidation);
   await runTask(env, 'heartbeat', 'heartbeat', (e) => runHeartbeat(e, staleHighItems));
   await runTask(env, 'product-health', 'heartbeat', runProductHealthSweep);
 
-  // Housekeeping — outcomes, task patterns, CRIX
+  // Housekeeping -- outcomes, task patterns, CRIX
   await runTask(env, 'self-improvement-housekeeping', 'heartbeat', runSelfImprovementHousekeeping);
+
+  // Entropy -- ghost tasks, stale agenda, dormant goals (6-hourly, self-gated)
+  await runTask(env, 'entropy', 'heartbeat', runEntropyDetection);
+
+  // Social engagement -- like replies, follow back, reply to comments (6-hourly, self-gated)
+  await runTask(env, 'social-engage', 'heartbeat', runSocialEngagement);
 }
 
-// ─── Cron Phase ─────────────────────────────────────────────
+// --- Cron Phase ---
 // Time-gated, isolated tasks. Each has its own frequency and
 // internal time gate. These are the scheduled work.
 
@@ -122,10 +171,11 @@ async function runCronPhase(env: EdgeEnv): Promise<void> {
 
   // Analytics + feeds + cost (internally time-gated)
   await runTask(env, 'argus-analytics', 'cron', runArgusAnalytics);
+  await runTask(env, 'dev-activity', 'cron', runDevActivity);
   await runTask(env, 'feed-watcher', 'cron', runFeedWatcher);
   await runTask(env, 'cost-report', 'cron', runCostReport);
 
-  // Heavy tasks — mutually exclusive to stay under 50 subrequest limit
+  // Heavy tasks -- mutually exclusive to stay under 50 subrequest limit
   const isSelfImprovementHour = hour % 6 === 0;
 
   if (isSelfImprovementHour) {
@@ -137,10 +187,10 @@ async function runCronPhase(env: EdgeEnv): Promise<void> {
   // Daily infra compliance + docs drift (runs at 05 UTC)
   await runTask(env, 'infra-compliance', 'cron', runInfraComplianceCheck);
 
-  // Content drip — publish scheduled social posts
+  // Content drip -- publish scheduled social posts
   await runTask(env, 'content-drip', 'cron', runContentDrip);
 
-  // Content generation — time-guarded, won't fire most hours
+  // Content generation -- time-guarded, won't fire most hours
   await runTask(env, 'roundtable', 'cron', runRoundtableContentGeneration);
   await runTask(env, 'dispatch', 'cron', runDispatchContentGeneration);
   await runTask(env, 'column', 'cron', runColumnContentGeneration);
@@ -150,21 +200,42 @@ async function runCronPhase(env: EdgeEnv): Promise<void> {
   await runTask(env, 'operator-log', 'cron', runOperatorLogCycle);
   await runTask(env, 'daily-digest', 'cron', runDailyDigest);
 
-  // Curiosity — daily, non-self-improvement hours only
+  // Curiosity -- daily, non-self-improvement hours only
   if (!isSelfImprovementHour) {
     await runTask(env, 'curiosity', 'cron', runCuriosityCycle);
   }
 
-  // Dreaming — daily async reflection (self-gated via watermark)
+  // Conversation fact extraction -- 2-hourly, complements daily dreaming
+  await runTask(env, 'conversation-facts', 'cron', runConversationFactExtraction);
+
+  // Dreaming -- daily async reflection (self-gated via watermark)
   await runTask(env, 'dreaming', 'cron', runDreamingCycle);
 }
 
-// ─── Main Entry Point ───────────────────────────────────────
+// --- Main Entry Point ---
 
 export async function runScheduledTasks(env: EdgeEnv): Promise<void> {
-  // Heartbeat first — cheap, always runs, maintains awareness
+  // Initialize per-run observability
+  errorTracker = new InMemoryErrorTracker();
+  try {
+    chainHead = await getChainHead(env.db);
+  } catch {
+    chainHead = null; // audit chain is best-effort
+  }
+
+  // Heartbeat first -- cheap, always runs, maintains awareness
   await runHeartbeatPhase(env);
 
-  // Cron second — time-gated, isolated, may be heavy
+  // Cron second -- time-gated, isolated, may be heavy
   await runCronPhase(env);
+
+  // End-of-cycle error summary
+  const stats = errorTracker.getErrorStats();
+  if (stats.total > 0) {
+    console.log(`[scheduler] Cycle errors: ${stats.total} (${Object.keys(stats.byType).length} types)`);
+  }
+
+  // Reset for next cycle
+  errorTracker = null;
+  chainHead = null;
 }

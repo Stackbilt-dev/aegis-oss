@@ -61,6 +61,7 @@ export interface EdgeEnv {
   gaCredentials?: string;
   blueskyHandle?: string;
   blueskyAppPassword?: string;
+  authBinding?: import('../types.js').AuthServiceBinding;
 }
 
 // ─── Intent Construction ─────────────────────────────────────
