@@ -266,4 +266,43 @@ export const TOOLS = [
       required: ['topic'],
     },
   },
+  {
+    name: 'aegis_create_dynamic_tool',
+    description: 'Create a runtime dynamic tool — a reusable prompt template stored in D1 and executed via LLM. Dynamic tools appear in the Claude tool loop with a dt_ prefix.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Tool name (snake_case, 2-49 chars, no aegis_/mcp_/bizops_ prefix)' },
+        description: { type: 'string', description: 'What the tool does' },
+        input_schema: { type: 'string', description: 'JSON Schema for inputs (default: empty object)' },
+        prompt_template: { type: 'string', description: 'Prompt template with {{variable}} placeholders' },
+        executor: { type: 'string', enum: ['gpt_oss', 'workers_ai', 'groq'], description: 'LLM executor (default: gpt_oss)' },
+        ttl_days: { type: 'number', description: 'Auto-expire after N days (optional)' },
+      },
+      required: ['name', 'description', 'prompt_template'],
+    },
+  },
+  {
+    name: 'aegis_invoke_dynamic_tool',
+    description: 'Execute a runtime dynamic tool by name. Pass inputs that match the tool\'s input_schema.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Tool name to invoke' },
+        inputs: { type: 'object', description: 'Input values matching the tool\'s schema' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'aegis_list_dynamic_tools',
+    description: 'List runtime dynamic tools with usage statistics.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['active', 'promoted', 'retired', 'draft'], description: 'Filter by status (default: active + promoted)' },
+        limit: { type: 'number', description: 'Max tools to return (default 50, max 100)' },
+      },
+    },
+  },
 ];

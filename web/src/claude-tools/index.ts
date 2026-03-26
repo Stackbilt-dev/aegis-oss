@@ -15,6 +15,7 @@ import { GOAL_TOOLS, handleGoalTool } from './goals.js';
 import { ROUNDTABLE_TOOLS, DISPATCH_TOOLS, handleContentTool } from './content.js';
 import { WEB_TOOLS, handleWebTool } from './web.js';
 import { SEND_EMAIL_TOOL, handleEmailTool } from './email.js';
+import { getCachedActiveTools, toChatToolDef, createDynamicTool, getDynamicTool, executeDynamicTool, invalidateToolCache, type CreateToolOpts } from '../kernel/dynamic-tools.js';
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -34,6 +35,7 @@ export interface ClaudeConfig {
   memoryBinding?: import('../types.js').MemoryServiceBinding;
   resendApiKeys?: { resendApiKey: string; resendApiKeyPersonal: string };
   userQuery?: string;
+  edgeEnv?: import('../kernel/dispatch.js').EdgeEnv;
 }
 
 // ─── Multi-MCP resolution ────────────────────────────────────
@@ -133,6 +135,23 @@ const CC_SESSION_TOOL = {
   },
 };
 
+const CREATE_DYNAMIC_TOOL = {
+  name: 'create_dynamic_tool',
+  description: 'Create a reusable dynamic tool — a prompt template stored in D1 and executed via LLM. The tool becomes available in future conversations with a dt_ prefix.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      name: { type: 'string', description: 'Tool name (snake_case, 2-49 chars, no aegis_/mcp_/bizops_ prefix)' },
+      description: { type: 'string', description: 'What the tool does' },
+      input_schema: { type: 'string', description: 'JSON Schema for inputs (default: empty object)' },
+      prompt_template: { type: 'string', description: 'Prompt template with {{variable}} placeholders' },
+      executor: { type: 'string', enum: ['gpt_oss', 'workers_ai', 'groq'], description: 'LLM executor (default: gpt_oss)' },
+      ttl_days: { type: 'number', description: 'Auto-expire after N days (optional)' },
+    },
+    required: ['name', 'description', 'prompt_template'],
+  },
+};
+
 // ─── Context builder ─────────────────────────────────────────
 
 export async function buildContext(config: ClaudeConfig, roundtableDb?: D1Database): Promise<{ systemPrompt: string; tools: unknown[]; conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> }> {
@@ -203,6 +222,17 @@ export async function buildContext(config: ClaudeConfig, roundtableDb?: D1Databa
     tools.push(SEND_EMAIL_TOOL);
   }
 
+  // Dynamic tools: runtime-created prompt templates (dt_ prefix)
+  tools.push(CREATE_DYNAMIC_TOOL);
+  try {
+    const dynamicTools = await getCachedActiveTools(config.db);
+    for (const dt of dynamicTools) {
+      tools.push(toChatToolDef(dt));
+    }
+  } catch {
+    // Non-fatal — dynamic tools table may not exist yet
+  }
+
   return { systemPrompt, tools, conversationHistory };
 }
 
@@ -219,6 +249,7 @@ export async function handleInProcessTool(
   anthropicConfig?: { apiKey: string; model: string; baseUrl: string },
   memoryBinding?: import('../types.js').MemoryServiceBinding,
   resendApiKeys?: { resendApiKey: string; resendApiKeyPersonal: string },
+  edgeEnv?: import('../kernel/dispatch.js').EdgeEnv,
 ): Promise<string | null> {
   // Core tools: memory, agenda, session
   if (name === 'record_memory_entry') {
@@ -259,6 +290,36 @@ export async function handleInProcessTool(
     ).bind(days).all();
     if (sessions.results.length === 0) return `No sessions found in the last ${days} days`;
     return JSON.stringify(sessions.results, null, 2);
+  }
+
+  // Dynamic tool creation
+  if (name === 'create_dynamic_tool') {
+    const opts = input as unknown as CreateToolOpts;
+    if (!opts.name || !opts.description || !opts.prompt_template) {
+      return 'Error: name, description, and prompt_template are required';
+    }
+    try {
+      const id = await createDynamicTool(db, { ...opts, created_by: 'chat' });
+      invalidateToolCache();
+      return `Created dynamic tool "${opts.name}" (id: ${id}). It will appear as dt_${opts.name} in future conversations.`;
+    } catch (err) {
+      return `Error: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
+  // Dynamic tool invocation (dt_* prefix)
+  if (name.startsWith('dt_')) {
+    const toolName = name.slice(3);
+    const tool = await getDynamicTool(db, toolName);
+    if (!tool) return `Error: dynamic tool "${toolName}" not found`;
+    if (tool.status === 'draft') return 'Error: tool is in draft status — activate it first';
+    if (!edgeEnv) return 'Error: edgeEnv not available for dynamic tool execution';
+    try {
+      const result = await executeDynamicTool(tool, input, edgeEnv);
+      return result.text;
+    } catch (err) {
+      return `Error executing dynamic tool: ${err instanceof Error ? err.message : String(err)}`;
+    }
   }
 
   // Delegate to domain handlers

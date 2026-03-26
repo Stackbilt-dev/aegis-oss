@@ -3,6 +3,8 @@ import { getAllProcedures, getActiveAgendaItems, addAgendaItem, resolveAgendaIte
 import { getMemoryEntries, recordMemory } from '../kernel/memory-adapter.js';
 import { collectContractAlerts, parseTaskPreflight } from '../task-intelligence.js';
 import { generateDecisionDoc } from '../decision-docs.js';
+import { createDynamicTool, getDynamicTool, listDynamicTools, executeDynamicTool, invalidateToolCache } from '../kernel/dynamic-tools.js';
+import { buildEdgeEnv } from '../edge-env.js';
 import type { MessageMetadata } from '../types.js';
 
 // ─── Tool Handler Types ──────────────────────────────────────
@@ -511,7 +513,7 @@ async function syndicateToDevto(
           tags: devtoTags,
           canonical_url: post.canonicalUrl,
           description: post.description.slice(0, 150) || undefined,
-          series: 'Stackbilt Engineering',
+          series: 'AEGIS Engineering',
         },
       }),
     });
@@ -541,4 +543,66 @@ export async function toolAegisGenerateDecisionDoc(args: Record<string, unknown>
   });
 
   return { content: [{ type: 'text', text: doc }] };
+}
+
+// ─── Dynamic Tool Handlers ──────────────────────────────────
+
+export async function toolAegisCreateDynamicTool(args: Record<string, unknown>, env: EdgeEnv): Promise<ToolResult> {
+  const name = args.name as string;
+  const description = args.description as string;
+  const prompt_template = args.prompt_template as string;
+
+  if (!name || !description || !prompt_template) {
+    return { content: [{ type: 'text', text: 'Error: name, description, and prompt_template are required' }], isError: true };
+  }
+
+  try {
+    const id = await createDynamicTool(env.db, {
+      name,
+      description,
+      input_schema: args.input_schema as string | undefined,
+      prompt_template,
+      executor: args.executor as 'gpt_oss' | 'workers_ai' | 'groq' | undefined,
+      ttl_days: args.ttl_days as number | undefined,
+      created_by: 'chat',
+    });
+    invalidateToolCache();
+    return { content: [{ type: 'text', text: JSON.stringify({ created: true, id, name }) }] };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+  }
+}
+
+export async function toolAegisInvokeDynamicTool(args: Record<string, unknown>, env: EdgeEnv): Promise<ToolResult> {
+  const name = args.name as string;
+  if (!name) return { content: [{ type: 'text', text: 'Error: name is required' }], isError: true };
+
+  const tool = await getDynamicTool(env.db, name);
+  if (!tool) return { content: [{ type: 'text', text: `Error: dynamic tool "${name}" not found` }], isError: true };
+  if (tool.status === 'draft') return { content: [{ type: 'text', text: 'Error: tool is in draft status' }], isError: true };
+
+  try {
+    const inputs = (args.inputs as Record<string, unknown>) ?? {};
+    const result = await executeDynamicTool(tool, inputs, env);
+    return { content: [{ type: 'text', text: result.text }] };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { content: [{ type: 'text', text: `Error executing tool: ${msg}` }], isError: true };
+  }
+}
+
+export async function toolAegisListDynamicTools(args: Record<string, unknown>, env: EdgeEnv): Promise<ToolResult> {
+  const status = args.status as string | undefined;
+  const limit = args.limit as number | undefined;
+  const tools = await listDynamicTools(env.db, { status, limit });
+  const summary = tools.map(t => ({
+    name: t.name,
+    description: t.description,
+    executor: t.executor,
+    status: t.status,
+    use_count: t.use_count,
+    created_by: t.created_by,
+  }));
+  return { content: [{ type: 'text', text: JSON.stringify({ count: tools.length, tools: summary }, null, 2) }] };
 }

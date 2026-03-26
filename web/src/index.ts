@@ -24,6 +24,9 @@ import { welcome } from './routes/welcome.js';
 import { alerts } from './routes/alerts.js';
 import { overworld } from './routes/overworld.js';
 import { contentQueue } from './routes/content-queue.js';
+import { codebeast } from './routes/codebeast.js';
+import { bluesky } from './routes/bluesky.js';
+import { dynamicToolsRoutes } from './routes/dynamic-tools.js';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -45,6 +48,9 @@ app.route('/', content);
 app.route('/', welcome);
 app.route('/', alerts);
 app.route('/', contentQueue);
+app.route('/', codebeast);
+app.route('/', bluesky);
+app.route('/', dynamicToolsRoutes);
 
 // ─── ARGUS: Unified Webhook Ingestion ────────────────────────
 app.post('/api/webhook', handleWebhook);

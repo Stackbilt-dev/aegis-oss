@@ -23,6 +23,9 @@ import {
   toolAegisBatchApprove,
   toolAegisPublishTechPost,
   toolAegisGenerateDecisionDoc,
+  toolAegisCreateDynamicTool,
+  toolAegisInvokeDynamicTool,
+  toolAegisListDynamicTools,
   type ToolResult,
 } from './handlers.js';
 
@@ -73,6 +76,9 @@ async function executeTool(name: string, args: Record<string, unknown>, env: Edg
     case 'aegis_batch_approve': return toolAegisBatchApprove(args, env);
     case 'aegis_publish_tech_post': return toolAegisPublishTechPost(args, env);
     case 'aegis_generate_decision_doc': return toolAegisGenerateDecisionDoc(args, env);
+    case 'aegis_create_dynamic_tool': return toolAegisCreateDynamicTool(args, env);
+    case 'aegis_invoke_dynamic_tool': return toolAegisInvokeDynamicTool(args, env);
+    case 'aegis_list_dynamic_tools': return toolAegisListDynamicTools(args, env);
     default: return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
   }
 }

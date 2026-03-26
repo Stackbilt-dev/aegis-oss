@@ -16,6 +16,7 @@ export interface DreamingResult {
   bizops_drift?: Array<{ entity: string; field: string; actual_value: string }>;
   preferences?: Array<{ preference: string; evidence: string }>;
   proposed_tasks?: Array<{ title: string; repo: string; prompt: string; category: string; rationale: string }>;
+  proposed_tools?: Array<{ name: string; description: string; prompt_template: string; rationale: string }>;
 }
 
 // ─── Prompts ─────────────────────────────────────────────────
@@ -44,6 +45,9 @@ Return ONLY valid JSON (no markdown):
   ],
   "proposed_tasks": [
     { "title": "short task title", "repo": "aegis", "prompt": "detailed instructions for a Claude Code session to execute this task", "category": "docs|tests|research|bugfix|feature|refactor", "rationale": "why this task is needed based on the conversations" }
+  ],
+  "proposed_tools": [
+    { "name": "snake_case_tool_name", "description": "what this reusable tool does", "prompt_template": "prompt with {{variable}} placeholders", "rationale": "why this recurring pattern deserves a tool" }
   ]
 }
 
@@ -56,7 +60,8 @@ Rules:
 - Do NOT record vague "synthesis" observations. Only record concrete, actionable facts with specific details.
 - proposed_tasks: up to 3 concrete, well-scoped tasks that would improve the system based on what the conversations reveal. Each must have a clear prompt with specific files/changes. Categories: docs (documentation gaps), tests (missing test coverage), research (investigation needed), bugfix (concrete bugs), feature (new functionality), refactor (code quality). Do NOT propose deploy tasks. Only propose tasks with clear evidence from the conversations.
 - proposed_tasks repo should match repos configured in your taskrunner aliases. Use the LOCAL DIRECTORY name, not the GitHub repo name.
-- proposed_tasks MUST reference specific files or modules to change. Do NOT propose vague tasks like "add tests for X project" — name the exact source files to test. BizOps project records are metadata, not codebases — never generate tasks about BizOps project entries themselves.`;
+- proposed_tasks MUST reference specific files or modules to change. Do NOT propose vague tasks like "add tests for X project" — name the exact source files to test. BizOps project records are metadata, not codebases — never generate tasks about BizOps project entries themselves.
+- proposed_tools: up to 2 reusable dynamic tools if you notice the operator repeatedly asking for the same kind of analysis/query/summary. Each tool is a prompt template with {{variable}} placeholders that gets executed via LLM. Only propose if there's clear evidence of a recurring pattern. Name must be snake_case, 2-49 chars.`;
 
 // ─── Thread Loading ──────────────────────────────────────────
 

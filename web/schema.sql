@@ -487,3 +487,59 @@ CREATE TABLE IF NOT EXISTS content_queue (
 );
 
 CREATE INDEX IF NOT EXISTS idx_content_queue_status ON content_queue(status, scheduled_at);
+
+-- ─── Dynamic Tools ────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS dynamic_tools (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL,
+  input_schema TEXT NOT NULL DEFAULT '{}',
+  prompt_template TEXT NOT NULL,
+  executor TEXT NOT NULL DEFAULT 'gpt_oss'
+    CHECK (executor IN ('gpt_oss', 'workers_ai', 'groq')),
+  created_by TEXT NOT NULL DEFAULT 'operator',
+  status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'promoted', 'retired', 'draft')),
+  ttl_days INTEGER,
+  use_count INTEGER NOT NULL DEFAULT 0,
+  last_used_at TEXT,
+  avg_latency_ms REAL NOT NULL DEFAULT 0,
+  avg_cost REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_dynamic_tools_status ON dynamic_tools(status);
+CREATE INDEX IF NOT EXISTS idx_dynamic_tools_expires ON dynamic_tools(expires_at);
+
+-- ─── CodeBeast Findings ──────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS codebeast_findings (
+  finding_id TEXT PRIMARY KEY,
+  repo TEXT NOT NULL,
+  file_path TEXT NOT NULL DEFAULT '',
+  line_start INTEGER NOT NULL DEFAULT 0,
+  line_end INTEGER NOT NULL DEFAULT 0,
+  severity TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'LOGIC',
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  commit_sha TEXT NOT NULL DEFAULT '',
+  branch TEXT NOT NULL DEFAULT 'main',
+  priority TEXT NOT NULL DEFAULT 'low',
+  status TEXT NOT NULL DEFAULT 'open',
+  fix_id TEXT,
+  outcome_summary TEXT,
+  fix_attempts INTEGER NOT NULL DEFAULT 0,
+  last_fix_error TEXT,
+  detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+  resolved_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_cb_findings_status ON codebeast_findings(status);
+CREATE INDEX IF NOT EXISTS idx_cb_findings_repo ON codebeast_findings(repo);
+CREATE INDEX IF NOT EXISTS idx_cb_findings_severity ON codebeast_findings(severity);

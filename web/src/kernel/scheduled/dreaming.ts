@@ -15,6 +15,7 @@ import { triageAgendaToIssues } from './dreaming/agenda-triage.js';
 import { extractPersonaDimensions } from './dreaming/persona.js';
 import { runPatternSynthesis } from './dreaming/pattern-synthesis.js';
 import { runSymbolicReflection } from './dreaming/symbolic.js';
+import { createDynamicTool, listDynamicTools, invalidateToolCache } from '../dynamic-tools.js';
 
 export async function runDreamingCycle(env: EdgeEnv): Promise<void> {
   // Guard: only run once per day
