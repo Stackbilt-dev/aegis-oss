@@ -29,6 +29,7 @@ import { runConversationFactExtraction } from './conversation-facts.js';
 import { runEntropyDetection } from './entropy.js';
 import { runSocialEngagement } from './social-engage.js';
 import { runDevActivity } from './dev-activity.js';
+import { runIssueProposer } from './issue-proposer.js';
 import { InMemoryErrorTracker } from '../../lib/observability/errors.js';
 import { getChainHead, writeTaskAuditRecord } from './task-audit.js';
 
@@ -174,6 +175,9 @@ async function runCronPhase(env: EdgeEnv): Promise<void> {
   await runTask(env, 'dev-activity', 'cron', runDevActivity);
   await runTask(env, 'feed-watcher', 'cron', runFeedWatcher);
   await runTask(env, 'cost-report', 'cron', runCostReport);
+
+  // Issue proposer — auto-file GitHub issues from detection systems (6-hourly, self-gated)
+  await runTask(env, 'issue-proposer', 'cron', runIssueProposer);
 
   // Heavy tasks -- mutually exclusive to stay under 50 subrequest limit
   const isSelfImprovementHour = hour % 6 === 0;
