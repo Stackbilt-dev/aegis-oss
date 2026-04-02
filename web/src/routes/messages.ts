@@ -1,8 +1,12 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { createIntent, dispatch, dispatchStream } from '../kernel/dispatch.js';
 import { askGroq } from '../groq.js';
 import type { Env, MessageMetadata } from '../types.js';
 import { buildEdgeEnv } from '../edge-env.js';
+
+// 100 KB — generous for chat text, blocks payload abuse
+const MESSAGE_BODY_LIMIT = 100 * 1024;
 
 const messages = new Hono<{ Bindings: Env }>();
 
@@ -42,7 +46,7 @@ async function generateConversationTitle(
 }
 
 // ─── Send Message (edge-native kernel) ───────────────────────
-messages.post('/api/message', async (c) => {
+messages.post('/api/message', bodyLimit({ maxSize: MESSAGE_BODY_LIMIT }), async (c) => {
   const body = await c.req.json<{ text: string; conversationId?: string }>();
   if (!body.text?.trim()) {
     return c.json({ error: 'text is required' }, 400);
@@ -141,7 +145,7 @@ messages.post('/api/message', async (c) => {
 });
 
 // ─── Streaming Message (SSE) ─────────────────────────────────
-messages.post('/api/message/stream', async (c) => {
+messages.post('/api/message/stream', bodyLimit({ maxSize: MESSAGE_BODY_LIMIT }), async (c) => {
   const body = await c.req.json<{ text: string; conversationId?: string }>();
   if (!body.text?.trim()) {
     return c.json({ error: 'text is required' }, 400);

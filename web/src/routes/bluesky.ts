@@ -2,6 +2,7 @@
 // All endpoints require bearer auth (same as other /api/* routes).
 
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../types.js';
 import {
   postToBluesky,
@@ -11,6 +12,8 @@ import {
   deleteBlueskyPost,
   getNotifications,
 } from '../bluesky.js';
+
+const BLUESKY_BODY_LIMIT = 100 * 1024;
 
 const bluesky = new Hono<{ Bindings: Env }>();
 
@@ -24,7 +27,7 @@ function getCredentials(env: Env) {
 }
 
 // POST /api/bluesky/post — create a new post
-bluesky.post('/api/bluesky/post', async (c) => {
+bluesky.post('/api/bluesky/post', bodyLimit({ maxSize: BLUESKY_BODY_LIMIT }), async (c) => {
   try {
     const { handle, appPassword } = getCredentials(c.env);
     const body = await c.req.json<{
@@ -69,7 +72,7 @@ bluesky.get('/api/bluesky/feed', async (c) => {
 });
 
 // POST /api/bluesky/like — like a post
-bluesky.post('/api/bluesky/like', async (c) => {
+bluesky.post('/api/bluesky/like', bodyLimit({ maxSize: BLUESKY_BODY_LIMIT }), async (c) => {
   const { handle, appPassword } = getCredentials(c.env);
   const body = await c.req.json<{ uri: string; cid: string }>();
 
@@ -80,7 +83,7 @@ bluesky.post('/api/bluesky/like', async (c) => {
 });
 
 // POST /api/bluesky/repost — repost a post
-bluesky.post('/api/bluesky/repost', async (c) => {
+bluesky.post('/api/bluesky/repost', bodyLimit({ maxSize: BLUESKY_BODY_LIMIT }), async (c) => {
   const { handle, appPassword } = getCredentials(c.env);
   const body = await c.req.json<{ uri: string; cid: string }>();
 

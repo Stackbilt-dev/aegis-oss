@@ -1,6 +1,7 @@
 // Dynamic Tools API — CRUD + invocation for runtime-created tools
 
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../types.js';
 import {
   createDynamicTool,
@@ -13,6 +14,8 @@ import {
 } from '../kernel/dynamic-tools.js';
 import { buildEdgeEnv } from '../edge-env.js';
 
+const DYNAMIC_TOOLS_BODY_LIMIT = 100 * 1024;
+
 const dynamicToolsRoutes = new Hono<{ Bindings: Env }>();
 
 // GET /api/dynamic-tools — list active tools
@@ -24,7 +27,7 @@ dynamicToolsRoutes.get('/api/dynamic-tools', async (c) => {
 });
 
 // POST /api/dynamic-tools — create a new tool
-dynamicToolsRoutes.post('/api/dynamic-tools', async (c) => {
+dynamicToolsRoutes.post('/api/dynamic-tools', bodyLimit({ maxSize: DYNAMIC_TOOLS_BODY_LIMIT }), async (c) => {
   try {
     const body = await c.req.json<{
       name: string;
@@ -88,7 +91,7 @@ dynamicToolsRoutes.delete('/api/dynamic-tools/:id', async (c) => {
 });
 
 // POST /api/dynamic-tools/:id/invoke — execute a dynamic tool
-dynamicToolsRoutes.post('/api/dynamic-tools/:id/invoke', async (c) => {
+dynamicToolsRoutes.post('/api/dynamic-tools/:id/invoke', bodyLimit({ maxSize: DYNAMIC_TOOLS_BODY_LIMIT }), async (c) => {
   const tool = await getDynamicTool(c.env.DB, c.req.param('id'));
   if (!tool) return c.json({ error: 'Not found' }, 404);
   if (tool.status === 'draft') return c.json({ error: 'Tool is in draft status — activate it first' }, 400);

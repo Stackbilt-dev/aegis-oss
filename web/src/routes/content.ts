@@ -1,12 +1,16 @@
 // Stub — full implementation not yet extracted to OSS
 
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../types.js';
 import { sanitizeForBlog } from '../sanitize.js';
 import { buildEdgeEnv } from '../edge-env.js';
 import { runRoundtableGeneration, runJournalGeneration } from '../content/index.js';
 import { runDreamingCycle } from '../kernel/scheduled/dreaming.js';
 import { operatorConfig } from '../operator/index.js';
+
+const TECH_POSTS_BODY_LIMIT = 256 * 1024;
+const DEFAULT_BODY_LIMIT = 100 * 1024;
 
 const content = new Hono<{ Bindings: Env }>();
 
@@ -49,7 +53,7 @@ content.get('/api/tech-posts', async (c) => {
   return c.json({ posts: result.results });
 });
 
-content.post('/api/tech-posts', async (c) => {
+content.post('/api/tech-posts', bodyLimit({ maxSize: TECH_POSTS_BODY_LIMIT }), async (c) => {
   const roundtableDb = (c.env as any).ROUNDTABLE_DB;
   if (!roundtableDb) return c.json({ error: 'ROUNDTABLE_DB not bound' }, 500);
 
@@ -140,7 +144,7 @@ content.put('/api/tech-posts/:id', async (c) => {
 
 // ─── Content Generation Triggers ────────────────────────────
 
-content.post('/api/generate/roundtable', async (c) => {
+content.post('/api/generate/roundtable', bodyLimit({ maxSize: DEFAULT_BODY_LIMIT }), async (c) => {
   const edgeEnv = buildEdgeEnv(c.env);
   if (!edgeEnv.roundtableDb) {
     return c.json({ error: 'ROUNDTABLE_DB not bound' }, 500);
@@ -150,7 +154,7 @@ content.post('/api/generate/roundtable', async (c) => {
   return c.json({ ok: true });
 });
 
-content.post('/api/generate/journal', async (c) => {
+content.post('/api/generate/journal', bodyLimit({ maxSize: DEFAULT_BODY_LIMIT }), async (c) => {
   const edgeEnv = buildEdgeEnv(c.env);
   if (!edgeEnv.roundtableDb) {
     return c.json({ error: 'ROUNDTABLE_DB not bound' }, 500);
@@ -160,7 +164,7 @@ content.post('/api/generate/journal', async (c) => {
   return c.json({ ok: true });
 });
 
-content.post('/api/trigger/dreaming', async (c) => {
+content.post('/api/trigger/dreaming', bodyLimit({ maxSize: DEFAULT_BODY_LIMIT }), async (c) => {
   try {
     // Clear watermark to force re-run
     await c.env.DB.prepare(
@@ -179,7 +183,7 @@ content.post('/api/trigger/dreaming', async (c) => {
 
 // ─── Sanitize Backfill ──────────────────────────────────────
 
-content.post('/api/sanitize-backfill', async (c) => {
+content.post('/api/sanitize-backfill', bodyLimit({ maxSize: DEFAULT_BODY_LIMIT }), async (c) => {
   const roundtableDb = (c.env as any).ROUNDTABLE_DB;
   if (!roundtableDb) return c.json({ error: 'ROUNDTABLE_DB not bound' }, 500);
 

@@ -1,5 +1,8 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../types.js';
+
+const DEFAULT_BODY_LIMIT = 100 * 1024;
 
 export const sessions = new Hono<{ Bindings: Env }>();
 
@@ -14,7 +17,7 @@ interface CCSessionPayload {
   duration_minutes?: number;
 }
 
-sessions.post('/api/cc-session', async (c) => {
+sessions.post('/api/cc-session', bodyLimit({ maxSize: DEFAULT_BODY_LIMIT }), async (c) => {
   const body = await c.req.json<CCSessionPayload>();
   if (!body.summary?.trim()) {
     return c.json({ error: 'summary is required' }, 400);

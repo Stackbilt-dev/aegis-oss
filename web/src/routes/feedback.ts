@@ -1,7 +1,10 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../types.js';
 import { McpClient } from '../mcp-client.js';
 import { addAgendaItem } from '../kernel/memory/agenda.js';
+
+const FEEDBACK_BODY_LIMIT = 100 * 1024;
 
 export const feedback = new Hono<{ Bindings: Env }>();
 
@@ -24,7 +27,7 @@ feedback.use('/api/feedback', async (c, next) => {
   c.header('Access-Control-Allow-Origin', '*');
 });
 
-feedback.post('/api/feedback', async (c) => {
+feedback.post('/api/feedback', bodyLimit({ maxSize: FEEDBACK_BODY_LIMIT }), async (c) => {
   const body = await c.req.json<{ email?: string; category?: string; message?: string }>().catch(() => null);
   if (!body?.message || body.message.length < 5 || body.message.length > 5000) {
     return c.json({ error: 'message required (5-5000 chars)' }, 400);

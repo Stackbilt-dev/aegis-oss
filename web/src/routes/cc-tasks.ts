@@ -1,7 +1,10 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../types.js';
 import { classifyTaskFailure, parseTaskPreflight, scoreTaskUtility } from '../task-intelligence.js';
 import { moveBoardItemLocal, linkTaskToBoard } from '../kernel/board.js';
+
+const CC_TASKS_BODY_LIMIT = 256 * 1024;
 
 const ccTasks = new Hono<{ Bindings: Env }>();
 
@@ -49,7 +52,7 @@ ccTasks.get('/api/cc-tasks', async (c) => {
 });
 
 // Create a new task
-ccTasks.post('/api/cc-tasks', async (c) => {
+ccTasks.post('/api/cc-tasks', bodyLimit({ maxSize: CC_TASKS_BODY_LIMIT }), async (c) => {
   const body = await c.req.json<{
     title: string;
     repo: string;
@@ -115,7 +118,7 @@ ccTasks.post('/api/cc-tasks', async (c) => {
 });
 
 // Mark task as started
-ccTasks.post('/api/cc-tasks/:id/start', async (c) => {
+ccTasks.post('/api/cc-tasks/:id/start', bodyLimit({ maxSize: CC_TASKS_BODY_LIMIT }), async (c) => {
   const taskId = c.req.param('id');
   const body = await c.req.json<{ session_id?: string; preflight?: Record<string, unknown> }>()
     .catch(() => ({ session_id: undefined, preflight: undefined }));
@@ -138,7 +141,7 @@ ccTasks.post('/api/cc-tasks/:id/start', async (c) => {
 });
 
 // Mark task as completed/failed
-ccTasks.post('/api/cc-tasks/:id/complete', async (c) => {
+ccTasks.post('/api/cc-tasks/:id/complete', bodyLimit({ maxSize: CC_TASKS_BODY_LIMIT }), async (c) => {
   const taskId = c.req.param('id');
   const body = await c.req.json<{
     status: 'completed' | 'failed';
@@ -277,7 +280,7 @@ ccTasks.post('/api/cc-tasks/:id/complete', async (c) => {
 });
 
 // Cancel a pending or running task
-ccTasks.post('/api/cc-tasks/:id/cancel', async (c) => {
+ccTasks.post('/api/cc-tasks/:id/cancel', bodyLimit({ maxSize: CC_TASKS_BODY_LIMIT }), async (c) => {
   const taskId = c.req.param('id');
   const result = await c.env.DB.prepare(`
     UPDATE cc_tasks SET status = 'cancelled', completed_at = datetime('now') WHERE id = ? AND status IN ('pending', 'running')
@@ -289,7 +292,7 @@ ccTasks.post('/api/cc-tasks/:id/cancel', async (c) => {
 });
 
 // Approve a proposed task (makes it eligible for execution)
-ccTasks.post('/api/cc-tasks/:id/approve', async (c) => {
+ccTasks.post('/api/cc-tasks/:id/approve', bodyLimit({ maxSize: CC_TASKS_BODY_LIMIT }), async (c) => {
   const taskId = c.req.param('id');
   const result = await c.env.DB.prepare(`
     UPDATE cc_tasks SET authority = 'operator'
@@ -302,7 +305,7 @@ ccTasks.post('/api/cc-tasks/:id/approve', async (c) => {
 });
 
 // Reject a proposed task
-ccTasks.post('/api/cc-tasks/:id/reject', async (c) => {
+ccTasks.post('/api/cc-tasks/:id/reject', bodyLimit({ maxSize: CC_TASKS_BODY_LIMIT }), async (c) => {
   const taskId = c.req.param('id');
   const result = await c.env.DB.prepare(`
     UPDATE cc_tasks SET status = 'cancelled'

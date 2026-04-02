@@ -1,11 +1,14 @@
 // Stub — full implementation not yet extracted to OSS
 
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../types.js';
 import { chatPage } from '../ui.js';
 import { landingPage } from '../landing.js';
 import { dashboardPage, getDashboardData } from '../dashboard.js';
 import { pulsePage, getPulseData } from '../pulse.js';
+
+const DEFAULT_BODY_LIMIT = 100 * 1024;
 
 const pages = new Hono<{ Bindings: Env }>();
 
@@ -63,7 +66,7 @@ self.addEventListener('activate', (event) => { event.waitUntil(clients.claim());
 
 // ─── Events ─────────────────────────────────────────────────
 
-pages.post('/api/events', async (c) => {
+pages.post('/api/events', bodyLimit({ maxSize: DEFAULT_BODY_LIMIT }), async (c) => {
   const body = await c.req.json<{ event_id?: string }>();
   const eventId = body.event_id?.trim();
 
@@ -80,7 +83,7 @@ pages.post('/api/events', async (c) => {
 
 // ─── Reading (TarotScript) ──────────────────────────────────
 
-pages.post('/api/reading', async (c) => {
+pages.post('/api/reading', bodyLimit({ maxSize: DEFAULT_BODY_LIMIT }), async (c) => {
   const tarotBinding = (c.env as any).TAROTSCRIPT;
   if (!tarotBinding) {
     return c.json({ error: 'TarotScript service binding not configured' }, 503);

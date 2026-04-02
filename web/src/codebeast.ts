@@ -1,5 +1,8 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { Env } from './types.js';
+
+const DEFAULT_BODY_LIMIT = 100 * 1024;
 
 export const codebeast = new Hono<{ Bindings: Env }>();
 
@@ -56,7 +59,7 @@ async function queueDigestNotification(db: D1Database, findings: Finding[]): Pro
 
 // ─── POST /api/v1/codebeast/bridge/findings ──────────────────
 
-codebeast.post('/api/v1/codebeast/bridge/findings', async (c) => {
+codebeast.post('/api/v1/codebeast/bridge/findings', bodyLimit({ maxSize: DEFAULT_BODY_LIMIT }), async (c) => {
   let body: { findings?: Finding[] };
   try {
     body = await c.req.json();
@@ -118,7 +121,7 @@ codebeast.post('/api/v1/codebeast/bridge/findings', async (c) => {
 
 // ─── POST /api/v1/codebeast/bridge/fix-status ────────────────
 
-codebeast.post('/api/v1/codebeast/bridge/fix-status', async (c) => {
+codebeast.post('/api/v1/codebeast/bridge/fix-status', bodyLimit({ maxSize: DEFAULT_BODY_LIMIT }), async (c) => {
   let body: FixStatus;
   try {
     body = await c.req.json();
