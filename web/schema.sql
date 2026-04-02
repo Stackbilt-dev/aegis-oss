@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS episodic_memory (
   intent_class TEXT NOT NULL,
   channel TEXT NOT NULL,
   summary TEXT NOT NULL,
-  outcome TEXT NOT NULL DEFAULT 'success',
+  outcome TEXT NOT NULL DEFAULT 'success'
+    CHECK (outcome IN ('success', 'failure')),
   cost REAL NOT NULL DEFAULT 0,
   latency_ms INTEGER NOT NULL DEFAULT 0,
   near_miss TEXT,
@@ -343,7 +344,8 @@ CREATE TABLE IF NOT EXISTS kg_edges (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_id INTEGER NOT NULL REFERENCES kg_nodes(id),
   target_id INTEGER NOT NULL REFERENCES kg_nodes(id),
-  relation TEXT NOT NULL,                    -- depends_on, part_of, decided_by, blocks, uses, related_to, caused
+  relation TEXT NOT NULL                     -- depends_on, part_of, decided_by, blocks, uses, related_to, caused
+    CHECK (relation IN ('depends_on', 'part_of', 'decided_by', 'blocks', 'uses', 'related_to', 'caused')),
   weight REAL NOT NULL DEFAULT 0.5,
   confidence REAL NOT NULL DEFAULT 0.7,
   evidence TEXT,
@@ -405,7 +407,8 @@ CREATE TABLE IF NOT EXISTS feedback (
   category TEXT NOT NULL DEFAULT 'general'
     CHECK (category IN ('general', 'bug', 'feature', 'question')),
   message TEXT NOT NULL,
-  source TEXT NOT NULL DEFAULT 'web',         -- web, mcp, api
+  source TEXT NOT NULL DEFAULT 'web'            -- web, mcp, api
+    CHECK (source IN ('web', 'mcp', 'api')),
   user_agent TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -522,14 +525,18 @@ CREATE TABLE IF NOT EXISTS codebeast_findings (
   file_path TEXT NOT NULL DEFAULT '',
   line_start INTEGER NOT NULL DEFAULT 0,
   line_end INTEGER NOT NULL DEFAULT 0,
-  severity TEXT NOT NULL,
-  category TEXT NOT NULL DEFAULT 'LOGIC',
+  severity TEXT NOT NULL
+    CHECK (severity IN ('HIGH', 'MID', 'LOW', 'INFO')),
+  category TEXT NOT NULL DEFAULT 'LOGIC'
+    CHECK (category IN ('SECURITY', 'LOGIC', 'STYLE', 'DEPENDENCY', 'BOUNDARY')),
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   commit_sha TEXT NOT NULL DEFAULT '',
   branch TEXT NOT NULL DEFAULT 'main',
-  priority TEXT NOT NULL DEFAULT 'low',
-  status TEXT NOT NULL DEFAULT 'open',
+  priority TEXT NOT NULL DEFAULT 'low'
+    CHECK (priority IN ('high', 'medium', 'low')),
+  status TEXT NOT NULL DEFAULT 'open'
+    CHECK (status IN ('open', 'resolved')),
   fix_id TEXT,
   outcome_summary TEXT,
   fix_attempts INTEGER NOT NULL DEFAULT 0,
