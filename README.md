@@ -11,12 +11,17 @@
 [![Discord](https://img.shields.io/discord/1485683351393407006?color=7289da&label=Discord&logo=discord&logoColor=white&style=flat-square)](https://discord.gg/aJmE8wmQDS)
 
 **A persistent AI agent framework for Cloudflare Workers.**
+**Published as `@stackbilt/aegis-core` — use standalone or extend as a dependency.**
 
 Cognitive kernel with multi-tier memory, autonomous goal pursuit, a dreaming cycle, runtime tool creation, and 26 scheduled tasks. Deploy your own persistent AI co-founder on the edge.
 
 ## What is AEGIS?
 
 AEGIS is a framework for building **personal AI agents** that remember everything, pursue goals autonomously, create their own tools, and improve themselves while you sleep. Unlike chat-based AI tools that forget between sessions, AEGIS maintains persistent identity, memory, and state across every interaction.
+
+**Two ways to use AEGIS:**
+- **Standalone** — Clone, configure, deploy. Full agent in minutes.
+- **As a dependency** — `npm install @stackbilt/aegis-core` and extend with your own routes, scheduled tasks, executors, and MCP tools via `createAegisApp()`.
 
 The production instance runs 26 scheduled tasks, has executed 236+ autonomous coding sessions, and costs $0/month to host (Cloudflare Workers free tier + Workers AI for inference).
 
@@ -61,6 +66,36 @@ npx wrangler deploy
 ```
 
 Visit `https://your-worker.workers.dev` and authenticate with your AEGIS_TOKEN.
+
+## Use as a Dependency
+
+Install `@stackbilt/aegis-core` and compose your own agent:
+
+```bash
+npm install @stackbilt/aegis-core
+```
+
+```ts
+import { createAegisApp } from '@stackbilt/aegis-core';
+
+const aegis = createAegisApp({
+  operator: myConfig,
+  routes: [{ prefix: '/', router: myRoutes }],
+  scheduledTasks: [myCustomTask],
+});
+
+export default {
+  fetch: aegis.app.fetch,
+  scheduled: (e, env, ctx) => ctx.waitUntil(aegis.runScheduled(buildEdgeEnv(env))),
+};
+```
+
+Core provides: kernel, memory, dispatch, base routes, MCP server, scheduled task framework.
+You provide: operator config, custom routes, integrations, secrets.
+
+Extension interfaces: `ScheduledTaskPlugin`, `ExecutorPlugin`, `RoutePlugin`, `McpToolPlugin`.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md#using-as-a-dependency) for full documentation.
 
 ## Architecture
 
