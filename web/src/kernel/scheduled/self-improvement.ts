@@ -18,8 +18,8 @@ export function getWatchRepos(githubRepo: string): string[] {
   return DEFAULT_WATCH_REPOS.map(repo => `${org}/${repo}`);
 }
 
-export async function runSelfImprovementAnalysis(env: EdgeEnv): Promise<void> {
-  throw new Error('not implemented');
+export async function runSelfImprovementAnalysis(_env: EdgeEnv): Promise<void> {
+  // Stub — full implementation provided by consuming app via ScheduledTaskPlugin
 }
 
 export async function runSelfImprovementHousekeeping(env: EdgeEnv): Promise<void> {
@@ -31,8 +31,8 @@ export async function runSelfImprovementHousekeeping(env: EdgeEnv): Promise<void
   }
 }
 
-export async function runInfraComplianceCheck(env: EdgeEnv): Promise<void> {
-  throw new Error('not implemented');
+export async function runInfraComplianceCheck(_env: EdgeEnv): Promise<void> {
+  // Stub — full implementation provided by consuming app via ScheduledTaskPlugin
 }
 
 // ─── Dynamic Tool Auto-Proposal ─────────────────────────────
