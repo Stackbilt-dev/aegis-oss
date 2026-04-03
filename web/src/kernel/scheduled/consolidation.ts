@@ -6,7 +6,9 @@ import { pruneMemory } from '../memory-adapter.js';
 import { runCrossDomainSynthesis } from '../memory/synthesis.js';
 import { maintainNarratives, detectStaleNarratives, precomputeCognitiveState, pruneNarratives, getCognitiveState, type ProductPortfolioEntry } from '../cognition.js';
 import { updateBlock } from '../memory/blocks.js';
-import { discoverEmergentTopics } from '../memory/topic-discovery.js';
+// topic-discovery is an extension point — consumers can provide their own
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function discoverEmergentTopics(_db: D1Database, _binding: any): Promise<void> { /* no-op in core */ }
 import { McpClient } from '../../mcp-client.js';
 import { operatorConfig } from '../../operator/index.js';
 
@@ -30,14 +32,7 @@ export async function runMemoryConsolidation(env: EdgeEnv): Promise<void> {
 
   // Emergent topic discovery: find orphaned facts that cluster into new topics
   if (env.memoryBinding) {
-    const proposals = await discoverEmergentTopics(env.memoryBinding);
-    if (proposals.length > 0) {
-      for (const p of proposals) {
-        await env.db.prepare(
-          "INSERT INTO operator_log (content) VALUES (?)"
-        ).bind(`[TOPIC PROPOSAL] "${p.suggestedName}" — ${p.description}. Samples: ${p.sampleFacts.join(' | ')}`).run();
-      }
-    }
+    await discoverEmergentTopics(env.db, env.memoryBinding);
   }
 
   // Cross-domain synthesis: find connections across memory topics
@@ -129,9 +124,9 @@ async function publishInsightsFromMemory(env: EdgeEnv): Promise<void> {
   if (env.memoryBinding) {
     try {
       const INSIGHT_TOPICS = new Map<string, InsightType>([
-        ['bug_signature', 'bug_signature'],
-        ['perf_pattern', 'perf_win'],
-        ['arch_improvement', 'arch_improvement'],
+        ['bug_signature', 'pattern'],
+        ['perf_pattern', 'heuristic'],
+        ['arch_improvement', 'principle'],
       ]);
 
       const fragments = await env.memoryBinding.recall('aegis', { limit: 20 });

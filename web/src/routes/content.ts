@@ -104,9 +104,9 @@ content.put('/api/tech-posts/:id', async (c) => {
   if (!roundtableDb) return c.json({ error: 'ROUNDTABLE_DB not bound' }, 500);
 
   const postId = c.req.param('id');
-  const existing = await roundtableDb.prepare(
+  const existing = await (roundtableDb as D1Database).prepare(
     'SELECT * FROM posts WHERE id = ?'
-  ).bind(postId).first<any>();
+  ).bind(postId).first() as any;
 
   if (!existing) return c.json({ error: 'Post not found' }, 404);
 
@@ -150,7 +150,7 @@ content.post('/api/generate/roundtable', bodyLimit({ maxSize: DEFAULT_BODY_LIMIT
     return c.json({ error: 'ROUNDTABLE_DB not bound' }, 500);
   }
 
-  await runRoundtableGeneration(edgeEnv as any);
+  await runRoundtableGeneration(edgeEnv.roundtableDb!, edgeEnv.db, edgeEnv.anthropicApiKey, edgeEnv.claudeModel, edgeEnv.anthropicBaseUrl);
   return c.json({ ok: true });
 });
 

@@ -1,6 +1,6 @@
 // Stub — full implementation not yet extracted to OSS
 
-import { type EdgeEnv } from '../dispatch.js';
+import type { EdgeEnv } from '../dispatch.js';
 import { listIssues, commentOnIssue, type Issue } from '../../github.js';
 import { operatorConfig, renderTemplate } from '../../operator/index.js';
 import { checkTaskGovernanceLimits } from './governance.js';
@@ -50,12 +50,7 @@ Fix the issue described above. Follow existing patterns in the codebase.
 - Do not modify CI/CD, deploy scripts, or secrets`;
 }
 
-export async function runIssueWatcher(env: {
-  db: D1Database;
-  githubToken: string;
-  githubRepo: string;
-  [key: string]: unknown;
-}): Promise<void> {
+export async function runIssueWatcher(env: EdgeEnv): Promise<void> {
   const { db, githubToken, githubRepo } = env;
 
   const issues = await listIssues(githubToken, githubRepo, 'open');
@@ -82,7 +77,7 @@ export async function runIssueWatcher(env: {
     if (!classification) continue;
 
     // Governance check
-    const governance = await checkTaskGovernanceLimits(db);
+    const governance = await checkTaskGovernanceLimits(db, { repo: githubRepo, title: issue.title, category: classification.category });
     if (!governance.allowed) continue;
 
     // Create task

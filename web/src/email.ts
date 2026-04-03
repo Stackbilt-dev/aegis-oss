@@ -790,8 +790,8 @@ export async function sendWelcomeEmail(
 
     <!-- Header -->
     <div style="text-align:center;margin-bottom:32px">
-      <h1 style="font-family:'DM Serif Display',serif;font-size:28px;color:#c4956a;margin:0 0 4px;font-weight:400">${operatorConfig.orgName || 'AEGIS'}</h1>
-      <p style="font-size:13px;color:#666;margin:0">${operatorConfig.tagline || ''}</p>
+      <h1 style="font-family:'DM Serif Display',serif;font-size:28px;color:#c4956a;margin:0 0 4px;font-weight:400">${operatorConfig.identity.name || 'AEGIS'}</h1>
+      <p style="font-size:13px;color:#666;margin:0">${operatorConfig.persona.tagline || ''}</p>
     </div>
 
     <!-- Body -->
@@ -834,7 +834,7 @@ export async function sendWelcomeEmail(
 
     <!-- Footer -->
     <div style="text-align:center;margin-top:28px;padding-top:20px;border-top:1px solid #1a1a1a">
-      <p style="font-size:12px;color:#555;margin:0 0 4px">${operatorConfig.orgName || 'AEGIS'}</p>
+      <p style="font-size:12px;color:#555;margin:0 0 4px">${operatorConfig.identity.name || 'AEGIS'}</p>
       <p style="font-size:11px;color:#444;margin:0">
         <a href="${operatorConfig.baseUrl}" style="color:#666;text-decoration:none">${operatorConfig.baseUrl}</a>
         &nbsp;·&nbsp;

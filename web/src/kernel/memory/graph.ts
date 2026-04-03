@@ -6,10 +6,8 @@
 
 // ─── Node Type Classification ────────────────────────────────────────────────
 
-type NodeType = 'concept' | 'project' | 'person' | 'decision' | 'pattern' | 'tool' | 'event'
-  | 'file' | 'module' | 'function' | 'class' | 'interface' | 'type_alias';
-
-export type SourceSystem = 'cognitive' | 'code' | 'manual';
+import type { NodeType, SourceSystem } from '../../schema-enums.js';
+export type { SourceSystem } from '../../schema-enums.js';
 
 const KNOWN_PROJECTS: Set<string> = new Set([
   'aegis', 'bizops',

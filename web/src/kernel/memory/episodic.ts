@@ -1,14 +1,13 @@
 import type { EpisodicEntry } from '../types.js';
+import { EPISODIC_OUTCOMES, isValidEnum, type EpisodicOutcome } from '../../schema-enums.js';
 
 // ─── Outcome Sanitization ───────────────────────────────────
 // D1 CHECK constraints only allow specific values.
 // Guard at the DB boundary so rogue values never reach SQLite.
 
-const VALID_EPISODIC_OUTCOMES = new Set(['success', 'failure']);
-
 /** Map any outcome to a valid episodic_memory value. */
-export function sanitizeEpisodicOutcome(raw: string | null | undefined): 'success' | 'failure' {
-  if (raw === 'success') return 'success';
+export function sanitizeEpisodicOutcome(raw: string | null | undefined): EpisodicOutcome {
+  if (isValidEnum(EPISODIC_OUTCOMES, raw)) return raw;
   // partial_failure, error, blocked, empty string, null → failure
   return 'failure';
 }

@@ -19,10 +19,9 @@ import {
   mergePullRequest,
 } from '../../github.js';
 
-// --- Configuration ---
+import { AUTOMERGE_SAFE_CATEGORIES } from '../../schema-enums.js';
 
-/** Categories eligible for auto-merge */
-const SAFE_CATEGORIES = new Set(['docs', 'tests', 'research']);
+// --- Configuration ---
 
 /** Max total LOC changed (additions + deletions) */
 const MAX_LOC = 500;
@@ -104,7 +103,7 @@ export async function runPrAutomerge(env: EdgeEnv): Promise<void> {
     }
 
     // Double-check category
-    if (!SAFE_CATEGORIES.has(row.category)) continue;
+    if (!AUTOMERGE_SAFE_CATEGORIES.has(row.category as any)) continue;
 
     candidates.push({
       taskId: row.id,

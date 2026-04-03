@@ -1,5 +1,7 @@
 // ─── Channel ─────────────────────────────────────────────────
 
+import type { EpisodicOutcome, ProceduralStatus as ProceduralStatusEnum } from '../schema-enums.js';
+
 export type Channel = 'web' | 'cli' | 'internal';
 
 // ─── KernelIntent ────────────────────────────────────────────
@@ -28,7 +30,7 @@ export interface EpisodicEntry {
   intent_class: string;
   channel: string;
   summary: string;
-  outcome: 'success' | 'failure';
+  outcome: EpisodicOutcome;
   cost: number;
   latency_ms: number;
   near_miss?: string | null;
@@ -39,7 +41,7 @@ export interface EpisodicEntry {
   created_at?: string;
 }
 
-export type ProceduralStatus = 'learning' | 'learned' | 'degraded' | 'broken';
+export type ProceduralStatus = ProceduralStatusEnum;
 
 export interface Refinement {
   timestamp: number;

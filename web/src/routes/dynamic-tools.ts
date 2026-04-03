@@ -13,6 +13,7 @@ import {
   invalidateToolCache,
 } from '../kernel/dynamic-tools.js';
 import { buildEdgeEnv } from '../edge-env.js';
+import type { ToolExecutor, ToolStatus } from '../schema-enums.js';
 
 const DYNAMIC_TOOLS_BODY_LIMIT = 100 * 1024;
 
@@ -34,7 +35,7 @@ dynamicToolsRoutes.post('/api/dynamic-tools', bodyLimit({ maxSize: DYNAMIC_TOOLS
       description: string;
       input_schema?: string;
       prompt_template: string;
-      executor?: 'gpt_oss' | 'workers_ai' | 'groq';
+      executor?: ToolExecutor;
       created_by?: string;
       ttl_days?: number;
       status?: 'active' | 'draft';
@@ -69,9 +70,9 @@ dynamicToolsRoutes.put('/api/dynamic-tools/:id', async (c) => {
   const body = await c.req.json<{
     description?: string;
     prompt_template?: string;
-    executor?: 'gpt_oss' | 'workers_ai' | 'groq';
+    executor?: ToolExecutor;
     input_schema?: string;
-    status?: 'active' | 'promoted' | 'retired' | 'draft';
+    status?: ToolStatus;
   }>();
 
   await updateDynamicTool(c.env.DB, tool.id, body);

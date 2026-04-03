@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../types.js';
 import { McpClient } from '../mcp-client.js';
 import { addAgendaItem } from '../kernel/memory/agenda.js';
+import { FEEDBACK_CATEGORIES, validateEnum } from '../schema-enums.js';
 
 const FEEDBACK_BODY_LIMIT = 100 * 1024;
 
@@ -32,7 +33,7 @@ feedback.post('/api/feedback', bodyLimit({ maxSize: FEEDBACK_BODY_LIMIT }), asyn
   if (!body?.message || body.message.length < 5 || body.message.length > 5000) {
     return c.json({ error: 'message required (5-5000 chars)' }, 400);
   }
-  const category = ['general', 'bug', 'feature', 'question'].includes(body.category ?? '') ? body.category! : 'general';
+  const category = validateEnum(FEEDBACK_CATEGORIES, body.category, 'general');
   const id = crypto.randomUUID();
   const userAgent = c.req.header('User-Agent') ?? null;
   await c.env.DB.prepare(

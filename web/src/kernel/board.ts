@@ -2,7 +2,8 @@
 // D1 CRUD for board_items. Called by ARGUS webhooks, issue-watcher,
 // CC task lifecycle, and board-sync reconciliation.
 
-export type BoardColumn = 'backlog' | 'queued' | 'in_progress' | 'blocked' | 'shipped';
+import type { BoardColumn } from '../schema-enums.js';
+export type { BoardColumn } from '../schema-enums.js';
 
 export interface BoardItem {
   id: string;

@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../types.js';
 import { classifyTaskFailure, parseTaskPreflight, scoreTaskUtility } from '../task-intelligence.js';
 import { moveBoardItemLocal, linkTaskToBoard } from '../kernel/board.js';
+import { TASK_AUTHORITIES, TASK_CATEGORIES, validateEnum } from '../schema-enums.js';
 
 const CC_TASKS_BODY_LIMIT = 256 * 1024;
 
@@ -74,8 +75,8 @@ ccTasks.post('/api/cc-tasks', bodyLimit({ maxSize: CC_TASKS_BODY_LIMIT }), async
     return c.json({ error: 'title, repo, and prompt are required' }, 400);
   }
 
-  const authority = ['proposed', 'auto_safe', 'operator'].includes(body.authority ?? '') ? body.authority! : 'operator';
-  const category = ['docs', 'tests', 'research', 'bugfix', 'feature', 'refactor', 'deploy'].includes(body.category ?? '') ? body.category! : 'feature';
+  const authority = validateEnum(TASK_AUTHORITIES, body.authority, 'operator');
+  const category = validateEnum(TASK_CATEGORIES, body.category, 'feature');
   const blockedBy = body.blocked_by?.length ? body.blocked_by : null;
 
   // Cycle detection: ensure none of the blockers are blocked by this task (direct cycle)

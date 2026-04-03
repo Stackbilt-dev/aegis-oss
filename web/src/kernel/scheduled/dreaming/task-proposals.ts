@@ -2,9 +2,8 @@
 // proposals into cc_tasks with governance checks.
 
 import { checkTaskGovernanceLimits } from '../governance.js';
+import { AUTO_SAFE_CATEGORIES, PROPOSED_CATEGORIES } from '../../../schema-enums.js';
 
-const AUTO_SAFE_CATEGORIES = new Set(['docs', 'tests', 'research', 'refactor']);
-const PROPOSED_CATEGORIES = new Set(['bugfix', 'feature']);
 const VALID_CATEGORIES = new Set([...AUTO_SAFE_CATEGORIES, ...PROPOSED_CATEGORIES]);
 
 // Valid repos the taskrunner can resolve — must match aliases in taskrunner.sh
@@ -47,14 +46,14 @@ export async function processTaskProposals(
       continue;
     }
 
-    if (!VALID_CATEGORIES.has(category)) {
+    if (!VALID_CATEGORIES.has(category as any)) {
       console.warn(`[dreaming:tasks] Skipping task with invalid category '${category}': ${task.title}`);
       continue;
     }
 
     const authority = 'auto_safe';
 
-    const governance = await checkTaskGovernanceLimits(db, { repo: task.repo.trim(), title: task.title.trim(), category });
+    const governance = await checkTaskGovernanceLimits(db, { repo: task.repo.trim(), title: task.title.trim(), category: category as string });
     if (!governance.allowed) {
       console.log(`[dreaming:tasks] Governance blocked '${task.title}': ${governance.reason}`);
       continue;

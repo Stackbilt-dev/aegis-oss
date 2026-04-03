@@ -3,6 +3,7 @@
 // No eval(). No code execution. Just parameterized prompts.
 
 import { type EdgeEnv } from './dispatch.js';
+import type { ToolExecutor, ToolStatus } from '../schema-enums.js';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -14,7 +15,7 @@ export interface DynamicTool {
   prompt_template: string;
   executor: string;
   created_by: string;
-  status: 'active' | 'promoted' | 'retired' | 'draft';
+  status: ToolStatus;
   ttl_days: number | null;
   use_count: number;
   last_used_at: string | null;
@@ -30,7 +31,7 @@ export interface CreateToolOpts {
   description: string;
   input_schema?: string;
   prompt_template: string;
-  executor?: 'gpt_oss' | 'workers_ai' | 'groq';
+  executor?: ToolExecutor;
   created_by?: string;
   ttl_days?: number;
   status?: 'active' | 'draft';

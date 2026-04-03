@@ -1,11 +1,16 @@
 // ─── Autonomous Goals (#14) ──────────────────────────────────
 
+import {
+  ACTION_OUTCOMES, isValidEnum,
+  type GoalStatus, type AuthorityLevel, type ActionType, type ActionOutcome,
+} from '../../schema-enums.js';
+
 export interface AgentGoal {
   id: string;
   title: string;
   description: string | null;
-  status: 'active' | 'paused' | 'completed' | 'failed';
-  authority_level: 'propose' | 'auto_low' | 'auto_high';
+  status: GoalStatus;
+  authority_level: AuthorityLevel;
   schedule_hours: number;
   created_at: string;
   last_run_at: string | null;
@@ -18,12 +23,12 @@ export interface AgentGoal {
 export interface AgentAction {
   id: string;
   goal_id: string | null;
-  action_type: 'proposed' | 'executed' | 'skipped';
+  action_type: ActionType;
   description: string;
   tool_called: string | null;
   tool_args_json: string | null;
   tool_result_json: string | null;
-  outcome: 'success' | 'failure' | 'pending' | null;
+  outcome: ActionOutcome | null;
   auto_executed: number; // 0 or 1 (SQLite boolean)
   authority_level: string;
   created_at: string;
@@ -76,12 +81,10 @@ export async function touchGoal(db: D1Database, id: string, scheduleHours: numbe
 // D1 CHECK: outcome IN ('success', 'failure', 'pending')
 // Guard at the DB boundary so rogue values (partial_failure, error, blocked, "") never reach SQLite.
 
-const VALID_ACTION_OUTCOMES = new Set(['success', 'failure', 'pending']);
-
 /** Map any outcome to a valid agent_actions value. */
-export function sanitizeActionOutcome(raw: string | null | undefined): 'success' | 'failure' | 'pending' | null {
+export function sanitizeActionOutcome(raw: string | null | undefined): ActionOutcome | null {
   if (raw === null || raw === undefined) return null;
-  if (VALID_ACTION_OUTCOMES.has(raw)) return raw as 'success' | 'failure' | 'pending';
+  if (isValidEnum(ACTION_OUTCOMES, raw)) return raw;
   // partial_failure, error, blocked, empty string → failure
   return 'failure';
 }

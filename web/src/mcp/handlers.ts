@@ -6,6 +6,7 @@ import { generateDecisionDoc } from '../decision-docs.js';
 import { createDynamicTool, getDynamicTool, listDynamicTools, executeDynamicTool, invalidateToolCache } from '../kernel/dynamic-tools.js';
 import { buildEdgeEnv } from '../edge-env.js';
 import type { MessageMetadata } from '../types.js';
+import { TASK_CATEGORIES, TASK_AUTHORITIES, validateEnum } from '../schema-enums.js';
 
 // ─── Tool Handler Types ──────────────────────────────────────
 
@@ -278,8 +279,8 @@ export async function toolAegisCreateCcTask(args: Record<string, unknown>, env: 
   const blockedBy = Array.isArray(args.blocked_by) && args.blocked_by.length ? args.blocked_by as string[] : null;
   const maxTurns = (args.max_turns as number) ?? 25;
 
-  const category = ['docs', 'tests', 'research', 'bugfix', 'feature', 'refactor', 'deploy'].includes(args.category as string ?? '') ? args.category as string : 'feature';
-  const authority = ['proposed', 'auto_safe', 'operator'].includes(args.authority as string ?? '') ? args.authority as string : 'operator';
+  const category = validateEnum(TASK_CATEGORIES, args.category, 'feature');
+  const authority = validateEnum(TASK_AUTHORITIES, args.authority, 'operator');
 
   await env.db.prepare(`
     INSERT INTO cc_tasks (id, title, repo, prompt, completion_signal, priority, depends_on, blocked_by, max_turns, created_by, authority, category)

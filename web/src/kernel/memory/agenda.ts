@@ -17,12 +17,14 @@
 // "reject N", or "defer N". Approved = AEGIS executes + resolves. Rejected =
 // dismissed. Deferred = stays active for next session.
 
+import type { AgendaPriority, AgendaStatus } from '../../schema-enums.js';
+
 export interface AgendaItem {
   id: number;
   item: string;
   context: string | null;
-  priority: 'low' | 'medium' | 'high';
-  status: 'active' | 'done' | 'dismissed';
+  priority: AgendaPriority;
+  status: AgendaStatus;
   created_at: string;
   resolved_at: string | null;
 }
@@ -67,7 +69,7 @@ export async function addAgendaItem(
   db: D1Database,
   item: string,
   context: string | undefined,
-  priority: 'low' | 'medium' | 'high',
+  priority: AgendaPriority,
 ): Promise<number> {
   // Dedup: check for existing active OR recently resolved items with similar text (#72)
   // Include items resolved within 7 days to prevent zombie re-creation loops
