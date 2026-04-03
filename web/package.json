@@ -1,7 +1,47 @@
 {
-  "name": "aegis-web",
+  "name": "@stackbilt/aegis-core",
   "version": "0.1.0",
-  "private": true,
+  "description": "Persistent AI agent framework for Cloudflare Workers. Multi-tier memory, autonomous goals, dreaming cycles, MCP native.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Stackbilt-dev/aegis-oss.git",
+    "directory": "web"
+  },
+  "type": "module",
+  "main": "src/exports.ts",
+  "types": "src/exports.ts",
+  "exports": {
+    ".": "./src/exports.ts",
+    "./core": "./src/core.ts",
+    "./types": "./src/types.ts",
+    "./edge-env": "./src/edge-env.ts",
+    "./auth": "./src/auth.ts",
+    "./version": "./src/version.ts",
+    "./kernel/dispatch": "./src/kernel/dispatch.ts",
+    "./kernel/router": "./src/kernel/router.ts",
+    "./kernel/types": "./src/kernel/types.ts",
+    "./kernel/memory": "./src/kernel/memory/index.ts",
+    "./kernel/executors": "./src/kernel/executors/index.ts",
+    "./kernel/scheduled": "./src/kernel/scheduled/index.ts",
+    "./operator": "./src/operator/index.ts",
+    "./operator/types": "./src/operator/types.ts",
+    "./operator/prompt-builder": "./src/operator/prompt-builder.ts",
+    "./mcp/server": "./src/mcp/server.ts",
+    "./mcp/tools": "./src/mcp/tools.ts",
+    "./mcp/handlers": "./src/mcp/handlers.ts",
+    "./lib/observability": "./src/lib/observability/errors.ts",
+    "./lib/audit-chain": "./src/lib/audit-chain/chain.ts",
+    "./routes/health": "./src/routes/health.ts",
+    "./routes/sessions": "./src/routes/sessions.ts",
+    "./routes/messages": "./src/routes/messages.ts",
+    "./routes/conversations": "./src/routes/conversations.ts",
+    "./routes/feedback": "./src/routes/feedback.ts",
+    "./routes/observability": "./src/routes/observability.ts",
+    "./routes/cc-tasks": "./src/routes/cc-tasks.ts",
+    "./routes/pages": "./src/routes/pages.ts",
+    "./routes/dynamic-tools": "./src/routes/dynamic-tools.ts"
+  },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -21,5 +61,18 @@
     "typescript": "^5.7.3",
     "vitest": "^4.0.18",
     "wrangler": "^4.76.0"
-  }
+  },
+  "files": [
+    "src/**/*.ts",
+    "schema.sql"
+  ],
+  "keywords": [
+    "cloudflare-workers",
+    "ai-agent",
+    "mcp",
+    "autonomous-agent",
+    "memory",
+    "dreaming-cycle",
+    "hono"
+  ]
 }
