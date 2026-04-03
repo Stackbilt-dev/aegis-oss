@@ -4,6 +4,10 @@ import { getAllProcedures } from '../kernel/memory/index.js';
 import { VERSION } from '../version.js';
 import { healthPage, type HealthData } from '../health-page.js';
 
+/** Allow consuming apps to override the reported version (set by createAegisApp). */
+let appVersion: string | undefined;
+export function setAppVersion(v: string): void { appVersion = v; }
+
 export const health = new Hono<{ Bindings: Env }>();
 
 health.get('/health', async (c) => {
@@ -49,7 +53,7 @@ health.get('/health', async (c) => {
     return c.json({
       status: 'ok',
       service: 'aegis-web',
-      version: VERSION,
+      version: appVersion ?? VERSION,
       mode: 'edge-native',
       timestamp: new Date().toISOString(),
       kernel,
@@ -74,7 +78,7 @@ health.get('/health', async (c) => {
     : 0;
 
   const healthData: HealthData = {
-    version: VERSION,
+    version: appVersion ?? VERSION,
     kernel,
     tasks: taskStats.results,
     memoryCount: memoryRow?.c ?? 0,

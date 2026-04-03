@@ -17,7 +17,7 @@ import { bearerAuth } from './auth.js';
 import { runScheduledTasks } from './kernel/scheduled/index.js';
 
 // Core route modules
-import { health } from './routes/health.js';
+import { health, setAppVersion } from './routes/health.js';
 import { sessions } from './routes/sessions.js';
 import { operatorLogs } from './routes/operator-logs.js';
 import { feedback } from './routes/feedback.js';
@@ -107,6 +107,9 @@ export interface McpToolPlugin {
 // ─── App Configuration ──────────────────────────────────────
 
 export interface AegisAppConfig {
+  /** Override the version reported by /health (defaults to core VERSION) */
+  version?: string;
+
   /** Operator identity and persona configuration */
   operator: OperatorConfig;
 
@@ -183,6 +186,9 @@ export interface AegisApp {
  * ```
  */
 export function createAegisApp(config: AegisAppConfig): AegisApp {
+  // ── Version override ──
+  if (config.version) setAppVersion(config.version);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const app = new Hono<any>();
 
