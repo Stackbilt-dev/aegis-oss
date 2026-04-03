@@ -80,8 +80,9 @@ export interface ExecutorPlugin {
 export interface RoutePlugin {
   /** Route prefix (e.g., '/' mounts at root, '/api/bluesky' mounts under that path) */
   prefix: string;
-  /** The Hono router instance */
-  router: Hono<{ Bindings: Env }>;
+  /** The Hono router instance. Accepts any Env superset — internal routes may have wider bindings. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  router: Hono<any>;
 }
 
 // ─── MCP Tool Plugin ────────────────────────────────────────
@@ -131,25 +132,21 @@ export interface AegisAppConfig {
 // ─── App Factory ────────────────────────────────────────────
 
 export interface AegisApp {
-  /** The composed Hono application (pass to OAuthProvider or export directly) */
-  app: Hono<{ Bindings: Env }>;
+  /**
+   * The composed Hono application (pass to OAuthProvider or export directly).
+   * Typed as `any` bindings to allow consumers with extended Env types.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  app: Hono<any>;
 
   /** Run core + extension scheduled tasks. Wire to the Worker's scheduled handler. */
-  runScheduled: (env: EdgeEnv) => Promise<void>;
+  // Accepts any EdgeEnv superset — consumers may add service binding fields
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  runScheduled: (env: any) => Promise<void>;
 
   /** Core route instances (for consumers who want manual composition instead of the factory) */
-  coreRoutes: {
-    health: Hono<{ Bindings: Env }>;
-    sessions: Hono<{ Bindings: Env }>;
-    operatorLogs: Hono<{ Bindings: Env }>;
-    feedback: Hono<{ Bindings: Env }>;
-    conversations: Hono<{ Bindings: Env }>;
-    observability: Hono<{ Bindings: Env }>;
-    pages: Hono<{ Bindings: Env }>;
-    ccTasks: Hono<{ Bindings: Env }>;
-    messages: Hono<{ Bindings: Env }>;
-    dynamicTools: Hono<{ Bindings: Env }>;
-  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  coreRoutes: Record<string, Hono<any>>;
 
   /** Registered executor plugins (for dispatch integration) */
   executorPlugins: Map<string, ExecutorPlugin>;
@@ -186,7 +183,8 @@ export interface AegisApp {
  * ```
  */
 export function createAegisApp(config: AegisAppConfig): AegisApp {
-  const app = new Hono<{ Bindings: Env }>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const app = new Hono<any>();
 
   // ── Auth middleware ──
   app.use('*', bearerAuth);
