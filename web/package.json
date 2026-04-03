@@ -24,6 +24,8 @@
     "./kernel/memory": "./src/kernel/memory/index.ts",
     "./kernel/executors": "./src/kernel/executors/index.ts",
     "./kernel/scheduled": "./src/kernel/scheduled/index.ts",
+    "./kernel/scheduled/dreaming": "./src/kernel/scheduled/dreaming.ts",
+    "./kernel/scheduled/issue-watcher": "./src/kernel/scheduled/issue-watcher.ts",
     "./operator": "./src/operator/index.ts",
     "./operator/types": "./src/operator/types.ts",
     "./operator/prompt-builder": "./src/operator/prompt-builder.ts",
