@@ -135,7 +135,7 @@ export {
 export { runScheduledTasks } from './kernel/scheduled/index.js';
 
 // ─── Operator ───────────────────────────────────────────────
-export { operatorConfig, renderTemplate } from './operator/index.js';
+export { operatorConfig, setOperatorConfig, renderTemplate } from './operator/index.js';
 
 // ─── Auth ───────────────────────────────────────────────────
 export { bearerAuth } from './auth.js';

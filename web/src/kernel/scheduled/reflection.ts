@@ -1,5 +1,6 @@
 import { type EdgeEnv } from '../dispatch.js';
 import { getAllMemoryForReflection } from '../memory-adapter.js';
+import { askWorkersAiOrGroq } from './dreaming/llm.js';
 // Standalone emails removed — all content routes through daily digest
 
 // ─── Memory Reflection (#introspection) ───────────────────────
@@ -84,67 +85,34 @@ export async function runMemoryReflectionCycle(env: EdgeEnv): Promise<void> {
 
   const userPrompt = `Here is my complete active memory — ${entries.length} entries across ${byTopic.size} topics:\n\n${topicSections}\n\nReflect.`;
 
-  // Call Claude directly (no tools needed, pure generation)
-  const anthropicBase = env.anthropicBaseUrl || 'https://api.anthropic.com';
+  // Route through Workers AI (free) ��� Groq fallback — no raw Anthropic calls (#412)
+  const reflection = await askWorkersAiOrGroq(env, REFLECTION_SYSTEM, userPrompt);
+  if (!reflection) throw new Error('Empty reflection response');
 
-  try {
-    const response = await fetch(`${anthropicBase}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': env.anthropicApiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: env.claudeModel,
-        max_tokens: 2048,
-        system: REFLECTION_SYSTEM,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
-    });
+  const topics = [...byTopic.keys()];
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Anthropic API error ${response.status}: ${errText}`);
-    }
+  // Store in D1 (cost ≈ 0 for Workers AI, minimal for Groq fallback)
+  await env.db.prepare(
+    'INSERT INTO reflections (content, memory_count, topics_covered, cost) VALUES (?, ?, ?, ?)'
+  ).bind(reflection, entries.length, JSON.stringify(topics), 0).run();
 
-    const data = await response.json<{
-      content: Array<{ type: string; text?: string }>;
-      usage: { input_tokens: number; output_tokens: number };
-    }>();
+  // Queue reflection for daily digest instead of standalone email
+  const reflectionPayload = JSON.stringify({
+    reflection: reflection.slice(0, 2000),
+    memoryCount: entries.length,
+    topics,
+    timestamp: new Date().toISOString(),
+  });
+  await env.db.prepare(
+    "INSERT INTO digest_sections (section, payload) VALUES ('memory_reflection', ?)"
+  ).bind(reflectionPayload).run();
 
-    const reflection = data.content.filter(b => b.type === 'text').map(b => b.text ?? '').join('');
-    if (!reflection) throw new Error('Empty reflection response');
+  // Record timestamp
+  await env.db.prepare(
+    "INSERT OR REPLACE INTO web_events (event_id, received_at) VALUES ('last_memory_reflection', datetime('now'))"
+  ).run();
 
-    // Cost calculation (Sonnet rates)
-    const cost = (data.usage.input_tokens * 3 + data.usage.output_tokens * 15) / 1_000_000;
-    const topics = [...byTopic.keys()];
-
-    // Store in D1
-    await env.db.prepare(
-      'INSERT INTO reflections (content, memory_count, topics_covered, cost) VALUES (?, ?, ?, ?)'
-    ).bind(reflection, entries.length, JSON.stringify(topics), cost).run();
-
-    // Queue reflection for daily digest instead of standalone email
-    const reflectionPayload = JSON.stringify({
-      reflection: reflection.slice(0, 2000),
-      memoryCount: entries.length,
-      topics,
-      timestamp: new Date().toISOString(),
-    });
-    await env.db.prepare(
-      "INSERT INTO digest_sections (section, payload) VALUES ('memory_reflection', ?)"
-    ).bind(reflectionPayload).run();
-
-    // Record timestamp
-    await env.db.prepare(
-      "INSERT OR REPLACE INTO web_events (event_id, received_at) VALUES ('last_memory_reflection', datetime('now'))"
-    ).run();
-
-    console.log(`[reflection] Weekly memory reflection complete — ${entries.length} memories, ${byTopic.size} topics, $${cost.toFixed(4)}`);
-  } catch (err) {
-    console.error('[reflection] Memory reflection failed:', err instanceof Error ? err.message : String(err));
-  }
+  console.log(`[reflection] Weekly memory reflection complete — ${entries.length} memories, ${byTopic.size} topics`);
 }
 
 // ─── Operator's Log (#introspection) ──────────────────────────
@@ -384,54 +352,22 @@ ${goalSummary}
 
 Write your worklog entry.`;
 
-  const anthropicBase = env.anthropicBaseUrl || 'https://api.anthropic.com';
+  // Route through Workers AI (free) → Groq fallback — no raw Anthropic calls (#412)
+  const logEntry = await askWorkersAiOrGroq(env, OPERATOR_LOG_SYSTEM, userPrompt);
+  if (!logEntry) throw new Error('Empty log response');
 
-  try {
-    const response = await fetch(`${anthropicBase}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': env.anthropicApiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: env.claudeModel,
-        max_tokens: 1024,
-        system: OPERATOR_LOG_SYSTEM,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
-    });
+  // Store in D1 (cost ≈ 0 for Workers AI, minimal for Groq fallback)
+  await env.db.prepare(
+    'INSERT INTO operator_log (content, episodes_count, goals_run, tasks_completed, tasks_failed, prs_created, total_cost, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(logEntry, activity.episodes.length, activity.goalActions.length, activity.tasksCompleted.length, activity.tasksFailed.length, prsCreated, activity.totalCost, 0).run();
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Anthropic API error ${response.status}: ${errText}`);
-    }
+  // Operator log is consumed by the daily digest (reads operator_log table).
+  // No standalone email — consolidated into the single daily digest.
 
-    const data = await response.json<{
-      content: Array<{ type: string; text?: string }>;
-      usage: { input_tokens: number; output_tokens: number };
-    }>();
+  // Record timestamp
+  await env.db.prepare(
+    "INSERT OR REPLACE INTO web_events (event_id, received_at) VALUES ('last_operator_log', datetime('now'))"
+  ).run();
 
-    const logEntry = data.content.filter(b => b.type === 'text').map(b => b.text ?? '').join('');
-    if (!logEntry) throw new Error('Empty log response');
-
-    const cost = (data.usage.input_tokens * 3 + data.usage.output_tokens * 15) / 1_000_000;
-
-    // Store in D1
-    await env.db.prepare(
-      'INSERT INTO operator_log (content, episodes_count, goals_run, tasks_completed, tasks_failed, prs_created, total_cost, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).bind(logEntry, activity.episodes.length, activity.goalActions.length, activity.tasksCompleted.length, activity.tasksFailed.length, prsCreated, activity.totalCost, cost).run();
-
-    // Operator log is consumed by the daily digest (reads operator_log table).
-    // No standalone email — consolidated into the single daily digest.
-
-    // Record timestamp
-    await env.db.prepare(
-      "INSERT OR REPLACE INTO web_events (event_id, received_at) VALUES ('last_operator_log', datetime('now'))"
-    ).run();
-
-    console.log(`[operator-log] Nightly log complete — ${activity.episodes.length} episodes, ${activity.goalActions.length} goals, $${cost.toFixed(4)}`);
-  } catch (err) {
-    console.error('[operator-log] Failed:', err instanceof Error ? err.message : String(err));
-  }
+  console.log(`[operator-log] Nightly log complete — ${activity.episodes.length} episodes, ${activity.goalActions.length} goals`);
 }

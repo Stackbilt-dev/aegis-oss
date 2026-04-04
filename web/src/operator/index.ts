@@ -18,9 +18,22 @@ function validate(cfg: OperatorConfig): OperatorConfig {
   return cfg;
 }
 
-// ─── Frozen export ────────────────────────────────────────────
+// ─── Mutable config singleton ─────────────────────────────────
+// Starts with the core default config. Consumers override via
+// setOperatorConfig() — called by createAegisApp() — so that all
+// internal modules (email, dispatch, MCP tools) pick up the
+// consumer's real addresses instead of the core's example.com defaults.
 
-export const operatorConfig: Readonly<OperatorConfig> = Object.freeze(validate({ ...raw }));
+// eslint-disable-next-line import/no-mutable-exports
+export let operatorConfig: Readonly<OperatorConfig> = Object.freeze(validate({ ...raw }));
+
+/**
+ * Override the operator config at app startup.
+ * Must be called before any scheduled tasks or route handlers run.
+ */
+export function setOperatorConfig(cfg: OperatorConfig): void {
+  operatorConfig = Object.freeze(validate({ ...cfg }));
+}
 
 // ─── Template helper ──────────────────────────────────────────
 

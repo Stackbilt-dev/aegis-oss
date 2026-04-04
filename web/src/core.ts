@@ -13,6 +13,7 @@ import type { Env } from './types.js';
 import type { EdgeEnv } from './kernel/dispatch.js';
 import type { KernelIntent, DispatchResult, Executor, CognitiveState } from './kernel/types.js';
 import type { OperatorConfig, Product, SelfModel } from './operator/types.js';
+import { setOperatorConfig } from './operator/index.js';
 import { bearerAuth } from './auth.js';
 import { runScheduledTasks } from './kernel/scheduled/index.js';
 
@@ -186,6 +187,11 @@ export interface AegisApp {
  * ```
  */
 export function createAegisApp(config: AegisAppConfig): AegisApp {
+  // ── Operator config override ──
+  // Must happen before anything else — core modules (email, dispatch, MCP tools)
+  // import operatorConfig at the module level, so this sets the live binding.
+  setOperatorConfig(config.operator);
+
   // ── Version override ──
   if (config.version) setAppVersion(config.version);
 
