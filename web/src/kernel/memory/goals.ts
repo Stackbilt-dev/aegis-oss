@@ -18,7 +18,10 @@ export interface AgentGoal {
   completed_at: string | null;
   run_count: number;
   context_json: string | null;
+  business_unit: string;
 }
+
+const DEFAULT_BUSINESS_UNIT = 'stackbilt';
 
 export interface AgentAction {
   id: string;
@@ -34,10 +37,18 @@ export interface AgentAction {
   created_at: string;
 }
 
-export async function getActiveGoals(db: D1Database): Promise<AgentGoal[]> {
-  const result = await db.prepare(
-    "SELECT * FROM agent_goals WHERE status = 'active' ORDER BY created_at ASC"
-  ).all();
+export async function getActiveGoals(
+  db: D1Database,
+  businessUnit?: string,
+): Promise<AgentGoal[]> {
+  const stmt = businessUnit
+    ? db.prepare(
+        "SELECT * FROM agent_goals WHERE status = 'active' AND business_unit = ? ORDER BY created_at ASC"
+      ).bind(businessUnit)
+    : db.prepare(
+        "SELECT * FROM agent_goals WHERE status = 'active' ORDER BY created_at ASC"
+      );
+  const result = await stmt.all();
   return result.results as unknown as AgentGoal[];
 }
 
@@ -46,11 +57,12 @@ export async function addGoal(
   title: string,
   description?: string,
   scheduleHours = 6,
+  businessUnit: string = DEFAULT_BUSINESS_UNIT,
 ): Promise<string> {
   const id = crypto.randomUUID();
   await db.prepare(
-    'INSERT INTO agent_goals (id, title, description, schedule_hours) VALUES (?, ?, ?, ?)'
-  ).bind(id, title, description ?? null, scheduleHours).run();
+    'INSERT INTO agent_goals (id, title, description, schedule_hours, business_unit) VALUES (?, ?, ?, ?, ?)'
+  ).bind(id, title, description ?? null, scheduleHours, businessUnit).run();
   return id;
 }
 

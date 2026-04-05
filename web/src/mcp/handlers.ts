@@ -94,8 +94,9 @@ export async function toolAegisConversationHistory(args: Record<string, unknown>
   return { content: [{ type: 'text', text: JSON.stringify(messages, null, 2) }] };
 }
 
-export async function toolAegisAgenda(env: EdgeEnv): Promise<ToolResult> {
-  const items = await getActiveAgendaItems(env.db);
+export async function toolAegisAgenda(args: Record<string, unknown>, env: EdgeEnv): Promise<ToolResult> {
+  const businessUnit = typeof args.business_unit === 'string' ? args.business_unit : undefined;
+  const items = await getActiveAgendaItems(env.db, businessUnit);
   return { content: [{ type: 'text', text: JSON.stringify({ count: items.length, items }, null, 2) }] };
 }
 
@@ -216,8 +217,11 @@ export async function toolAegisAddAgenda(args: Record<string, unknown>, env: Edg
   if (!item) return { content: [{ type: 'text', text: 'Error: item is required' }], isError: true };
   const context = args.context as string | undefined;
   const priority = (args.priority as 'low' | 'medium' | 'high') ?? 'medium';
-  const id = await addAgendaItem(env.db, item, context, priority);
-  return { content: [{ type: 'text', text: `Added agenda item #${id}: "${item}" (${priority})` }] };
+  const businessUnit = (typeof args.business_unit === 'string' && args.business_unit.trim())
+    ? args.business_unit.trim()
+    : 'stackbilt';
+  const id = await addAgendaItem(env.db, item, context, priority, businessUnit);
+  return { content: [{ type: 'text', text: `Added agenda item #${id}: "${item}" (${priority}, ${businessUnit})` }] };
 }
 
 export async function toolAegisResolveAgenda(args: Record<string, unknown>, env: EdgeEnv): Promise<ToolResult> {
@@ -233,8 +237,11 @@ export async function toolAegisAddGoal(args: Record<string, unknown>, env: EdgeE
   if (!title) return { content: [{ type: 'text', text: 'Error: title is required' }], isError: true };
   const description = args.description as string | undefined;
   const scheduleHours = (args.schedule_hours as number) ?? 6;
-  const id = await addGoal(env.db, title, description, scheduleHours);
-  return { content: [{ type: 'text', text: `Created goal "${title}" (ID: ${id}, every ${scheduleHours}h)` }] };
+  const businessUnit = (typeof args.business_unit === 'string' && args.business_unit.trim())
+    ? args.business_unit.trim()
+    : 'stackbilt';
+  const id = await addGoal(env.db, title, description, scheduleHours, businessUnit);
+  return { content: [{ type: 'text', text: `Created goal "${title}" (ID: ${id}, every ${scheduleHours}h, ${businessUnit})` }] };
 }
 
 export async function toolAegisUpdateGoal(args: Record<string, unknown>, env: EdgeEnv): Promise<ToolResult> {
@@ -245,8 +252,9 @@ export async function toolAegisUpdateGoal(args: Record<string, unknown>, env: Ed
   return { content: [{ type: 'text', text: `Goal ${id} marked as ${status}` }] };
 }
 
-export async function toolAegisListGoals(env: EdgeEnv): Promise<ToolResult> {
-  const goals = await getActiveGoals(env.db);
+export async function toolAegisListGoals(args: Record<string, unknown>, env: EdgeEnv): Promise<ToolResult> {
+  const businessUnit = typeof args.business_unit === 'string' ? args.business_unit : undefined;
+  const goals = await getActiveGoals(env.db, businessUnit);
   return { content: [{ type: 'text', text: JSON.stringify({ count: goals.length, goals }, null, 2) }] };
 }
 
@@ -281,30 +289,39 @@ export async function toolAegisCreateCcTask(args: Record<string, unknown>, env: 
 
   const category = validateEnum(TASK_CATEGORIES, args.category, 'feature');
   const authority = validateEnum(TASK_AUTHORITIES, args.authority, 'operator');
+  const businessUnit = (typeof args.business_unit === 'string' && args.business_unit.trim())
+    ? args.business_unit.trim()
+    : 'stackbilt';
 
   await env.db.prepare(`
-    INSERT INTO cc_tasks (id, title, repo, prompt, completion_signal, priority, depends_on, blocked_by, max_turns, created_by, authority, category)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'aegis', ?, ?)
-  `).bind(id, title.trim(), repo.trim(), prompt.trim(), completionSignal, priority, dependsOn, blockedBy ? JSON.stringify(blockedBy) : null, maxTurns, authority, category).run();
+    INSERT INTO cc_tasks (id, title, repo, prompt, completion_signal, priority, depends_on, blocked_by, max_turns, created_by, authority, category, business_unit)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'aegis', ?, ?, ?)
+  `).bind(id, title.trim(), repo.trim(), prompt.trim(), completionSignal, priority, dependsOn, blockedBy ? JSON.stringify(blockedBy) : null, maxTurns, authority, category, businessUnit).run();
 
-  return { content: [{ type: 'text', text: `Queued task "${title}" → ${repo} (ID: ${id}, priority: ${priority}, authority: ${authority}, category: ${category})` }] };
+  return { content: [{ type: 'text', text: `Queued task "${title}" → ${repo} (ID: ${id}, priority: ${priority}, authority: ${authority}, category: ${category}, business_unit: ${businessUnit})` }] };
 }
 
 export async function toolAegisListCcTasks(args: Record<string, unknown>, env: EdgeEnv): Promise<ToolResult> {
   const status = args.status as string | undefined;
+  const businessUnit = typeof args.business_unit === 'string' ? args.business_unit : undefined;
   const limit = Math.min(Math.max(1, (args.limit as number) || 20), 50);
 
-  let tasks;
-  const cols = 'id, title, repo, status, priority, authority, category, created_at, started_at, completed_at, exit_code, error, failure_kind, retryable';
+  const cols = 'id, title, repo, status, priority, authority, category, business_unit, created_at, started_at, completed_at, exit_code, error, failure_kind, retryable';
+  const conditions: string[] = [];
+  const bindings: unknown[] = [];
   if (status) {
-    tasks = await env.db.prepare(
-      `SELECT ${cols} FROM cc_tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?`
-    ).bind(status, limit).all();
-  } else {
-    tasks = await env.db.prepare(
-      `SELECT ${cols} FROM cc_tasks ORDER BY created_at DESC LIMIT ?`
-    ).bind(limit).all();
+    conditions.push('status = ?');
+    bindings.push(status);
   }
+  if (businessUnit) {
+    conditions.push('business_unit = ?');
+    bindings.push(businessUnit);
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  bindings.push(limit);
+  const tasks = await env.db.prepare(
+    `SELECT ${cols} FROM cc_tasks ${where} ORDER BY created_at DESC LIMIT ?`
+  ).bind(...bindings).all();
 
   return { content: [{ type: 'text', text: JSON.stringify({ count: tasks.results.length, tasks: tasks.results }, null, 2) }] };
 }

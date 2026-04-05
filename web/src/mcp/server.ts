@@ -57,7 +57,7 @@ async function executeTool(name: string, args: Record<string, unknown>, env: Edg
     case 'aegis_chat': return toolAegisChat(args, env);
     case 'aegis_conversations': return toolAegisConversations(args, env);
     case 'aegis_conversation_history': return toolAegisConversationHistory(args, env);
-    case 'aegis_agenda': return toolAegisAgenda(env);
+    case 'aegis_agenda': return toolAegisAgenda(args, env);
     case 'aegis_health': return toolAegisHealth(env);
     case 'aegis_memory': return toolAegisMemory(args, env);
     case 'aegis_record_memory': return toolAegisRecordMemory(args, env);
@@ -66,7 +66,7 @@ async function executeTool(name: string, args: Record<string, unknown>, env: Edg
     case 'aegis_resolve_agenda': return toolAegisResolveAgenda(args, env);
     case 'aegis_add_goal': return toolAegisAddGoal(args, env);
     case 'aegis_update_goal': return toolAegisUpdateGoal(args, env);
-    case 'aegis_list_goals': return toolAegisListGoals(env);
+    case 'aegis_list_goals': return toolAegisListGoals(args, env);
     case 'aegis_cc_sessions': return toolAegisCcSessions(args, env);
     case 'aegis_create_cc_task': return toolAegisCreateCcTask(args, env);
     case 'aegis_list_cc_tasks': return toolAegisListCcTasks(args, env);

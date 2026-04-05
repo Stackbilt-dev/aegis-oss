@@ -45,7 +45,9 @@ export const TOOLS = [
     description: 'List active AEGIS agenda items including proposed actions awaiting approval.',
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        business_unit: { type: 'string', description: 'Filter to a single business unit (e.g. "stackbilt", "foodfiles"). Omit for all.' },
+      },
     },
   },
   {
@@ -103,6 +105,7 @@ export const TOOLS = [
         item: { type: 'string', description: 'The action item — concise and actionable' },
         context: { type: 'string', description: 'Brief context: why this was added' },
         priority: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Priority level (default: medium)' },
+        business_unit: { type: 'string', description: 'Business unit this item belongs to (e.g. "stackbilt", "foodfiles"). Default: "stackbilt".' },
       },
       required: ['item'],
     },
@@ -128,6 +131,7 @@ export const TOOLS = [
         title: { type: 'string', description: 'Short goal title' },
         description: { type: 'string', description: 'What to check and what to do if action is needed' },
         schedule_hours: { type: 'number', description: 'How often to evaluate in hours (default: 6)' },
+        business_unit: { type: 'string', description: 'Business unit this goal belongs to (e.g. "stackbilt", "foodfiles"). Default: "stackbilt".' },
       },
       required: ['title'],
     },
@@ -149,7 +153,9 @@ export const TOOLS = [
     description: 'List all active AEGIS autonomous goals with schedule and run count.',
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        business_unit: { type: 'string', description: 'Filter to a single business unit (e.g. "stackbilt", "foodfiles"). Omit for all.' },
+      },
     },
   },
   {
@@ -179,6 +185,7 @@ export const TOOLS = [
         max_turns: { type: 'number', description: 'Max agentic turns for safety (default: 25)' },
         category: { type: 'string', enum: ['docs', 'tests', 'research', 'bugfix', 'feature', 'refactor', 'deploy'], description: 'Task category for governance routing (default: feature)' },
         authority: { type: 'string', enum: ['proposed', 'auto_safe', 'operator'], description: 'Authority level: operator=run immediately, auto_safe=safe auto-execute, proposed=needs approval (default: operator)' },
+        business_unit: { type: 'string', description: 'Business unit this task belongs to (e.g. "stackbilt", "foodfiles"). Default: "stackbilt".' },
       },
       required: ['title', 'repo', 'prompt'],
     },
@@ -201,6 +208,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         status: { type: 'string', enum: ['pending', 'running', 'completed', 'failed', 'cancelled'], description: 'Filter by status. Omit for all.' },
+        business_unit: { type: 'string', description: 'Filter to a single business unit (e.g. "stackbilt", "foodfiles"). Omit for all.' },
         limit: { type: 'number', description: 'Max tasks to return (default 20)' },
       },
     },

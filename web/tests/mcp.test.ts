@@ -421,7 +421,7 @@ describe('MCP Tool Handlers', () => {
       ]);
 
       const env = makeEnv();
-      const result = await handlers.toolAegisAgenda(env as any);
+      const result = await handlers.toolAegisAgenda({}, env as any);
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.count).toBe(1);
       expect(parsed.items[0].item).toBe('Review PR');
@@ -572,7 +572,7 @@ describe('MCP Tool Handlers', () => {
     it('adds agenda item with defaults', async () => {
       const env = makeEnv();
       const result = await handlers.toolAegisAddAgenda({ item: 'Review PR #42' }, env as any);
-      expect(mockAddAgendaItem).toHaveBeenCalledWith(env.db, 'Review PR #42', undefined, 'medium');
+      expect(mockAddAgendaItem).toHaveBeenCalledWith(env.db, 'Review PR #42', undefined, 'medium', 'stackbilt');
       expect(result.content[0].text).toContain('#42');
       expect(result.content[0].text).toContain('medium');
     });
@@ -583,7 +583,7 @@ describe('MCP Tool Handlers', () => {
         { item: 'Deploy fix', context: 'Prod down', priority: 'high' },
         env as any,
       );
-      expect(mockAddAgendaItem).toHaveBeenCalledWith(env.db, 'Deploy fix', 'Prod down', 'high');
+      expect(mockAddAgendaItem).toHaveBeenCalledWith(env.db, 'Deploy fix', 'Prod down', 'high', 'stackbilt');
     });
   });
 
@@ -624,7 +624,7 @@ describe('MCP Tool Handlers', () => {
     it('creates goal with defaults', async () => {
       const env = makeEnv();
       const result = await handlers.toolAegisAddGoal({ title: 'Monitor billing' }, env as any);
-      expect(mockAddGoal).toHaveBeenCalledWith(env.db, 'Monitor billing', undefined, 6);
+      expect(mockAddGoal).toHaveBeenCalledWith(env.db, 'Monitor billing', undefined, 6, 'stackbilt');
       expect(result.content[0].text).toContain('Monitor billing');
       expect(result.content[0].text).toContain('goal-123');
     });
@@ -635,7 +635,7 @@ describe('MCP Tool Handlers', () => {
         { title: 'Check metrics', description: 'Check CF analytics', schedule_hours: 12 },
         env as any,
       );
-      expect(mockAddGoal).toHaveBeenCalledWith(env.db, 'Check metrics', 'Check CF analytics', 12);
+      expect(mockAddGoal).toHaveBeenCalledWith(env.db, 'Check metrics', 'Check CF analytics', 12, 'stackbilt');
     });
   });
 
@@ -671,7 +671,7 @@ describe('MCP Tool Handlers', () => {
         { id: 'g1', title: 'Monitor', status: 'active' },
       ]);
       const env = makeEnv();
-      const result = await handlers.toolAegisListGoals(env as any);
+      const result = await handlers.toolAegisListGoals({}, env as any);
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.count).toBe(1);
       expect(parsed.goals[0].title).toBe('Monitor');

@@ -27,7 +27,10 @@ export interface AgendaItem {
   status: AgendaStatus;
   created_at: string;
   resolved_at: string | null;
+  business_unit: string;
 }
+
+export const DEFAULT_BUSINESS_UNIT = 'stackbilt';
 
 // ─── Heartbeat History (#6) ──────────────────────────────────
 
@@ -47,10 +50,17 @@ export async function getRecentHeartbeats(db: D1Database, limit = 5): Promise<He
   return result.results as unknown as HeartbeatResult[];
 }
 
-export async function getActiveAgendaItems(db: D1Database): Promise<AgendaItem[]> {
-  const result = await db.prepare(
-    "SELECT * FROM agent_agenda WHERE status = 'active' ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, created_at ASC"
-  ).all();
+export async function getActiveAgendaItems(
+  db: D1Database,
+  businessUnit?: string,
+): Promise<AgendaItem[]> {
+  const sql = businessUnit
+    ? "SELECT * FROM agent_agenda WHERE status = 'active' AND business_unit = ? ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, created_at ASC"
+    : "SELECT * FROM agent_agenda WHERE status = 'active' ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, created_at ASC";
+  const stmt = businessUnit
+    ? db.prepare(sql).bind(businessUnit)
+    : db.prepare(sql);
+  const result = await stmt.all();
   return result.results as unknown as AgendaItem[];
 }
 
@@ -70,6 +80,7 @@ export async function addAgendaItem(
   item: string,
   context: string | undefined,
   priority: AgendaPriority,
+  businessUnit: string = DEFAULT_BUSINESS_UNIT,
 ): Promise<number> {
   // Dedup: check for existing active OR recently resolved items with similar text (#72)
   // Include items resolved within 7 days to prevent zombie re-creation loops
@@ -77,9 +88,11 @@ export async function addAgendaItem(
   const keyPhrase = extractAgendaKeyPhrase(item);
   const words = keyPhrase.split(' ').filter(w => w.length > 3);
   if (words.length > 0) {
+    // Dedup scoped to the same business_unit — different BUs can have
+    // legitimately overlapping item text without being duplicates.
     const candidates = await db.prepare(
-      "SELECT id, item, priority, status FROM agent_agenda WHERE status = 'active' OR (status IN ('done', 'dismissed') AND resolved_at >= datetime('now', '-7 days'))"
-    ).all<{ id: number; item: string; priority: string; status: string }>();
+      "SELECT id, item, priority, status FROM agent_agenda WHERE business_unit = ? AND (status = 'active' OR (status IN ('done', 'dismissed') AND resolved_at >= datetime('now', '-7 days')))"
+    ).bind(businessUnit).all<{ id: number; item: string; priority: string; status: string }>();
 
     for (const existing of candidates.results) {
       const existingKey = extractAgendaKeyPhrase(existing.item);
@@ -102,8 +115,8 @@ export async function addAgendaItem(
   }
 
   const result = await db.prepare(
-    'INSERT INTO agent_agenda (item, context, priority) VALUES (?, ?, ?)'
-  ).bind(item, context ?? null, priority).run();
+    'INSERT INTO agent_agenda (item, context, priority, business_unit) VALUES (?, ?, ?, ?)'
+  ).bind(item, context ?? null, priority, businessUnit).run();
   return result.meta.last_row_id as number;
 }
 

@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS agent_agenda (
   priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'done', 'dismissed')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  resolved_at TEXT
+  resolved_at TEXT,
+  business_unit TEXT NOT NULL DEFAULT 'stackbilt'  -- partition key for multi-BU operators
 );
 
 -- ─── Autonomous Goals (#14) ────────────────────────────────────
@@ -119,7 +120,8 @@ CREATE TABLE IF NOT EXISTS agent_goals (
   next_run_at TEXT,
   completed_at TEXT,
   run_count INTEGER NOT NULL DEFAULT 0,
-  context_json TEXT
+  context_json TEXT,
+  business_unit TEXT NOT NULL DEFAULT 'stackbilt'  -- partition key for multi-BU operators
 );
 
 CREATE TABLE IF NOT EXISTS agent_actions (
@@ -179,8 +181,10 @@ CREATE INDEX IF NOT EXISTS idx_procedural_status ON procedural_memory(status);
 CREATE INDEX IF NOT EXISTS idx_heartbeat_created ON heartbeat_results(created_at);
 CREATE INDEX IF NOT EXISTS idx_agenda_status ON agent_agenda(status);
 CREATE INDEX IF NOT EXISTS idx_agenda_priority ON agent_agenda(priority);
+CREATE INDEX IF NOT EXISTS idx_agenda_bu ON agent_agenda(business_unit, status);
 CREATE INDEX IF NOT EXISTS idx_goals_status ON agent_goals(status);
 CREATE INDEX IF NOT EXISTS idx_goals_next_run ON agent_goals(next_run_at);
+CREATE INDEX IF NOT EXISTS idx_goals_bu ON agent_goals(business_unit, status);
 CREATE INDEX IF NOT EXISTS idx_actions_goal ON agent_actions(goal_id);
 CREATE INDEX IF NOT EXISTS idx_actions_created ON agent_actions(created_at);
 
@@ -291,12 +295,14 @@ CREATE TABLE IF NOT EXISTS cc_tasks (
   pr_url TEXT,                                   -- GitHub PR URL if one was created
   utility_json TEXT,                              -- PR utility scoring: {impact, novelty, signals[]}
   github_issue_repo TEXT,                        -- source issue repo (e.g. 'my-org/aegis')
-  github_issue_number INTEGER                    -- source issue number (repo-scoped)
+  github_issue_number INTEGER,                   -- source issue number (repo-scoped)
+  business_unit TEXT NOT NULL DEFAULT 'stackbilt' -- partition key for multi-BU operators
 );
 
 CREATE INDEX IF NOT EXISTS idx_cc_tasks_status ON cc_tasks(status, priority);
 CREATE INDEX IF NOT EXISTS idx_cc_tasks_depends ON cc_tasks(depends_on);
 CREATE INDEX IF NOT EXISTS idx_cc_tasks_created ON cc_tasks(created_at);
+CREATE INDEX IF NOT EXISTS idx_cc_tasks_bu ON cc_tasks(business_unit, status);
 CREATE INDEX IF NOT EXISTS idx_cc_tasks_authority ON cc_tasks(authority);
 CREATE INDEX IF NOT EXISTS idx_cc_tasks_gh_issue ON cc_tasks(github_issue_repo, github_issue_number);
 CREATE INDEX IF NOT EXISTS idx_cc_tasks_failure_kind ON cc_tasks(failure_kind, completed_at);

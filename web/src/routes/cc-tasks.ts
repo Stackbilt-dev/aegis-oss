@@ -33,20 +33,25 @@ ccTasks.get('/api/cc-tasks/next', async (c) => {
   return c.json(task);
 });
 
-// List tasks with optional status filter
+// List tasks with optional status + business_unit filter
 ccTasks.get('/api/cc-tasks', async (c) => {
   const status = c.req.query('status');
+  const businessUnit = c.req.query('business_unit');
   const limit = Math.min(parseInt(c.req.query('limit') ?? '50', 10), 100);
 
-  let query: string;
-  let bindings: unknown[];
+  const conditions: string[] = [];
+  const bindings: unknown[] = [];
   if (status) {
-    query = 'SELECT * FROM cc_tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?';
-    bindings = [status, limit];
-  } else {
-    query = 'SELECT * FROM cc_tasks ORDER BY created_at DESC LIMIT ?';
-    bindings = [limit];
+    conditions.push('status = ?');
+    bindings.push(status);
   }
+  if (businessUnit) {
+    conditions.push('business_unit = ?');
+    bindings.push(businessUnit);
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const query = `SELECT * FROM cc_tasks ${where} ORDER BY created_at DESC LIMIT ?`;
+  bindings.push(limit);
 
   const tasks = await c.env.DB.prepare(query).bind(...bindings).all();
   return c.json({ count: tasks.results.length, tasks: tasks.results });
@@ -69,6 +74,7 @@ ccTasks.post('/api/cc-tasks', bodyLimit({ maxSize: CC_TASKS_BODY_LIMIT }), async
     category?: string;
     github_issue_repo?: string;
     github_issue_number?: number;
+    business_unit?: string;
   }>();
 
   if (!body.title?.trim() || !body.repo?.trim() || !body.prompt?.trim()) {
@@ -95,8 +101,8 @@ ccTasks.post('/api/cc-tasks', bodyLimit({ maxSize: CC_TASKS_BODY_LIMIT }), async
 
   const id = crypto.randomUUID();
   await c.env.DB.prepare(`
-    INSERT INTO cc_tasks (id, title, repo, prompt, completion_signal, priority, depends_on, blocked_by, max_turns, allowed_tools, created_by, authority, category, github_issue_repo, github_issue_number)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO cc_tasks (id, title, repo, prompt, completion_signal, priority, depends_on, blocked_by, max_turns, allowed_tools, created_by, authority, category, github_issue_repo, github_issue_number, business_unit)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     id,
     body.title.trim(),
@@ -113,6 +119,7 @@ ccTasks.post('/api/cc-tasks', bodyLimit({ maxSize: CC_TASKS_BODY_LIMIT }), async
     category,
     body.github_issue_repo ?? null,
     body.github_issue_number ?? null,
+    body.business_unit?.trim() || 'stackbilt',
   ).run();
 
   return c.json({ id, status: 'pending', authority, category }, 201);
