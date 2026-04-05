@@ -364,6 +364,74 @@ describe('runIssueWatcher manual grab detection', () => {
   });
 });
 
+// ─── Multi-session scope label filter ──────────────────────
+
+describe('runIssueWatcher scope label filter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('skips issue with wishlist label', async () => {
+    const db = createMockDb();
+    const issue = makeIssue({ labels: ['aegis', 'enhancement', 'wishlist'] });
+    mockListIssues.mockResolvedValueOnce([issue]);
+
+    await runIssueWatcher(makeEnv(db));
+
+    const insertCalls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: string[]) => typeof c[0] === 'string' && c[0].includes('INSERT INTO cc_tasks'));
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  it('skips issue with roadmap label', async () => {
+    const db = createMockDb();
+    const issue = makeIssue({ labels: ['enhancement', 'roadmap'] });
+    mockListIssues.mockResolvedValueOnce([issue]);
+
+    await runIssueWatcher(makeEnv(db));
+
+    const insertCalls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: string[]) => typeof c[0] === 'string' && c[0].includes('INSERT INTO cc_tasks'));
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  it('skips issue with epic label', async () => {
+    const db = createMockDb();
+    const issue = makeIssue({ labels: ['feature', 'epic'] });
+    mockListIssues.mockResolvedValueOnce([issue]);
+
+    await runIssueWatcher(makeEnv(db));
+
+    const insertCalls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: string[]) => typeof c[0] === 'string' && c[0].includes('INSERT INTO cc_tasks'));
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  it('skip label filter is case-insensitive', async () => {
+    const db = createMockDb();
+    const issue = makeIssue({ labels: ['bug', 'WISHLIST'] });
+    mockListIssues.mockResolvedValueOnce([issue]);
+
+    await runIssueWatcher(makeEnv(db));
+
+    const insertCalls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: string[]) => typeof c[0] === 'string' && c[0].includes('INSERT INTO cc_tasks'));
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  it('proceeds when no scope label is present', async () => {
+    const db = createMockDb();
+    const issue = makeIssue({ labels: ['enhancement'] });
+    mockListIssues.mockResolvedValueOnce([issue]);
+
+    await runIssueWatcher(makeEnv(db));
+
+    const insertCalls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: string[]) => typeof c[0] === 'string' && c[0].includes('INSERT INTO cc_tasks'));
+    expect(insertCalls).toHaveLength(1);
+  });
+});
+
 // ─── Issue interface: assignee field ────────────────────────
 
 describe('Issue interface assignee field', () => {

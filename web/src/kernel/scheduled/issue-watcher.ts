@@ -16,6 +16,11 @@ const LABEL_TO_CATEGORY: Record<string, { category: string; authority: 'auto_saf
   refactor:      { category: 'refactor', authority: 'proposed' },
 };
 
+// Labels that signal multi-session scope — these issues are human-driven
+// and should NOT be auto-queued as single-session taskrunner tasks.
+// See aegis-daemon/artifacts/taskrunner-scope-process.md for the scope gate.
+const SKIP_LABELS = new Set(['wishlist', 'roadmap', 'epic']);
+
 function classifyIssue(labels: string[]): { category: string; authority: 'auto_safe' | 'proposed' } | null {
   for (const label of labels) {
     const mapping = LABEL_TO_CATEGORY[label.toLowerCase()];
@@ -83,6 +88,13 @@ export async function runIssueWatcher(env: EdgeEnv): Promise<void> {
 
     // Skip issues with in-progress label
     if (issue.labels.some(l => l.toLowerCase() === 'in-progress')) continue;
+
+    // Skip issues tagged as multi-session scope (wishlist, roadmap, epic).
+    // These are human-driven projects, not single-session taskrunner tasks.
+    if (issue.labels.some(l => SKIP_LABELS.has(l.toLowerCase()))) {
+      console.log(`[issue-watcher] Skipping #${issue.number} — multi-session scope label`);
+      continue;
+    }
 
     // Body quality gate
     if (!issue.body || issue.body.trim().length < 20) continue;
