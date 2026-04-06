@@ -89,8 +89,10 @@ async function askAi(
     const result = await env.ai.run(
       '@cf/meta/llama-3.3-70b-instruct-fp8-fast' as Parameters<Ai['run']>[0],
       { messages: [{ role: 'system', content: system }, { role: 'user', content: user }] },
-    ) as { response?: string; choices?: Array<{ message?: { content?: string } }> };
-    return result.choices?.[0]?.message?.content ?? result.response ?? '';
+    );
+    if (typeof result === 'string') return result;
+    const obj = result as { response?: string; choices?: Array<{ message?: { content?: string } }> };
+    return obj.choices?.[0]?.message?.content ?? obj.response ?? '';
   }
   return askGroq(env.groqApiKey, env.groqResponseModel, system, user, env.groqBaseUrl);
 }
