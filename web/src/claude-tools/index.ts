@@ -259,8 +259,12 @@ export async function handleInProcessTool(
       return 'Error: Memory Worker binding unavailable — cannot record memory';
     }
     try {
-      await recordMemory(memoryBinding, i.topic, i.fact, i.confidence, i.source);
-      return `Recorded: "${i.fact}" → ${i.topic}`;
+      const result = await recordMemory(memoryBinding, i.topic, i.fact, i.confidence, i.source);
+      // Surface upsert distinction (#437) — callers relying on the string
+      // response need to be able to tell that an existing entry was replaced.
+      return result.updated
+        ? `Updated: "${i.fact}" → ${i.topic} (new id: ${result.fragment_id}, superseded: ${result.superseded_id})`
+        : `Recorded: "${i.fact}" → ${i.topic}`;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[tools] record_memory_entry write failed:', msg);

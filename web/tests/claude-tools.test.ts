@@ -63,7 +63,7 @@ vi.mock('../src/kernel/memory/index.js', () => ({
 
 const mockGetAllMemoryForContext = vi.fn().mockResolvedValue({ text: '', ids: [] });
 const mockRecallMemory = vi.fn().mockResolvedValue(undefined);
-const mockRecordMemory = vi.fn().mockResolvedValue(undefined);
+const mockRecordMemory = vi.fn().mockResolvedValue({ fragment_id: 'mock-id' });
 vi.mock('../src/kernel/memory-adapter.js', () => ({
   getAllMemoryForContext: (...args: unknown[]) => mockGetAllMemoryForContext(...args),
   recallMemory: (...args: unknown[]) => mockRecallMemory(...args),

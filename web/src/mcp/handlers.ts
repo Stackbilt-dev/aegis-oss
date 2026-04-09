@@ -187,8 +187,15 @@ export async function toolAegisRecordMemory(args: Record<string, unknown>, env: 
   const confidence = (args.confidence as number) ?? 0.8;
   const source = (args.source as string) ?? 'claude_code';
   try {
-    const { fragment_id } = await recordMemory(env.memoryBinding, topic, fact, confidence, source);
-    return { content: [{ type: 'text', text: `Recorded: "${fact}" → ${topic} (confidence: ${confidence}, id: ${fragment_id})` }] };
+    const result = await recordMemory(env.memoryBinding, topic, fact, confidence, source);
+    // Surface upsert vs. fresh-record distinction so callers (operators,
+    // claude-code sessions) can tell what actually happened. Silent returns
+    // caused Stackbilt-dev/aegis#437 — operators thought updates had landed
+    // when the write had actually been deduped-and-dropped.
+    const text = result.updated
+      ? `Updated: "${fact}" → ${topic} (confidence: ${confidence}, new id: ${result.fragment_id}, superseded: ${result.superseded_id})`
+      : `Recorded: "${fact}" → ${topic} (confidence: ${confidence}, id: ${result.fragment_id})`;
+    return { content: [{ type: 'text', text }] };
   } catch (err) {
     return { content: [{ type: 'text', text: `Error: failed to record memory — ${err instanceof Error ? err.message : String(err)}` }], isError: true };
   }

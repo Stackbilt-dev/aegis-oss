@@ -5,13 +5,20 @@
 //
 // Memory Worker is the sole semantic store. D1 is for operational state only.
 
-import type { MemoryServiceBinding, MemoryFragmentResult, MemoryStatsResult } from '../types.js';
+import type { MemoryServiceBinding, MemoryFragmentResult, MemoryStatsResult, MemoryStoreRequest } from '../types.js';
 import { estimateTokens } from './memory/episodic.js';
 
 const TENANT = 'aegis';
 const MEMORY_CONTEXT_LIMIT = 50;
 const MEMORY_TOKEN_BUDGET = 800;
-const DEDUP_SIMILARITY_THRESHOLD = 0.55;
+// Jaccard similarity floor for treating a write as an update of an existing
+// entry. Was 0.55 until Stackbilt-dev/aegis#437 — that threshold was aggressive
+// enough to silently catch genuine content updates (e.g. replacing a fact that
+// kept ~60% of the original words) and, combined with the old "skip write and
+// return existing id" logic, caused silent data loss. Raised to 0.85 so only
+// near-identical paraphrases are treated as updates; borderline cases store
+// as new entries and the consolidation cycle can merge them later if needed.
+const DEDUP_SIMILARITY_THRESHOLD = 0.85;
 
 type MB = MemoryServiceBinding;
 
@@ -32,16 +39,28 @@ function jaccardSimilarity(a: string, b: string): number {
 // ─── recordMemory (Memory Worker only) ──────────────────────
 export interface RecordMemoryResult {
   fragment_id: string;
-  deduplicated?: boolean;
+  /**
+   * True when this call superseded an existing near-identical entry. The new
+   * content is stored under `fragment_id`; the superseded entry is forgotten.
+   * See Stackbilt-dev/aegis#437 for the bug this field exists to surface.
+   */
+  updated?: boolean;
+  /** When `updated` is true, the id of the entry that was superseded. */
+  superseded_id?: string;
 }
 
 export async function recordMemory(
   mem: MB, topic: string, fact: string, confidence: number, source: string,
 ): Promise<RecordMemoryResult> {
   try {
-    // Pre-write dedup: check if a similar entry already exists.
-    // Uses keyword recall + Jaccard similarity to catch rephrasings
-    // that the Memory Worker's hash-based dedup misses.
+    // Pre-write dedup: find an existing entry that's near-identical to the
+    // incoming fact. If found, we'll treat this call as an update — store
+    // the new content first, then forget the old entry. This preserves
+    // operator upsert semantics without losing data if the forget step fails.
+    //
+    // Uses keyword recall + Jaccard similarity to catch rephrasings that the
+    // Memory Worker's hash-based dedup misses.
+    let existingMatch: { id: string; lifecycle: string } | null = null;
     try {
       const keywords = [...tokenize(fact)].slice(0, 5).join(' ');
       if (keywords) {
@@ -49,17 +68,46 @@ export async function recordMemory(
         for (const entry of existing) {
           const sim = jaccardSimilarity(fact, entry.content);
           if (sim >= DEDUP_SIMILARITY_THRESHOLD) {
-            console.log(`[memory-adapter] dedup: skipping write (similarity=${sim.toFixed(2)} with ${entry.id}): "${fact.slice(0, 80)}"`);
-            return { fragment_id: entry.id, deduplicated: true };
+            existingMatch = { id: entry.id, lifecycle: entry.lifecycle };
+            break;
           }
         }
       }
     } catch {
-      // Dedup check failed — proceed with write anyway
+      // Dedup check failed — proceed with write anyway. Worst case: a duplicate
+      // lands in the store and consolidation cleans it up later. That's a much
+      // better failure mode than silently dropping the caller's write.
     }
 
-    const result = await mem.store(TENANT, [{ content: fact, topic, confidence, source }]);
-    return { fragment_id: result.fragment_ids?.[0] ?? 'unknown' };
+    // Store the new content first. If this fails, the old entry (if any) is
+    // still intact — no data loss. Preserve lifecycle=core on upserts so
+    // persona/identity facts don't silently demote and get decayed away.
+    const storeReq: MemoryStoreRequest = { content: fact, topic, confidence, source };
+    if (existingMatch?.lifecycle === 'core') {
+      storeReq.lifecycle = 'core';
+    }
+    const result = await mem.store(TENANT, [storeReq]);
+    const newId = result.fragment_ids?.[0] ?? 'unknown';
+
+    // If we matched an existing entry and the store succeeded, forget the
+    // old one now that the replacement is safely in place. If forget fails
+    // here, log loudly but don't throw — the operator has their new content
+    // under a fresh id, and the stale entry can be cleaned up manually. This
+    // is strictly better than the old behavior, where the write was silently
+    // skipped and the operator thought their update landed.
+    if (existingMatch && newId !== existingMatch.id && newId !== 'unknown') {
+      try {
+        await mem.forget(TENANT, { ids: [existingMatch.id] });
+        console.log(`[memory-adapter] upsert: ${newId} superseded ${existingMatch.id}`);
+      } catch (err) {
+        console.error(
+          `[memory-adapter] upsert: store ok but forget failed (stale entry ${existingMatch.id} remains): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      return { fragment_id: newId, updated: true, superseded_id: existingMatch.id };
+    }
+
+    return { fragment_id: newId };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error('[memory-adapter] recordMemory failed:', errorMessage);
