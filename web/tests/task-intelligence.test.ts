@@ -61,6 +61,87 @@ describe('task intelligence', () => {
     expect(autopsy.system_contract).toBe('content_public_route_drift');
   });
 
+  it('classifies max_turns_exceeded as retryable even when exit code is 1', () => {
+    const autopsy = classifyTaskFailure({
+      title: 'Post-deploy visual QA: aegis',
+      repo: 'aegis',
+      error: 'Exit code 1',
+      result: '[max_turns_exceeded] Task ran out of turns (12 used, unknown). Increase max_turns or simplify the task.',
+      exitCode: 1,
+    });
+
+    expect(autopsy.kind).toBe('max_turns_exceeded');
+    expect(autopsy.retryable).toBe(true);
+  });
+
+  it('classifies max_turns with existing PR as completed-but-unsignaled', () => {
+    const autopsy = classifyTaskFailure({
+      error: 'Exit code 1',
+      result: '[max_turns_exceeded] Task ran out of turns. Pull request created: https://github.com/x/y/pull/1',
+      exitCode: 1,
+    });
+
+    expect(autopsy.kind).toBe('max_turns_exceeded');
+    expect(autopsy.summary).toContain('created a PR');
+  });
+
+  it('classifies credit exhaustion as non-retryable runner contract failure', () => {
+    const autopsy = classifyTaskFailure({
+      error: 'Your credit balance is too low to access the API',
+    });
+
+    expect(autopsy.kind).toBe('credit_exhausted');
+    expect(autopsy.retryable).toBe(false);
+    expect(autopsy.system_contract).toBe('runner_credit_exhausted');
+  });
+
+  it('classifies auth failures as runner_auth_degraded', () => {
+    const autopsy = classifyTaskFailure({
+      error: '401 unauthorized',
+      result: 'authentication failed against the provider',
+    });
+
+    expect(autopsy.kind).toBe('auth_failure');
+    expect(autopsy.system_contract).toBe('runner_auth_degraded');
+  });
+
+  it('classifies exit code 3 with npm errors as environment_failure, not completion_signal_missing', () => {
+    const autopsy = classifyTaskFailure({
+      error: 'npm ERR! install failed',
+      result: 'Cannot find module foo',
+      exitCode: 3,
+    });
+
+    expect(autopsy.kind).toBe('environment_failure');
+    expect(autopsy.system_contract).toBe('runner_environment_degraded');
+  });
+
+  it('classifies work_already_done when agent reports nothing to do', () => {
+    const autopsy = classifyTaskFailure({
+      result: 'This issue has already been resolved in commit abc123 — nothing to do',
+    });
+
+    expect(autopsy.kind).toBe('work_already_done');
+  });
+
+  it('classifies hallucinated tasks from dreaming source', () => {
+    const autopsy = classifyTaskFailure({
+      title: 'fix: dreaming cycle task',
+      result: 'The file referenced in the task does not exist in the repo',
+    });
+
+    expect(autopsy.kind).toBe('hallucinated_task');
+  });
+
+  it('classifies branch_conflict as retryable (auto-cleanup)', () => {
+    const autopsy = classifyTaskFailure({
+      result: 'Error: branch auto/docs/123 already exists on remote',
+    });
+
+    expect(autopsy.kind).toBe('branch_conflict');
+    expect(autopsy.retryable).toBe(true);
+  });
+
   it('deduplicates contract alerts by contract and repo', () => {
     const alerts = collectContractAlerts([
       {

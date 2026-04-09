@@ -75,6 +75,32 @@ export function parseTaskAutopsy(raw: string | Record<string, unknown> | null | 
   return parseJsonObject<TaskFailureAutopsy>(raw);
 }
 
+// Environment failure patterns — tool/dependency/infra issues that exit code 3 can mask
+const ENVIRONMENT_FAILURE_PATTERNS = [
+  /npm\s+(err|error|warn).*install/i,
+  /enoent.*npm/i,
+  /cannot find module/i,
+  /module not found/i,
+  /permission denied/i,
+  /eacces/i,
+  /network\s+(error|timeout|unreachable)/i,
+  /connection\s+(refused|reset|timed?\s*out)/i,
+  /no\s+such\s+file\s+or\s+directory/i,
+  /spawn\s+\S+\s+enoent/i,
+  /command\s+failed.*install/i,
+  /failed\s+to\s+(fetch|download|install)/i,
+  /dependency\s+(resolution|install)\s+fail/i,
+  /exit\s+code\s+1.*npm\s+install/i,
+  /errno\s+\d+/i,
+  /segmentation\s+fault/i,
+  /out\s+of\s+memory/i,
+  /disk\s+(full|space)/i,
+];
+
+function isEnvironmentFailure(haystack: string): boolean {
+  return ENVIRONMENT_FAILURE_PATTERNS.some(p => p.test(haystack));
+}
+
 export function classifyTaskFailure(input: FailureInput): TaskFailureAutopsy {
   const warnings = input.preflight?.warnings ?? [];
   const signals = [
@@ -125,12 +151,15 @@ export function classifyTaskFailure(input: FailureInput): TaskFailureAutopsy {
     );
   }
 
-  if (haystack.includes('exists on remote') && haystack.includes('open pr')) {
+  if (
+    (haystack.includes('exists on remote') && haystack.includes('open pr')) ||
+    (haystack.includes('branch') && haystack.includes('already exists') && !haystack.includes('repo not found'))
+  ) {
     return createAutopsy(
       'branch_conflict',
-      false,
-      'Task branch already exists on the remote, suggesting an unresolved earlier run or open PR.',
-      'Close or merge the existing branch/PR, or rerun with a new branch identity.',
+      true,
+      'Task branch already exists on the remote from a prior run. The taskrunner now auto-closes stale PRs and cleans up branches on retry.',
+      'Retry the task — the taskrunner will clean up the stale branch automatically.',
       signals,
     );
   }
@@ -157,6 +186,40 @@ export function classifyTaskFailure(input: FailureInput): TaskFailureAutopsy {
     );
   }
 
+  // Credit/billing exhaustion — runner hit API spend limits
+  if (
+    haystack.includes('credit balance') ||
+    haystack.includes('credit limit') ||
+    haystack.includes('insufficient credits') ||
+    haystack.includes('billing') ||
+    haystack.includes('payment required') ||
+    haystack.includes('rate limit') && haystack.includes('credit')
+  ) {
+    return createAutopsy(
+      'credit_exhausted',
+      false,
+      'Task failed because the LLM provider credit balance was exhausted or billing limit was reached.',
+      'Top up credits or adjust the runner configuration (e.g. switch from --bare API to Claude Code OAuth).',
+      signals,
+      'runner_credit_exhausted',
+    );
+  }
+
+  // Authentication failures — invalid or expired API keys/tokens
+  if (
+    (haystack.includes('unauthorized') || haystack.includes('401') || haystack.includes('authentication failed') || haystack.includes('api key') && haystack.includes('invalid')) &&
+    !haystack.includes('repo')  // avoid false matches on repo auth
+  ) {
+    return createAutopsy(
+      'auth_failure',
+      false,
+      'Task failed due to an authentication or authorization error with an external service.',
+      'Check and rotate the relevant API key or token, then retry.',
+      signals,
+      'runner_auth_degraded',
+    );
+  }
+
   if (input.exitCode === 127 || haystack.includes('command not found')) {
     return createAutopsy(
       'command_missing',
@@ -178,6 +241,72 @@ export function classifyTaskFailure(input: FailureInput): TaskFailureAutopsy {
       'Repair the route or API contract so drafts use a non-public preview or edit flow instead of a live URL.',
       signals,
       'content_public_route_drift',
+    );
+  }
+
+  // Exit code 3 with environment failure signals → environment_failure (not retryable)
+  // These are tool/dependency/infra issues, not missing completion signals.
+  // Real examples: npm install failures, missing CLI tools, network timeouts.
+  if (input.exitCode === 3 && isEnvironmentFailure(haystack)) {
+    return createAutopsy(
+      'environment_failure',
+      false,
+      'Task failed due to an environment or tool-availability issue on the runner.',
+      'Investigate the runner environment: check tool versions, network access, and dependency availability before retrying.',
+      signals,
+      'runner_environment_degraded',
+    );
+  }
+
+  // max_turns_exceeded — Claude hit the turn limit before completing.
+  // This is retryable (with higher max_turns or a simpler task scope).
+  // Must come before completion_signal_missing since both can have exit code 3,
+  // but max_turns is a distinct, actionable failure with a clear fix.
+  if (haystack.includes('max_turns') || haystack.includes('error_max_turns') || haystack.includes('ran out of turns')) {
+    const hasPr = haystack.includes('[taskrunner] pr:') || haystack.includes('pr created') || haystack.includes('pull request');
+    return createAutopsy(
+      'max_turns_exceeded',
+      true,
+      hasPr
+        ? 'Task hit the turn limit but created a PR — work was likely completed, signal was not emitted before timeout.'
+        : 'Task hit the turn limit before completing. Claude ran out of turns without emitting a completion signal.',
+      hasPr
+        ? 'Review the PR — task may be complete. If so, mark as success. Otherwise, retry with higher max_turns or split the task.'
+        : 'Retry with higher max_turns (current limit may be too low for the task scope) or split into smaller subtasks.',
+      signals,
+    );
+  }
+
+  // Hallucinated task — agent determined the target doesn't exist
+  if (
+    haystack.includes("doesn't exist") && haystack.includes('hallucinated') ||
+    haystack.includes('does not exist') && (haystack.includes('dreaming') || haystack.includes('self-improvement')) ||
+    haystack.includes('code that doesn\'t exist')
+  ) {
+    return createAutopsy(
+      'hallucinated_task',
+      false,
+      'Task referenced code or components that do not exist — likely generated by dreaming/self-improvement without verification.',
+      'Improve task source (dreaming/self-improvement) to verify targets exist before queuing.',
+      signals,
+    );
+  }
+
+  // "Nothing to do" — agent determined work was already done but didn't signal completion
+  if (
+    haystack.includes('already resolved') ||
+    haystack.includes('already complete') ||
+    haystack.includes('already confirmed') ||
+    haystack.includes('already processed') ||
+    haystack.includes('nothing to do') ||
+    haystack.includes('no action needed')
+  ) {
+    return createAutopsy(
+      'work_already_done',
+      false,
+      'Agent determined the work was already completed or unnecessary, but did not emit a completion signal.',
+      'Task should be marked as success — the agent correctly identified no work was needed. Consider improving the taskrunner to recognize "already done" as a valid completion.',
+      signals,
     );
   }
 
