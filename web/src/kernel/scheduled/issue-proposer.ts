@@ -26,45 +26,84 @@ interface ProposedIssue {
   dedupKey: string; // unique key for web_events dedup
 }
 
+// ─── Repo canonicalization ──────────────────────────────────────
+// Tasks are recorded with inconsistent repo values — sometimes the bare
+// name (`aegis`), sometimes the full slug (`Stackbilt-dev/aegis`), sometimes
+// the local directory name (`aegis-daemon`). SQL GROUP BY on the raw column
+// treats all three as different repos, so fix-by-rename noise stays in the
+// detector window forever and a single fix-commit-that's-already-live will
+// still re-fire issues on every cadence.
+//
+// This function collapses all three forms into a single canonical key by:
+//   1. Stripping any org prefix (e.g. `Stackbilt-dev/aegis` → `aegis`)
+//   2. Stripping `.git` suffix
+//   3. Lowercasing
+//
+// Note: This deliberately does NOT resolve local-dir-name aliases (like
+// `aegis-daemon → aegis`) because those are operator-specific and live in
+// github.ts's REPO_ALIASES, which is intentionally template-scoped in this
+// OSS package. If an operator needs that mapping, they can normalize at
+// cc_tasks INSERT time or extend this helper with an alias-lookup hook.
+export function canonicalizeRepoName(repo: string): string {
+  if (!repo) return '';
+  const parts = repo.split('/');
+  const raw = parts[parts.length - 1]; // last segment, org stripped
+  return raw.replace(/\.git$/, '').toLowerCase();
+}
+
 // ─── Detectors ──────────────────────────────────────────────────
 
 /**
  * Detector 1: Task failure patterns
  * Finds repeated failure_kind values in cc_tasks over the last 7 days.
  * If the same failure_kind appears 3+ times, propose an issue.
+ *
+ * Aggregation is done in JS (not SQL GROUP BY) so that `repo` values are
+ * canonicalized first — otherwise "Stackbilt-dev/aegis", "aegis", and
+ * any other form are counted as separate "affected repos" in the output.
  */
-async function detectTaskFailurePatterns(db: D1Database): Promise<ProposedIssue[]> {
+export async function detectTaskFailurePatterns(db: D1Database): Promise<ProposedIssue[]> {
   const rows = await db.prepare(`
-    SELECT failure_kind, COUNT(*) as cnt,
-           GROUP_CONCAT(DISTINCT repo) as repos
+    SELECT failure_kind, repo
     FROM cc_tasks
     WHERE status = 'failed'
       AND failure_kind IS NOT NULL
       AND completed_at > datetime('now', '-7 days')
-    GROUP BY failure_kind
-    HAVING cnt >= 3
-    ORDER BY cnt DESC
-    LIMIT 5
-  `).all<{ failure_kind: string; cnt: number; repos: string }>();
+  `).all<{ failure_kind: string; repo: string }>();
 
-  return rows.results.map(r => ({
-    title: `Recurring task failure: ${r.failure_kind} (${r.cnt}x in 7d)`,
+  // Bucket by failure_kind, collect canonical repo set per bucket
+  const buckets = new Map<string, { cnt: number; repos: Set<string> }>();
+  for (const row of rows.results) {
+    const bucket = buckets.get(row.failure_kind) ?? { cnt: 0, repos: new Set<string>() };
+    bucket.cnt += 1;
+    const canonical = canonicalizeRepoName(row.repo);
+    if (canonical) bucket.repos.add(canonical);
+    buckets.set(row.failure_kind, bucket);
+  }
+
+  const ranked = Array.from(buckets.entries())
+    .filter(([, b]) => b.cnt >= 3)
+    .sort((a, b) => b[1].cnt - a[1].cnt)
+    .slice(0, 5);
+
+  return ranked.map(([failure_kind, b]) => ({
+    title: `Recurring task failure: ${failure_kind} (${b.cnt}x in 7d)`,
     body: [
       `## Detection`,
       `The issue proposer detected a recurring task failure pattern.`,
       ``,
-      `- **Failure kind**: \`${r.failure_kind}\``,
-      `- **Occurrences**: ${r.cnt} in the last 7 days`,
-      `- **Affected repos**: ${r.repos}`,
+      `- **Failure kind**: \`${failure_kind}\``,
+      `- **Occurrences**: ${b.cnt} in the last 7 days`,
+      `- **Affected repos**: ${Array.from(b.repos).sort().join(', ')}`,
       ``,
       `## Suggested action`,
-      `Investigate root cause of \`${r.failure_kind}\` failures and fix the underlying issue.`,
+      `Investigate root cause of \`${failure_kind}\` failures and fix the underlying issue.`,
       ``,
       `_Auto-filed by issue-proposer (task-failure-patterns detector)_`,
     ].join('\n'),
     labels: DEFAULT_LABELS,
     detector: 'task-failure-patterns',
-    dedupKey: `issue-proposer:task-fail:${r.failure_kind}`,
+    dedupKey: `issue-proposer:task-fail:${failure_kind}`,
   }));
 }
 
@@ -72,41 +111,56 @@ async function detectTaskFailurePatterns(db: D1Database): Promise<ProposedIssue[
  * Detector 2: Repo failure rates
  * If a repo has >50% task failure rate over the last 7 days (min 4 tasks),
  * propose an issue.
+ *
+ * Aggregation is done in JS (not SQL GROUP BY) so that tasks recorded
+ * with different repo spellings (e.g. "Stackbilt-dev/aegis" vs "aegis")
+ * collapse into a single bucket. Otherwise pre-fix failures on one
+ * spelling stay at 100% failure rate forever because no new completions
+ * ever land in that bucket to dilute them (Stackbilt-dev/aegis#431).
  */
-async function detectRepoFailureRates(db: D1Database): Promise<ProposedIssue[]> {
+export async function detectRepoFailureRates(db: D1Database): Promise<ProposedIssue[]> {
   const rows = await db.prepare(`
-    SELECT repo,
-           COUNT(*) as total,
-           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+    SELECT repo, status
     FROM cc_tasks
     WHERE completed_at > datetime('now', '-7 days')
       AND status IN ('completed', 'failed')
-    GROUP BY repo
-    HAVING total >= 4 AND (CAST(failed AS REAL) / total) > 0.5
-    ORDER BY failed DESC
-    LIMIT 5
-  `).all<{ repo: string; total: number; failed: number }>();
+  `).all<{ repo: string; status: string }>();
 
-  return rows.results.map(r => {
-    const rate = Math.round((r.failed / r.total) * 100);
+  const buckets = new Map<string, { total: number; failed: number }>();
+  for (const row of rows.results) {
+    const canonical = canonicalizeRepoName(row.repo);
+    if (!canonical) continue;
+    const bucket = buckets.get(canonical) ?? { total: 0, failed: 0 };
+    bucket.total += 1;
+    if (row.status === 'failed') bucket.failed += 1;
+    buckets.set(canonical, bucket);
+  }
+
+  const ranked = Array.from(buckets.entries())
+    .filter(([, b]) => b.total >= 4 && b.failed / b.total > 0.5)
+    .sort((a, b) => b[1].failed - a[1].failed)
+    .slice(0, 5);
+
+  return ranked.map(([repo, b]) => {
+    const rate = Math.round((b.failed / b.total) * 100);
     return {
-      title: `High task failure rate in ${r.repo} (${rate}% over 7d)`,
+      title: `High task failure rate in ${repo} (${rate}% over 7d)`,
       body: [
         `## Detection`,
         `The issue proposer detected an elevated task failure rate.`,
         ``,
-        `- **Repo**: \`${r.repo}\``,
-        `- **Failure rate**: ${rate}% (${r.failed}/${r.total} tasks failed)`,
+        `- **Repo**: \`${repo}\``,
+        `- **Failure rate**: ${rate}% (${b.failed}/${b.total} tasks failed)`,
         `- **Period**: last 7 days`,
         ``,
         `## Suggested action`,
-        `Review recent failures in \`${r.repo}\` to identify systemic issues (broken tests, missing deps, config drift).`,
+        `Review recent failures in \`${repo}\` to identify systemic issues (broken tests, missing deps, config drift).`,
         ``,
         `_Auto-filed by issue-proposer (repo-failure-rates detector)_`,
       ].join('\n'),
       labels: DEFAULT_LABELS,
       detector: 'repo-failure-rates',
-      dedupKey: `issue-proposer:repo-fail:${r.repo}`,
+      dedupKey: `issue-proposer:repo-fail:${repo}`,
     };
   });
 }
