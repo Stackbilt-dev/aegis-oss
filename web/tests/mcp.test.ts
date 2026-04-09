@@ -512,6 +512,77 @@ describe('MCP Tool Handlers', () => {
       await handlers.toolAegisMemory({ limit: 200 }, env as any);
       // No error — limit is clamped internally
     });
+
+    // ─── Stackbilt-dev/aegis#436 — id lookup contract ──────
+
+    it('returns exact entry when id lookup hits', async () => {
+      const env = makeEnv();
+      env.memoryBinding!.recall = vi.fn().mockResolvedValue([
+        {
+          id: '01KNT38V9Q46CRBA6CA3ETRSKC',
+          topic: 'foodfiles',
+          content: 'foodfiles apps/api uses link: paths',
+          confidence: 0.9,
+          lifecycle: 'confirmed',
+          strength: 1,
+          access_count: 1,
+          created_at: '2026-04-09T00:00:00Z',
+        },
+      ]);
+
+      const result = await handlers.toolAegisMemory(
+        { id: '01KNT38V9Q46CRBA6CA3ETRSKC' },
+        env as any,
+      );
+      expect(env.memoryBinding!.recall).toHaveBeenCalledWith('aegis', { id: '01KNT38V9Q46CRBA6CA3ETRSKC' });
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.count).toBe(1);
+      expect(parsed.entries[0].id).toBe('01KNT38V9Q46CRBA6CA3ETRSKC');
+    });
+
+    it('returns not-found (count=0) when id lookup misses', async () => {
+      const env = makeEnv();
+      env.memoryBinding!.recall = vi.fn().mockResolvedValue([]);
+
+      const result = await handlers.toolAegisMemory(
+        { id: '01NONEXISTENT00000000000000' },
+        env as any,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.count).toBe(0);
+      expect(parsed.requested_id).toBe('01NONEXISTENT00000000000000');
+      expect(parsed.note).toContain('not found');
+    });
+
+    it('refuses to surface a wrong-id response if memory worker regresses to nearest-neighbor fallback', async () => {
+      // This is the #436 defense-in-depth check. Even if the memory worker
+      // reintroduces its pre-fix fallback behavior and returns a non-matching
+      // high-strength entry, the handler must detect the id mismatch and
+      // surface an honest not-found rather than silently handing back the
+      // wrong entry (the original #436 symptom).
+      const env = makeEnv();
+      env.memoryBinding!.recall = vi.fn().mockResolvedValue([
+        {
+          id: '01KJXJYYERZ05CTKJ3WEGE3BAW', // wrong — the fallback entry
+          topic: 'aegis',
+          content: 'AEGIS advisory scope is full-spectrum...',
+          confidence: 1.0,
+          lifecycle: 'core',
+          strength: 3911,
+          access_count: 200,
+          created_at: '2026-03-04T00:00:00Z',
+        },
+      ]);
+
+      const result = await handlers.toolAegisMemory(
+        { id: '01KNT38V9Q46CRBA6CA3ETRSKC' }, // requested
+        env as any,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.count).toBe(0);
+      expect(parsed.requested_id).toBe('01KNT38V9Q46CRBA6CA3ETRSKC');
+      expect(parsed.note).toContain('non-matching');
+    });
   });
 
   // ─── aegis_record_memory ─────────────────────────────────

@@ -133,13 +133,27 @@ export async function toolAegisMemory(args: Record<string, unknown>, env: EdgeEn
 
   const id = args.id as string | undefined;
 
-  // Direct ID lookup — bypasses search entirely
+  // Direct ID lookup — bypasses search entirely.
+  // Defense-in-depth: verify the returned entry's id matches what we asked
+  // for. If it doesn't, the memory worker has regressed to the Stackbilt-dev/aegis#436
+  // nearest-neighbor fallback behavior, and we need to surface that honestly
+  // instead of silently returning the wrong entry. The memory worker fix (in
+  // stackbilt-memory-worker's recall.ts) should make this defensive check a
+  // no-op in practice, but it's the right belt-and-suspenders contract for
+  // a lookup that the whole review workflow depends on.
   if (id) {
     const results = await env.memoryBinding.recall('aegis', { id });
     if (results.length === 0) {
-      return { content: [{ type: 'text', text: JSON.stringify({ count: 0, entries: [], note: 'Fragment not found by ID' }, null, 2) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ count: 0, entries: [], requested_id: id, note: 'Fragment not found by ID' }, null, 2) }] };
     }
     const f = results[0];
+    if (f.id !== id) {
+      // Memory worker returned a non-matching entry. This should never happen
+      // post-fix; if it does, surface it honestly rather than silently handing
+      // back wrong data (the exact symptom of #436).
+      console.error(`[aegis_memory] memory worker returned wrong id: requested=${id}, got=${f.id}`);
+      return { content: [{ type: 'text', text: JSON.stringify({ count: 0, entries: [], requested_id: id, note: 'Memory worker returned a non-matching entry — treating as not-found. Check memory worker recall logic.' }, null, 2) }] };
+    }
     return { content: [{ type: 'text', text: JSON.stringify({ count: 1, entries: [{ id: f.id, topic: f.topic, fact: f.content, confidence: f.confidence, lifecycle: f.lifecycle, strength: f.strength, access_count: f.access_count, created_at: f.created_at }] }, null, 2) }] };
   }
 
