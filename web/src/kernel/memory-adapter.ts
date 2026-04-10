@@ -7,6 +7,7 @@
 
 import type { MemoryServiceBinding, MemoryFragmentResult, MemoryStatsResult, MemoryStoreRequest } from '../types.js';
 import { estimateTokens } from './memory/episodic.js';
+import { classifyMemoryTopic, type MemoryTopicClassification } from './classify-memory-topic.js';
 
 const TENANT = 'aegis';
 const MEMORY_CONTEXT_LIMIT = 50;
@@ -113,6 +114,39 @@ export async function recordMemory(
     console.error('[memory-adapter] recordMemory failed:', errorMessage);
     throw new Error(`Memory write failed: ${errorMessage}`);
   }
+}
+
+// ─── recordMemoryWithAutoTopic ──────────────────────────────
+// Opt-in convenience wrapper: classify the fact via TarotScript's
+// memory-topic-classify spread, then write with the inferred topic.
+//
+// Callers pass the tarotscript service binding alongside the memory binding.
+// If the classifier returns 'general' via the fallback path (classifier
+// down, low confidence, unknown topic), the wrapper still writes the fact
+// but with the 'general' topic — the caller can filter on the returned
+// `classification.source === 'fallback'` to decide whether to re-tag later.
+//
+// Rollout note: this is additive, not a replacement for recordMemory. Existing
+// call sites that pass an explicit topic continue to work unchanged. Callers
+// wanting auto-topic opt in explicitly by switching to this wrapper. The
+// feature flag lives at the call site (not in this helper) so each caller
+// can independently decide when to flip on auto-topic inference.
+
+export interface RecordMemoryWithTopicResult extends RecordMemoryResult {
+  classification: MemoryTopicClassification;
+}
+
+export async function recordMemoryWithAutoTopic(
+  mem: MB,
+  tarotscriptFetcher: Fetcher,
+  fact: string,
+  confidence: number,
+  source: string,
+  opts: { seed?: number } = {},
+): Promise<RecordMemoryWithTopicResult> {
+  const classification = await classifyMemoryTopic(tarotscriptFetcher, fact, opts);
+  const record = await recordMemory(mem, classification.topic, fact, confidence, source);
+  return { ...record, classification };
 }
 
 // ─── getMemoryEntries ───────────────────────────────────────
