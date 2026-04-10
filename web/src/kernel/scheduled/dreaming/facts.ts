@@ -2,7 +2,7 @@
 // extract durable facts, routing failures, BizOps drift, preferences.
 
 import type { EdgeEnv } from '../../dispatch.js';
-import { recordMemory as recordMemoryAdapter } from '../../memory-adapter.js';
+import { recordMemory as recordMemoryAdapter, recordMemoryWithAutoTopic } from '../../memory-adapter.js';
 import { validateMemoryWrite } from '../../memory-guardrails.js';
 import { McpClient } from '../../../mcp-client.js';
 import { operatorConfig } from '../../../operator/index.js';
@@ -197,8 +197,9 @@ export async function extractFacts(env: EdgeEnv, threadContents: string[]): Prom
 export async function processFacts(env: EdgeEnv, result: DreamingResult): Promise<number> {
   let factsRecorded = 0;
 
+  const useAutoTopic = !!env.tarotscriptFetcher;
   for (const fact of (result.facts ?? []).slice(0, 5)) {
-    const guard = validateMemoryWrite(fact.topic, fact.fact, { enforceAllowlist: true });
+    const guard = validateMemoryWrite(fact.topic, fact.fact, { enforceAllowlist: !useAutoTopic });
     if (!guard.allowed) {
       console.log(`[dreaming] Blocked: ${guard.reason}`);
       continue;
@@ -206,9 +207,15 @@ export async function processFacts(env: EdgeEnv, result: DreamingResult): Promis
 
     try {
       if (!env.memoryBinding) continue;
-      await recordMemoryAdapter(env.memoryBinding, fact.topic, fact.fact, fact.confidence ?? 0.8, 'dreaming_cycle');
-      factsRecorded++;
-      console.log(`[dreaming] Fact: [${fact.topic}] ${fact.fact.slice(0, 80)}`);
+      if (useAutoTopic) {
+        const res = await recordMemoryWithAutoTopic(env.memoryBinding, env.tarotscriptFetcher!, fact.fact, fact.confidence ?? 0.8, 'dreaming_cycle');
+        factsRecorded++;
+        console.log(`[dreaming] Fact: [${res.classification.topic}] (${res.classification.confidence}, ${res.classification.source}) ${fact.fact.slice(0, 80)}`);
+      } else {
+        await recordMemoryAdapter(env.memoryBinding, fact.topic, fact.fact, fact.confidence ?? 0.8, 'dreaming_cycle');
+        factsRecorded++;
+        console.log(`[dreaming] Fact: [${fact.topic}] ${fact.fact.slice(0, 80)}`);
+      }
     } catch (err) {
       console.warn('[dreaming] Failed to record fact:', err instanceof Error ? err.message : String(err));
     }
@@ -229,8 +236,13 @@ export async function processFacts(env: EdgeEnv, result: DreamingResult): Promis
     if (!pref.preference || pref.preference.length < 15) continue;
     try {
       if (!env.memoryBinding) continue;
-      await recordMemoryAdapter(env.memoryBinding, 'operator_preferences', pref.preference, 0.85, 'dreaming_cycle');
-      console.log(`[dreaming] Preference: ${pref.preference.slice(0, 80)}`);
+      if (useAutoTopic) {
+        const res = await recordMemoryWithAutoTopic(env.memoryBinding, env.tarotscriptFetcher!, pref.preference, 0.85, 'dreaming_cycle');
+        console.log(`[dreaming] Preference: [${res.classification.topic}] (${res.classification.confidence}, ${res.classification.source}) ${pref.preference.slice(0, 80)}`);
+      } else {
+        await recordMemoryAdapter(env.memoryBinding, 'operator_preferences', pref.preference, 0.85, 'dreaming_cycle');
+        console.log(`[dreaming] Preference: ${pref.preference.slice(0, 80)}`);
+      }
     } catch { /* non-fatal */ }
   }
 
