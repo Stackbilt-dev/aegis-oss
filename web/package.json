@@ -22,6 +22,8 @@
     "./kernel/router": "./src/kernel/router.ts",
     "./kernel/types": "./src/kernel/types.ts",
     "./kernel/memory": "./src/kernel/memory/index.ts",
+    "./kernel/memory-adapter": "./src/kernel/memory-adapter.ts",
+    "./kernel/classify-memory-topic": "./src/kernel/classify-memory-topic.ts",
     "./kernel/executors": "./src/kernel/executors/index.ts",
     "./kernel/scheduled": "./src/kernel/scheduled/index.ts",
     "./kernel/scheduled/dreaming": "./src/kernel/scheduled/dreaming.ts",

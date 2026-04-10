@@ -52,6 +52,7 @@ export interface RecordMemoryResult {
 
 export async function recordMemory(
   mem: MB, topic: string, fact: string, confidence: number, source: string,
+  metadata?: Record<string, unknown>,
 ): Promise<RecordMemoryResult> {
   try {
     // Pre-write dedup: find an existing entry that's near-identical to the
@@ -84,6 +85,7 @@ export async function recordMemory(
     // still intact — no data loss. Preserve lifecycle=core on upserts so
     // persona/identity facts don't silently demote and get decayed away.
     const storeReq: MemoryStoreRequest = { content: fact, topic, confidence, source };
+    if (metadata) storeReq.metadata = metadata;
     if (existingMatch?.lifecycle === 'core') {
       storeReq.lifecycle = 'core';
     }
