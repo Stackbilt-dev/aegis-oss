@@ -8,6 +8,59 @@ import { healthPage, type HealthData } from '../health-page.js';
 let appVersion: string | undefined;
 export function setAppVersion(v: string): void { appVersion = v; }
 
+interface CostHealthEntry {
+  spend_usd: number;
+  monthly_budget: number;
+  threshold_tier: string;
+  projected_depletion_days: number | null;
+  burn_rate_per_hour: number;
+}
+
+async function loadCostHealth(db: D1Database): Promise<Record<string, CostHealthEntry> | null> {
+  // Tables are owned by cost-monitor scheduled task; may not exist in fresh installs.
+  const budgets = await db
+    .prepare('SELECT provider, monthly_budget, current_spend, threshold_tier, current_period_start FROM cost_budgets')
+    .all<{ provider: string; monthly_budget: number; current_spend: number; threshold_tier: string; current_period_start: string }>()
+    .catch(() => null);
+  if (!budgets || budgets.results.length === 0) return null;
+
+  const result: Record<string, CostHealthEntry> = {};
+  for (const b of budgets.results) {
+    // Latest snapshot = best burn-rate signal. Fall back to spend/hours_elapsed.
+    const snap = await db
+      .prepare(
+        'SELECT burn_rate_per_hour FROM cost_snapshots WHERE provider = ?1 ORDER BY created_at DESC LIMIT 1'
+      )
+      .bind(b.provider)
+      .first<{ burn_rate_per_hour: number }>()
+      .catch(() => null);
+
+    let burn = snap?.burn_rate_per_hour ?? 0;
+    if (!burn && b.current_spend > 0) {
+      const hoursElapsed = Math.max(
+        1,
+        (Date.now() - new Date(b.current_period_start + 'Z').getTime()) / 3_600_000
+      );
+      burn = b.current_spend / hoursElapsed;
+    }
+
+    let depletion: number | null = null;
+    if (b.monthly_budget > 0 && burn > 0) {
+      const remaining = b.monthly_budget - b.current_spend;
+      depletion = remaining <= 0 ? 0 : remaining / burn / 24;
+    }
+
+    result[b.provider] = {
+      spend_usd: Number(b.current_spend.toFixed(4)),
+      monthly_budget: b.monthly_budget,
+      threshold_tier: b.threshold_tier,
+      projected_depletion_days: depletion != null ? Number(depletion.toFixed(2)) : null,
+      burn_rate_per_hour: Number(burn.toFixed(6)),
+    };
+  }
+  return result;
+}
+
 export const health = new Hono<{ Bindings: Env }>();
 
 health.get('/health', async (c) => {
@@ -50,6 +103,7 @@ health.get('/health', async (c) => {
     || (accept.includes('application/json') && !accept.includes('text/html'));
 
   if (wantsJson) {
+    const costHealth = await loadCostHealth(c.env.DB);
     return c.json({
       status: 'ok',
       service: 'aegis-web',
@@ -59,6 +113,7 @@ health.get('/health', async (c) => {
       kernel,
       tasks_24h: taskStats.results,
       docs_sync_status: docsSyncStatus,
+      cost_health: costHealth,
     });
   }
 
