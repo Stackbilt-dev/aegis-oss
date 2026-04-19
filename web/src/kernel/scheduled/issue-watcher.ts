@@ -16,10 +16,10 @@ const LABEL_TO_CATEGORY: Record<string, { category: string; authority: 'auto_saf
   refactor:      { category: 'refactor', authority: 'proposed' },
 };
 
-// Labels that signal multi-session scope — these issues are human-driven
-// and should NOT be auto-queued as single-session taskrunner tasks.
-// See aegis-daemon/artifacts/taskrunner-scope-process.md for the scope gate.
-const SKIP_LABELS = new Set(['wishlist', 'roadmap', 'epic']);
+// Labels that signal the issue should NOT be auto-queued as a single-session taskrunner task:
+// - wishlist / roadmap / epic: multi-session, human-driven scope (see aegis-daemon/artifacts/taskrunner-scope-process.md)
+// - blocked: cannot proceed until listed blockers close; operator removes the label when unblocked
+const SKIP_LABELS = new Set(['wishlist', 'roadmap', 'epic', 'blocked']);
 
 function classifyIssue(labels: string[]): { category: string; authority: 'auto_safe' | 'proposed' } | null {
   for (const label of labels) {

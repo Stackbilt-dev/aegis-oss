@@ -407,6 +407,18 @@ describe('runIssueWatcher scope label filter', () => {
     expect(insertCalls).toHaveLength(0);
   });
 
+  it('skips issue with blocked label', async () => {
+    const db = createMockDb();
+    const issue = makeIssue({ labels: ['refactor', 'blocked'] });
+    mockListIssues.mockResolvedValueOnce([issue]);
+
+    await runIssueWatcher(makeEnv(db));
+
+    const insertCalls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: string[]) => typeof c[0] === 'string' && c[0].includes('INSERT INTO cc_tasks'));
+    expect(insertCalls).toHaveLength(0);
+  });
+
   it('skip label filter is case-insensitive', async () => {
     const db = createMockDb();
     const issue = makeIssue({ labels: ['bug', 'WISHLIST'] });
