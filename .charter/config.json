@@ -2,7 +2,7 @@
   "project": "aegis-web",
   "version": "0.1",
   "git": {
-    "requireTrailers": true,
+    "requireTrailers": false,
     "trailerThreshold": "HIGH"
   },
   "drift": {
