@@ -23,6 +23,7 @@
     "./kernel/types": "./src/kernel/types.ts",
     "./kernel/memory": "./src/kernel/memory/index.ts",
     "./kernel/memory-adapter": "./src/kernel/memory-adapter.ts",
+    "./kernel/resilience": "./src/kernel/resilience.ts",
     "./kernel/classify-memory-topic": "./src/kernel/classify-memory-topic.ts",
     "./kernel/briefing": "./src/kernel/briefing.ts",
     "./kernel/dynamic-tools": "./src/kernel/dynamic-tools.ts",
@@ -61,6 +62,7 @@
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.2.4",
+    "@stackbilt/llm-providers": "file:../../llm-providers",
     "hono": "^4.12.12"
   },
   "devDependencies": {
