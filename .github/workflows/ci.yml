@@ -15,22 +15,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      # Checkout aegis-oss + sibling file: deps so web/package.json's
+      # file:../../llm-providers resolves during install.
+      - name: Checkout aegis-oss
+        uses: actions/checkout@v6
+        with:
+          path: aegis-oss
+
+      - name: Checkout llm-providers (sibling workspace dep)
+        uses: actions/checkout@v6
+        with:
+          repository: Stackbilt-dev/llm-providers
+          path: llm-providers
 
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: aegis-oss/web/package-lock.json
+
+      # llm-providers publishes from dist/ (main: dist/index.js).
+      # Build it before aegis-oss/web's npm ci so the file: symlink resolves types.
+      - name: Build llm-providers
+        working-directory: llm-providers
+        run: |
+          npm ci
+          npm run build
 
       - name: Install dependencies
-        working-directory: web
+        working-directory: aegis-oss/web
         run: npm ci
 
       - name: Typecheck
-        working-directory: web
+        working-directory: aegis-oss/web
         run: npm run typecheck
 
       - name: Test
-        working-directory: web
+        working-directory: aegis-oss/web
         run: npm test
