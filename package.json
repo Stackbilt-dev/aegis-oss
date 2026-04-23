@@ -1,0 +1,9 @@
+{
+  "name": "aegis-oss-governance",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Root-level governance tooling for aegis-oss (Charter CLI). The application lives in web/.",
+  "devDependencies": {
+    "@stackbilt/cli": "^0.9.2"
+  }
+}
