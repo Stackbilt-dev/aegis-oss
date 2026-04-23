@@ -233,12 +233,17 @@ export async function runArgusNotifications(env: EdgeEnv): Promise<void> {
   const rows = result.results;
   if (rows.length === 0) return;
 
-  // Classify all events
-  const classified: ClassifiedEvent[] = rows.map(row => {
+  // Classify all events. Stripe test-mode events are dropped pre-classification so
+  // they never land in digest_sections — real MRR is livemode=true only. Rows still
+  // get marked notified=1 below so we don't re-scan them on the next run.
+  const classified: ClassifiedEvent[] = rows.flatMap(row => {
     let payload: Record<string, unknown> = {};
     try { payload = JSON.parse(row.payload); } catch { /* use empty */ }
+    if (row.source === 'stripe' && payload.livemode === false) {
+      return [];
+    }
     const { priority, summary } = classifyEvent(row.source, row.event_type, payload);
-    return { id: row.id, source: row.source, event_type: row.event_type, payload, ts: row.ts, priority, summary };
+    return [{ id: row.id, source: row.source, event_type: row.event_type, payload, ts: row.ts, priority, summary }];
   });
 
   // Split by priority
