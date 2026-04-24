@@ -71,6 +71,124 @@ export async function getEpisodeStats(db: D1Database, intentClass: string): Prom
   };
 }
 
+// ─── Stats by (intent_class, complexity_tier) — derived-stats path ──
+// aegis#563 + aegis#564: stats keyed by (intent_class, complexity_tier) —
+// matches procedural_memory's procedureKey shape so the projection-source
+// path can derive procedural aggregates at read time.
+//
+// The helpers rely on episodic_memory.complexity_tier (added in the same
+// schema migration that adds these functions). Rows without a tier value
+// are excluded from derived results by the WHERE complexity_tier IS NOT
+// NULL guard. Consumers that want stricter protection against retroactive
+// backfills can add their own time-based filter in a wrapper.
+
+export async function getEpisodeStatsByComplexity(
+  db: D1Database,
+  intentClass: string,
+  complexityTier: string,
+): Promise<{
+  count: number;
+  successCount: number;
+  successRate: number;
+  avgCost: number;
+  avgLatency: number;
+  lastUsed: string | null;
+} | null> {
+  // SUM(CASE outcome='success' ...) returns an exact integer — don't
+  // reconstruct successCount from count * avgSuccessRate downstream (FP
+  // rounding on ugly rates would break strict-equality drift checks).
+  const row = await db.prepare(`
+    SELECT
+      COUNT(*) as count,
+      SUM(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END) as success_count,
+      AVG(cost) as avg_cost,
+      AVG(latency_ms) as avg_latency,
+      MAX(created_at) as last_used
+    FROM episodic_memory
+    WHERE intent_class = ?
+      AND complexity_tier = ?
+  `).bind(intentClass, complexityTier).first<{
+    count: number;
+    success_count: number;
+    avg_cost: number;
+    avg_latency: number;
+    last_used: string | null;
+  }>();
+
+  if (!row || row.count === 0) return null;
+  return {
+    count: row.count,
+    successCount: row.success_count,
+    successRate: row.count > 0 ? row.success_count / row.count : 0,
+    avgCost: row.avg_cost,
+    avgLatency: row.avg_latency,
+    lastUsed: row.last_used,
+  };
+}
+
+// aegis#564 Phase 2: bulk variant for dashboard / observability / decision-docs.
+// One GROUP BY intent_class, complexity_tier scan covers both the derived
+// slice (non-null tier) and the pre-tier ghost slice (NULL tier) so callers
+// avoid N+1 queries. Returns a Map keyed on intent_class with nested
+// derived-by-tier and the pre-tier count.
+export interface EpisodeStatsAggregate {
+  derived: Record<string, {
+    count: number;
+    successCount: number;
+    failCount: number;
+    avgCost: number;
+    avgLatency: number;
+    lastUsed: string | null;
+  }>;
+  preTierCount: number;
+}
+
+export async function getAllEpisodeStatsByComplexity(
+  db: D1Database,
+): Promise<Map<string, EpisodeStatsAggregate>> {
+  // Single scan: grouping on (intent_class, complexity_tier) folds both
+  // derived (non-null tier) and pre-tier (NULL tier) rows into one query.
+  const result = await db.prepare(`
+    SELECT
+      intent_class,
+      complexity_tier,
+      COUNT(*) as count,
+      SUM(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END) as success_count,
+      AVG(cost) as avg_cost,
+      AVG(latency_ms) as avg_latency,
+      MAX(created_at) as last_used
+    FROM episodic_memory
+    GROUP BY intent_class, complexity_tier
+  `).all<{
+    intent_class: string;
+    complexity_tier: string | null;
+    count: number;
+    success_count: number;
+    avg_cost: number;
+    avg_latency: number;
+    last_used: string | null;
+  }>();
+
+  const byClass = new Map<string, EpisodeStatsAggregate>();
+  for (const row of result.results) {
+    const entry = byClass.get(row.intent_class) ?? { derived: {}, preTierCount: 0 };
+    if (row.complexity_tier === null) {
+      entry.preTierCount = row.count;
+    } else {
+      entry.derived[row.complexity_tier] = {
+        count: row.count,
+        successCount: row.success_count,
+        failCount: row.count - row.success_count,
+        avgCost: row.avg_cost,
+        avgLatency: row.avg_latency,
+        lastUsed: row.last_used,
+      };
+    }
+    byClass.set(row.intent_class, entry);
+  }
+  return byClass;
+}
+
 // ─── Conversation History ───────────────────────────────────
 
 export async function getConversationHistory(

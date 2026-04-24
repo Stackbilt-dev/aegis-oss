@@ -1,7 +1,7 @@
 // Operator dashboard — server-rendered system health, memory, goals, cost tracking
 // Auth-gated via existing bearerAuth middleware
 
-import { getAllProcedures, getActiveAgendaItems, getActiveGoals } from './kernel/memory/index.js';
+import { getAllProceduresWithDerivedStats, getActiveAgendaItems, getActiveGoals } from './kernel/memory/index.js';
 import { getMemoryStats } from './kernel/memory-adapter.js';
 import type { MemoryServiceBinding } from './types.js';
 import type { ProceduralEntry } from './kernel/types.js';
@@ -115,7 +115,7 @@ export async function getDashboardData(db: D1Database, memoryBinding?: MemorySer
     taskCompletedRows,
     taskRecentRows,
   ] = await Promise.all([
-    getAllProcedures(db),
+    getAllProceduresWithDerivedStats(db, { reader: 'dashboard' }),
     getActiveAgendaItems(db),
     getActiveGoals(db),
     memoryBinding ? getMemoryStats(memoryBinding) : Promise.resolve({ total_active: 0, topics: [], recalled_last_24h: 0, strength_distribution: { low: 0, medium: 0, high: 0 } }),

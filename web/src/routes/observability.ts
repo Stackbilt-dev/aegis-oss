@@ -2,7 +2,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types.js';
-import { getAllProcedures, getActiveAgendaItems } from '../kernel/memory/index.js';
+import { getAllProceduresWithDerivedStats, getActiveAgendaItems } from '../kernel/memory/index.js';
 
 const observability = new Hono<{ Bindings: Env }>();
 
@@ -56,7 +56,7 @@ observability.get('/agenda', async (c) => {
 // ─── Procedures ─────────────────────────────────────────────
 
 observability.get('/procedures', async (c) => {
-  const raw = await getAllProcedures(c.env.DB);
+  const raw = await getAllProceduresWithDerivedStats(c.env.DB, { reader: 'observability' });
 
   const procedures = raw.map((p: any) => {
     const total = p.success_count + p.fail_count;

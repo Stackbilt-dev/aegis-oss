@@ -5,12 +5,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 
 vi.mock('../src/kernel/memory/index.js', () => ({
-  getAllProcedures: vi.fn().mockResolvedValue([]),
+  getAllProceduresWithDerivedStats: vi.fn().mockResolvedValue([]),
   getActiveAgendaItems: vi.fn().mockResolvedValue([]),
 }));
 
 import { observability } from '../src/routes/observability.js';
-import { getAllProcedures, getActiveAgendaItems } from '../src/kernel/memory/index.js';
+import { getAllProceduresWithDerivedStats, getActiveAgendaItems } from '../src/kernel/memory/index.js';
 import type { Env } from '../src/types.js';
 
 // ─── D1 Mock ──────────────────────────────────────────────────
@@ -167,7 +167,7 @@ describe('observability routes', () => {
 
   describe('GET /procedures', () => {
     it('returns formatted procedures', async () => {
-      vi.mocked(getAllProcedures).mockResolvedValueOnce([
+      vi.mocked(getAllProceduresWithDerivedStats).mockResolvedValueOnce([
         {
           task_pattern: 'greeting',
           executor: 'groq_8b',
@@ -200,7 +200,7 @@ describe('observability routes', () => {
     });
 
     it('handles zero total executions', async () => {
-      vi.mocked(getAllProcedures).mockResolvedValueOnce([
+      vi.mocked(getAllProceduresWithDerivedStats).mockResolvedValueOnce([
         {
           task_pattern: 'unknown',
           executor: 'claude',
