@@ -1,4 +1,9 @@
 import type { ProceduralEntry, ProceduralStatus, Refinement } from '../types.js';
+import {
+  getEpisodeStatsByComplexity,
+  getAllEpisodeStatsByComplexity,
+  type EpisodeStatsAggregate,
+} from './episodic.js';
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -37,6 +42,211 @@ export async function getAllProcedures(db: D1Database): Promise<ProceduralEntry[
     'SELECT * FROM procedural_memory ORDER BY last_used DESC'
   ).all();
   return result.results as unknown as ProceduralEntry[];
+}
+
+// aegis#564 — compat helper for callers that read the five cached
+// aggregate columns (success_count, fail_count, avg_latency_ms, avg_cost,
+// last_used). Phased migration:
+//   Phase 1: pass-through to getProcedure. Established the API.
+//   Phase 2 (here): opt-in shadow-read logging against
+//     getEpisodeStatsByComplexity. Still returns cached so behavior is
+//     identical; shadow_read_drift captures cached-vs-derived gaps so
+//     the Phase 3 cached-column drop is data-driven.
+//   Phase 3: flip to derived values and drop the cached columns from
+//     procedural_memory in the same move.
+//
+// Drift-log opts are opt-in per caller. Omitting opts entirely = pure
+// pass-through. Pass `{ reader: '...' }` (default sample 1.0) for cold
+// paths; `{ reader: '...', sample: 0.1 }` for hot paths.
+export interface DriftLogOpts {
+  /** Label for shadow_read_drift.reader — router / dashboard / ... */
+  reader: string;
+  /** Sample rate in [0, 1]. Default 1.0. Omit `opts` entirely to skip logging. */
+  sample?: number;
+}
+
+export async function getProcedureWithDerivedStats(
+  db: D1Database,
+  taskPattern: string,
+  opts?: DriftLogOpts,
+): Promise<ProceduralEntry | null> {
+  const row = await getProcedure(db, taskPattern);
+  if (!row) return null;
+
+  if (opts && Math.random() < (opts.sample ?? 1.0)) {
+    // Drift log failure must never break the read. Awaited + try/catch so
+    // observability is synchronous for tests and ordered for ctx.waitUntil.
+    try {
+      await logDriftSingle(db, row, opts.reader);
+    } catch (err) {
+      console.warn('[shadow-read] drift log failed (non-fatal):',
+        err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return row;
+}
+
+export async function getAllProceduresWithDerivedStats(
+  db: D1Database,
+  opts?: DriftLogOpts,
+): Promise<ProceduralEntry[]> {
+  const procedures = await getAllProcedures(db);
+
+  if (opts && Math.random() < (opts.sample ?? 1.0)) {
+    try {
+      await logDriftBulk(db, procedures, opts.reader);
+    } catch (err) {
+      console.warn('[shadow-read] bulk drift log failed (non-fatal):',
+        err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return procedures;
+}
+
+// ─── Shadow-read drift logging (Phase 2) ────────────────────────
+
+function reconstructDerivedFields(
+  stats: EpisodeStatsAggregate['derived'][string] | undefined,
+): {
+  count: number;
+  successCount: number;
+  failCount: number;
+  avgLatency: number;
+  avgCost: number;
+  lastUsed: string | null;
+} {
+  if (!stats) {
+    return { count: 0, successCount: 0, failCount: 0, avgLatency: 0, avgCost: 0, lastUsed: null };
+  }
+  return {
+    count: stats.count,
+    successCount: stats.successCount,
+    failCount: stats.failCount,
+    avgLatency: stats.avgLatency,
+    avgCost: stats.avgCost,
+    lastUsed: stats.lastUsed,
+  };
+}
+
+function parseProcedureKey(taskPattern: string): { intentClass: string; tier: string } | null {
+  const idx = taskPattern.lastIndexOf(':');
+  if (idx === -1) return null;
+  return {
+    intentClass: taskPattern.slice(0, idx),
+    tier: taskPattern.slice(idx + 1),
+  };
+}
+
+async function logDriftSingle(
+  db: D1Database,
+  cached: ProceduralEntry,
+  reader: string,
+): Promise<void> {
+  const parsed = parseProcedureKey(cached.task_pattern);
+  if (!parsed) return; // legacy non-conforming key — skip rather than pollute the log
+
+  const derivedStats = await getEpisodeStatsByComplexity(db, parsed.intentClass, parsed.tier);
+  const preTierRow = await db.prepare(
+    `SELECT COUNT(*) as c FROM episodic_memory
+     WHERE intent_class = ? AND complexity_tier IS NULL`
+  ).bind(parsed.intentClass).first<{ c: number }>();
+
+  // Use exact successCount from SUM(CASE ...) rather than reconstructing
+  // via Math.round(count * rate). Float rounding on ugly rates would
+  // break strict-equality drift checks.
+  const derived = derivedStats
+    ? {
+        count: derivedStats.count,
+        successCount: derivedStats.successCount,
+        failCount: derivedStats.count - derivedStats.successCount,
+        avgLatency: derivedStats.avgLatency,
+        avgCost: derivedStats.avgCost,
+        lastUsed: derivedStats.lastUsed,
+      }
+    : reconstructDerivedFields(undefined);
+
+  await db.prepare(
+    `INSERT INTO shadow_read_drift (
+      reader, task_pattern,
+      cached_count, cached_success_count, cached_fail_count,
+      cached_avg_latency_ms, cached_avg_cost, cached_last_used,
+      derived_count, derived_success_count, derived_fail_count,
+      derived_avg_latency_ms, derived_avg_cost, derived_last_used,
+      pre_tier_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    reader, cached.task_pattern,
+    cached.success_count + cached.fail_count,
+    cached.success_count,
+    cached.fail_count,
+    cached.avg_latency_ms,
+    cached.avg_cost,
+    cached.last_used ?? null,
+    derived.count,
+    derived.successCount,
+    derived.failCount,
+    derived.avgLatency,
+    derived.avgCost,
+    derived.lastUsed,
+    preTierRow?.c ?? 0,
+  ).run();
+}
+
+async function logDriftBulk(
+  db: D1Database,
+  procedures: ProceduralEntry[],
+  reader: string,
+): Promise<void> {
+  if (procedures.length === 0) return;
+
+  const aggregate = await getAllEpisodeStatsByComplexity(db);
+
+  const stmt = db.prepare(
+    `INSERT INTO shadow_read_drift (
+      reader, task_pattern,
+      cached_count, cached_success_count, cached_fail_count,
+      cached_avg_latency_ms, cached_avg_cost, cached_last_used,
+      derived_count, derived_success_count, derived_fail_count,
+      derived_avg_latency_ms, derived_avg_cost, derived_last_used,
+      pre_tier_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+
+  const batch: D1PreparedStatement[] = [];
+  for (const cached of procedures) {
+    const parsed = parseProcedureKey(cached.task_pattern);
+    if (!parsed) continue;
+    const classStats = aggregate.get(parsed.intentClass);
+    const derived = reconstructDerivedFields(classStats?.derived[parsed.tier]);
+    const preTierCount = classStats?.preTierCount ?? 0;
+
+    batch.push(stmt.bind(
+      reader, cached.task_pattern,
+      cached.success_count + cached.fail_count,
+      cached.success_count,
+      cached.fail_count,
+      cached.avg_latency_ms,
+      cached.avg_cost,
+      cached.last_used ?? null,
+      derived.count,
+      derived.successCount,
+      derived.failCount,
+      derived.avgLatency,
+      derived.avgCost,
+      derived.lastUsed,
+      preTierCount,
+    ));
+  }
+
+  // D1 caps batch size (~100 statements in practice). Chunk so a large
+  // procedural_memory table doesn't trip the cap and get swallowed by
+  // the non-fatal catch upstream, silently blinding the drift dashboard.
+  const BATCH = 100;
+  for (let i = 0; i < batch.length; i += BATCH) {
+    await db.batch(batch.slice(i, i + BATCH));
+  }
 }
 
 export async function findNearMiss(db: D1Database, classification: string): Promise<string | null> {

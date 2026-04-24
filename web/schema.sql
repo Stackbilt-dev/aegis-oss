@@ -65,8 +65,36 @@ CREATE TABLE IF NOT EXISTS episodic_memory (
   reclassified INTEGER NOT NULL DEFAULT 0,
   thread_id TEXT,                              -- conversation thread for dreaming cycle
   executor TEXT,                               -- which executor handled this
+  complexity_tier TEXT,                        -- aegis#563: procedureKey complement (low|mid|high); NULL for non-dispatcher producers
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- aegis#564 Phase 2: shadow-read drift log for cached-vs-derived stats on
+-- procedural_memory. Populated by getProcedureWithDerivedStats /
+-- getAllProceduresWithDerivedStats. Phase 3 gate: drift row p95 within
+-- tolerance across a 7-day window before dropping the cached aggregate
+-- columns from procedural_memory.
+CREATE TABLE IF NOT EXISTS shadow_read_drift (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  reader TEXT NOT NULL,
+  task_pattern TEXT NOT NULL,
+  cached_count INTEGER NOT NULL,
+  cached_success_count INTEGER NOT NULL,
+  cached_fail_count INTEGER NOT NULL,
+  cached_avg_latency_ms REAL NOT NULL,
+  cached_avg_cost REAL NOT NULL,
+  cached_last_used TEXT,
+  derived_count INTEGER NOT NULL,
+  derived_success_count INTEGER NOT NULL,
+  derived_fail_count INTEGER NOT NULL,
+  derived_avg_latency_ms REAL NOT NULL,
+  derived_avg_cost REAL NOT NULL,
+  derived_last_used TEXT,
+  pre_tier_count INTEGER NOT NULL DEFAULT 0,
+  sampled_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_shadow_read_drift_reader_sampled
+  ON shadow_read_drift(reader, sampled_at);
 
 CREATE TABLE IF NOT EXISTS procedural_memory (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

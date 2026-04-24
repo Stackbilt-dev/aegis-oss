@@ -1,5 +1,5 @@
-export { recordEpisode, retrogradeEpisode, sanitizeEpisodicOutcome, getRecentEpisodes, getEpisodeStats, getConversationHistory, estimateTokens, budgetConversationHistory } from './episodic.js';
-export { PROCEDURE_MIN_SUCCESSES, PROCEDURE_MIN_SUCCESS_RATE, complexityTier, procedureKey, getProcedure, getAllProcedures, findNearMiss, upsertProcedure, addRefinement, degradeProcedure, maintainProcedures } from './procedural.js';
+export { recordEpisode, retrogradeEpisode, sanitizeEpisodicOutcome, getRecentEpisodes, getEpisodeStats, getEpisodeStatsByComplexity, getAllEpisodeStatsByComplexity, type EpisodeStatsAggregate, getConversationHistory, estimateTokens, budgetConversationHistory } from './episodic.js';
+export { PROCEDURE_MIN_SUCCESSES, PROCEDURE_MIN_SUCCESS_RATE, complexityTier, procedureKey, getProcedure, getAllProcedures, getProcedureWithDerivedStats, getAllProceduresWithDerivedStats, type DriftLogOpts, findNearMiss, upsertProcedure, addRefinement, degradeProcedure, maintainProcedures } from './procedural.js';
 export { normalizeTopic, tokenize, jaccardSimilarity, recordMemory, searchMemoryByKeywords, getMemoryEntries, recallMemory, computeEwaScore, getAllMemoryForContext } from './semantic.js';
 export { pruneMemory } from './pruning.js';
 export { consolidateEpisodicToSemantic } from './consolidation.js';
