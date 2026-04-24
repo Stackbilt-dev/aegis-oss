@@ -9,8 +9,19 @@ vi.mock('../src/kernel/memory/index.js', () => ({
   getActiveAgendaItems: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock('../src/kernel/scheduled/entropy.js', () => ({
+  detectEntropy: vi.fn().mockResolvedValue({
+    score: 0,
+    ghostAgendaItems: [],
+    ghostTasks: [],
+    dormantGoals: [],
+    summary: 'Entropy 0% - all clear.',
+  }),
+}));
+
 import { observability } from '../src/routes/observability.js';
 import { getAllProceduresWithDerivedStats, getActiveAgendaItems } from '../src/kernel/memory/index.js';
+import { detectEntropy } from '../src/kernel/scheduled/entropy.js';
 import type { Env } from '../src/types.js';
 
 // ─── D1 Mock ──────────────────────────────────────────────────
@@ -131,6 +142,89 @@ describe('observability routes', () => {
       await app.request('/api/shadow-read-stats?days=14');
       const daysBindings = db._queries.filter(q => q.bindings.includes(14));
       expect(daysBindings.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('GET /api/entropy', () => {
+    it('returns entropy report from detector', async () => {
+      const report = {
+        score: 25,
+        ghostAgendaItems: [{ id: 1, item: 'Stale item', daysSinceCreated: 9 }],
+        ghostTasks: [],
+        dormantGoals: [],
+        summary: 'Entropy 25% - 1 agenda item stale >7d.',
+      };
+      vi.mocked(detectEntropy).mockResolvedValueOnce(report as any);
+
+      const db = createMockDb();
+      const app = createApp(db);
+
+      const res = await app.request('/api/entropy');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(report);
+      expect(detectEntropy).toHaveBeenCalledWith(expect.objectContaining({ db }));
+    });
+  });
+
+  describe('GET /api/shadow-read-drift', () => {
+    it('returns drift distribution, readiness, and top drifters', async () => {
+      const distribution = [{
+        reader: 'observability',
+        samples: 4,
+        p95_count_drift: 1,
+        p95_latency_drift_ms: 5,
+        p95_cost_drift: 0.00001,
+      }];
+      const readiness = {
+        total_pairs: 2,
+        distinct_procedures: 2,
+        clean_pairs: 2,
+        ready_pairs: 1,
+      };
+      const topDrifters = [{
+        task_pattern: 'dispatch:mid',
+        reader: 'observability',
+        count_drift: 1,
+        latency_drift: 5,
+        cost_drift: 0.00001,
+        sampled_at: '2026-04-24 00:00:00',
+      }];
+      const db = createMockDb({
+        firstResults: [readiness],
+        allResults: [distribution, topDrifters],
+      });
+      const app = createApp(db);
+
+      const res = await app.request('/api/shadow-read-drift?days=14&reader=observability');
+      expect(res.status).toBe(200);
+      const json = await res.json() as any;
+      expect(json).toEqual({
+        days: 14,
+        reader_filter: 'observability',
+        distribution,
+        readiness,
+        top_drifters: topDrifters,
+      });
+      expect(db._queries[0].bindings).toEqual([14, 'observability']);
+      expect(db._queries[1].bindings).toEqual(['observability', 14]);
+      expect(db._queries[2].bindings).toEqual([14, 'observability']);
+    });
+
+    it('defaults invalid days and omits reader filter', async () => {
+      const db = createMockDb({
+        firstResults: [{ total_pairs: 0, distinct_procedures: 0, clean_pairs: 0, ready_pairs: 0 }],
+        allResults: [[], []],
+      });
+      const app = createApp(db);
+
+      const res = await app.request('/api/shadow-read-drift?days=999');
+      expect(res.status).toBe(200);
+      const json = await res.json() as any;
+      expect(json.days).toBe(7);
+      expect(json.reader_filter).toBeNull();
+      expect(db._queries[0].bindings).toEqual([7]);
+      expect(db._queries[1].bindings).toEqual([7]);
+      expect(db._queries[2].bindings).toEqual([7]);
     });
   });
 
