@@ -32,7 +32,7 @@ export async function bearerAuth(c: Context<{ Bindings: Env }>, next: Next): Pro
 
   if (!token || token !== c.env.AEGIS_TOKEN) {
     // UI pages — show login page
-    if ((c.req.path === '/chat' || c.req.path === '/overworld') && c.req.method === 'GET') {
+    if ((c.req.path === '/chat' || c.req.path === '/overworld' || c.req.path === '/console') && c.req.method === 'GET') {
       return c.html(loginPage(), 401);
     }
     return c.json({ error: 'Unauthorized' }, 401);
