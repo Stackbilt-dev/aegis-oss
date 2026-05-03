@@ -14,6 +14,25 @@ export interface GoalContext {
   deadline?: string;         // ISO date — auto-complete goal after this date
 }
 
+// Coerce string fields to string[] — context_json in the DB may have been written
+// with a plain string instead of an array, which passes the optional-chain length
+// guard but causes .map() to throw at runtime (aegis#585).
+function normalizeContext(raw: GoalContext): GoalContext {
+  const toArr = (v: unknown): string[] | undefined => {
+    if (!v) return undefined;
+    if (Array.isArray(v)) return v.map(String);
+    if (typeof v === 'string') return [v];
+    return undefined;
+  };
+  return {
+    ...raw,
+    scope:      toArr(raw.scope),
+    guardrails: toArr(raw.guardrails),
+    escalation: toArr(raw.escalation),
+    triggers:   toArr(raw.triggers),
+  };
+}
+
 function formatStandingOrders(ctx: GoalContext): string {
   const sections: string[] = [];
 
@@ -92,7 +111,7 @@ export async function runSingleGoal(env: EdgeEnv, goal: AgentGoal): Promise<void
   let goalContext: GoalContext | null = null;
   if (goal.context_json) {
     try {
-      goalContext = JSON.parse(goal.context_json) as GoalContext;
+      goalContext = normalizeContext(JSON.parse(goal.context_json) as GoalContext);
     } catch {
       console.warn(`[goals] Failed to parse context_json for "${goal.title}"`);
     }
