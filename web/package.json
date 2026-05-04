@@ -28,6 +28,8 @@
     "./kernel/briefing": "./src/kernel/briefing.ts",
     "./kernel/dynamic-tools": "./src/kernel/dynamic-tools.ts",
     "./kernel/argus-correlation": "./src/kernel/argus-correlation.ts",
+    "./kernel/port": "./src/kernel/port.ts",
+    "./kernel/executor-port": "./src/kernel/executor-port.ts",
     "./kernel/executors": "./src/kernel/executors/index.ts",
     "./kernel/scheduled": "./src/kernel/scheduled/index.ts",
     "./kernel/scheduled/dreaming": "./src/kernel/scheduled/dreaming.ts",
@@ -48,7 +50,8 @@
     "./routes/observability": "./src/routes/observability.ts",
     "./routes/cc-tasks": "./src/routes/cc-tasks.ts",
     "./routes/pages": "./src/routes/pages.ts",
-    "./routes/dynamic-tools": "./src/routes/dynamic-tools.ts"
+    "./routes/dynamic-tools": "./src/routes/dynamic-tools.ts",
+    "./adapters/voice": "./src/adapters/voice/cloudflare-agent.ts"
   },
   "scripts": {
     "dev": "wrangler dev",
@@ -61,8 +64,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@cloudflare/voice": "*",
     "@cloudflare/workers-oauth-provider": "^0.2.4",
     "@stackbilt/llm-providers": "file:../../llm-providers",
+    "agents": "*",
     "hono": "^4.12.12"
   },
   "devDependencies": {
