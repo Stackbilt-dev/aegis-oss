@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 (2026-05-07)
+
+### Added
+- ODD contracts for 4 core entities: `GoalContract`, `AgendaItemContract`, `CCTaskContract`, `MemoryEntryContract`
+- Exported at `@stackbilt/aegis-core/contracts/{goal,agenda-item,cc-task,memory-entry}`
+- Contracts use camelCase (ODD convention); existing snake_case D1 interfaces untouched
+- `@stackbilt/contracts` and `zod` added as dependencies
+
 ## 0.2.0 (2026-05-07)
 
 ### Added
