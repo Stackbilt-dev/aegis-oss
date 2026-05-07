@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2 (2026-05-07)
+
+### Added
+- `kernel/patterns` — convergence pattern contracts (P1 `PositionalDispatch`, P7 `TieredExecution`); exports `POSITIONAL_DISPATCH_PATTERN_ID`, `TIERED_EXECUTION_PATTERN_ID`, and their `*_CONTRACT_VERSION` constants; consumer repos import the interface for structural-compat tests
+
 ## 0.6.1 (2026-05-07)
 
 ### Changed

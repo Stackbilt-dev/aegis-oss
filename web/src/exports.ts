@@ -154,3 +154,12 @@ export { VERSION } from './version.js';
 
 // ─── Observability ──────────────────────────────────────────
 export { InMemoryErrorTracker } from './lib/observability/errors.js';
+
+// ─── Convergence Patterns ────────────────────────────────────
+export {
+  POSITIONAL_DISPATCH_PATTERN_ID,
+  POSITIONAL_DISPATCH_CONTRACT_VERSION,
+  TIERED_EXECUTION_PATTERN_ID,
+  TIERED_EXECUTION_CONTRACT_VERSION,
+} from './kernel/patterns.js';
+export type { PositionalDispatch, TieredExecution } from './kernel/patterns.js';
