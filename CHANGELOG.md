@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1 (2026-05-07)
+
+### Changed
+- `Executor` union extended with `'cerebras_mid' | 'cerebras_reasoning'` — unblocks daemon shadow collapse; `EXECUTOR_ATTACHMENTS` in `kernel/memory/blocks` maps both to `CORE_BLOCKS`
+
 ## 0.6.0 (2026-05-07)
 
 ### Added

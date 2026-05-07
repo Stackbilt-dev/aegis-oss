@@ -88,7 +88,7 @@ export interface MemoryEntry {
 
 // ─── Execution Plan ──────────────────────────────────────────
 
-export type Executor = 'claude' | 'groq' | 'direct' | 'claude_code' | 'workers_ai' | 'claude_opus' | 'gpt_oss' | 'composite' | 'tarotscript';
+export type Executor = 'claude' | 'groq' | 'direct' | 'claude_code' | 'workers_ai' | 'claude_opus' | 'gpt_oss' | 'composite' | 'tarotscript' | 'cerebras_mid' | 'cerebras_reasoning';
 
 export interface ExecutionPlan {
   executor: Executor;

@@ -36,8 +36,10 @@ const EXECUTOR_ATTACHMENTS: Record<Executor, readonly BlockId[]> = {
   gpt_oss:      ['identity', 'operator_profile', 'operating_rules'],
   groq:         CORE_BLOCKS,
   workers_ai:   MINIMAL_BLOCKS,
-  direct:       [],
-  tarotscript:  [],
+  direct:           [],
+  tarotscript:      [],
+  cerebras_mid:     CORE_BLOCKS,
+  cerebras_reasoning: CORE_BLOCKS,
 };
 
 // ─── CRUD ────────────────────────────────────────────────────
