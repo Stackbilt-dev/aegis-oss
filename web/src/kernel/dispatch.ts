@@ -62,6 +62,8 @@ export interface EdgeEnv {
   blueskyHandle?: string;
   blueskyAppPassword?: string;
   authBinding?: import('../types.js').AuthServiceBinding;
+  wikiBinding?: Fetcher;
+  wikiToken?: string;
 }
 
 // ─── Intent Construction ─────────────────────────────────────

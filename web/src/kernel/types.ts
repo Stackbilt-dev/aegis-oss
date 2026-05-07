@@ -147,4 +147,10 @@ export interface DispatchResult {
   reclassified?: boolean;
   probeResult?: 'agreed' | 'split' | 'escalated';
   meta?: unknown;
+  // Grounding fields (populated by grounding-layer when active)
+  grounded?: boolean;
+  sources?: string[];
+  unknowns?: string[];
+  searched?: string[];
+  unverified_claims?: string[];
 }

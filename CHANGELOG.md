@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.0 (2026-05-07)
+
+### Added
+- `kernel/grounding/verify` — `verifyAgendaClaim`, `verifyTaskClaim`, `verifyWikiPageClaim` (aegis-oss#34 PR 3)
+- `kernel/grounding/fanout` — `extractEntities`, `groundIntent`, `summarizeGrounding`, `formatGroundingBlock` (entity grounding fanout without BizOps leg)
+- `kernel/grounding/fabrication-detector` — mutation-claim v1 + referential-claim v2 post-pass; `pattern_id` verification skipped in core (catalog is consumer-specific)
+- `kernel/grounding/semantic-sanhedrin` — Workers AI wiki-contradiction gate (aegis#573)
+- `kernel/grounding-layer` — orchestrator: `augmentWithInsights`, `augmentWithEntityGrounding`, `augmentWithMemoryRecall`, `applyFabricationCheck`, `applyGapSignal`, `applyGroundingProof`
+- `wikiBinding?: Fetcher` and `wikiToken?: string` added to `EdgeEnv` (required by grounding-layer)
+- `grounded?`, `sources?`, `unknowns?`, `searched?`, `unverified_claims?` added to `DispatchResult`
+
+### Notes
+- Decision-entity fanout (BizOps `verifyDecisionClaim`) is omitted — daemon-specific; consumers compose at call site
+- Circuit-breaker wrapping absent from this layer; consumers wanting auto-disable-after-N-failures compose at call site using `createResilience()` from `kernel/resilience`
+- `pattern_id` verification skipped in `verifyReferentialClaims`; the convergence-patterns catalog lives in the daemon and is not generic
+- No tests ported in this release
+
 ## 0.5.1 (2026-05-07)
 
 ### Changed
