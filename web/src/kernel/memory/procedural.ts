@@ -465,3 +465,37 @@ export async function maintainProcedures(db: D1Database): Promise<void> {
     console.log(`[procedures] Utility-pruned: ${proc.task_pattern} (${(rate * 100).toFixed(0)}% success over ${proc.success_count + proc.fail_count} invocations)`);
   }
 }
+
+/** Increment gap signal for a procedure. Called when the response carried
+ *  unverified_claims[] or unknowns[] on a grounding-gated classification. */
+export async function recordGapSignal(db: D1Database, taskPattern: string): Promise<void> {
+  const procedure = await getProcedure(db, taskPattern);
+  if (!procedure) return;
+
+  const newCount = (procedure.gap_signal_count ?? 0) + 1;
+  await db.prepare(
+    "UPDATE procedural_memory SET gap_signal_count = ?, gap_last_seen = datetime('now') WHERE task_pattern = ?"
+  ).bind(newCount, taskPattern).run();
+
+  console.log(`[procedures] Gap signal recorded: ${taskPattern} (count=${newCount})`);
+}
+
+/** Decrement gap signal for a procedure (min 0). Called on clean grounded
+ *  response. When the counter returns to 0, gap_last_seen is cleared. */
+export async function clearGapSignal(db: D1Database, taskPattern: string): Promise<void> {
+  const procedure = await getProcedure(db, taskPattern);
+  if (!procedure) return;
+
+  const current = procedure.gap_signal_count ?? 0;
+  if (current <= 0) return;
+
+  const newCount = current - 1;
+  const newLastSeen = newCount === 0 ? null : procedure.gap_last_seen ?? null;
+  await db.prepare(
+    'UPDATE procedural_memory SET gap_signal_count = ?, gap_last_seen = ? WHERE task_pattern = ?'
+  ).bind(newCount, newLastSeen, taskPattern).run();
+
+  if (newCount === 0) {
+    console.log(`[procedures] Gap signal cleared: ${taskPattern}`);
+  }
+}

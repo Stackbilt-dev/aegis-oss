@@ -38,6 +38,9 @@ export interface EpisodicEntry {
   reclassified?: boolean;
   thread_id?: string | null;
   executor?: string | null;
+  court_card?: string | null;
+  complexity_tier?: string | null;
+  executor_config?: string | null;
   created_at?: string;
 }
 
@@ -65,6 +68,9 @@ export interface ProceduralEntry {
   last_used?: string;
   candidate_executor?: string | null;
   candidate_successes?: number;
+  // aegis#497 — gap-driven tier escalation
+  gap_signal_count?: number;
+  gap_last_seen?: string | null;
   created_at?: string;
 }
 

@@ -65,7 +65,9 @@ CREATE TABLE IF NOT EXISTS episodic_memory (
   reclassified INTEGER NOT NULL DEFAULT 0,
   thread_id TEXT,                              -- conversation thread for dreaming cycle
   executor TEXT,                               -- which executor handled this
+  court_card TEXT,                             -- composite court card (king/queen/knight/page)
   complexity_tier TEXT,                        -- aegis#563: procedureKey complement (low|mid|high); NULL for non-dispatcher producers
+  executor_config TEXT,                        -- aegis#563: config snapshot at emit time (evaluator-replay fidelity)
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -111,6 +113,8 @@ CREATE TABLE IF NOT EXISTS procedural_memory (
   last_used TEXT,
   candidate_executor TEXT,                     -- probation: untrusted executor being tested
   candidate_successes INTEGER NOT NULL DEFAULT 0,  -- consecutive successes of candidate
+  gap_signal_count INTEGER NOT NULL DEFAULT 0, -- aegis#497: unresolved grounding-gap signals; >0 triggers tier escalation
+  gap_last_seen TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -204,6 +208,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_validation_stage ON memory_entries(validat
 CREATE INDEX IF NOT EXISTS idx_episodic_class ON episodic_memory(intent_class);
 CREATE INDEX IF NOT EXISTS idx_episodic_created ON episodic_memory(created_at);
 CREATE INDEX IF NOT EXISTS idx_episodic_thread ON episodic_memory(thread_id);
+CREATE INDEX IF NOT EXISTS idx_episodic_class_complexity ON episodic_memory(intent_class, complexity_tier);
 CREATE INDEX IF NOT EXISTS idx_procedural_pattern ON procedural_memory(task_pattern);
 CREATE INDEX IF NOT EXISTS idx_procedural_status ON procedural_memory(status);
 CREATE INDEX IF NOT EXISTS idx_heartbeat_created ON heartbeat_results(created_at);
