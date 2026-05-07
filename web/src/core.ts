@@ -34,13 +34,14 @@ import { dynamicToolsRoutes } from './routes/dynamic-tools.js';
 
 export type TaskPhase = 'heartbeat' | 'cron';
 
-export interface ScheduledTaskPlugin {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface ScheduledTaskPlugin<TEnv extends EdgeEnv = any> {
   /** Unique task name (used in task_runs table and audit chain) */
   name: string;
   /** heartbeat = runs every hour, cron = time-gated */
   phase: TaskPhase;
   /** The task implementation */
-  run: (env: EdgeEnv) => Promise<void>;
+  run: (env: TEnv) => Promise<void>;
   /**
    * Optional time gate for cron-phase tasks.
    * If provided, the task only runs when `new Date().getUTCHours() % frequency === 0`.
@@ -115,7 +116,8 @@ export interface AegisAppConfig {
   operator: OperatorConfig;
 
   /** Additional scheduled tasks to register alongside core tasks */
-  scheduledTasks?: ScheduledTaskPlugin[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  scheduledTasks?: ScheduledTaskPlugin<any>[];
 
   /** Additional executors to register */
   executors?: ExecutorPlugin[];

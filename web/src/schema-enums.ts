@@ -56,6 +56,13 @@ export type ActionOutcome = EnumValues<typeof ACTION_OUTCOMES>;
 export const HEARTBEAT_STATUSES = ['ok', 'error', 'skipped'] as const;
 export type HeartbeatStatus = EnumValues<typeof HEARTBEAT_STATUSES>;
 
+// ─── CC Jobs ─────────────────────────────────────────────────
+
+export const JOB_STATUSES = ['active', 'paused', 'completed', 'failed', 'cancelled'] as const;
+export type JobStatus = EnumValues<typeof JOB_STATUSES>;
+
+export const TERMINAL_JOB_STATUSES = new Set<JobStatus>(['completed', 'failed', 'cancelled']);
+
 // ─── CC Tasks ────────────────────────────────────────────────
 
 export const TASK_STATUSES = ['pending', 'running', 'completed', 'failed', 'cancelled'] as const;
@@ -123,6 +130,19 @@ export type ToolExecutor = EnumValues<typeof TOOL_EXECUTORS>;
 
 export const TOOL_STATUSES = ['active', 'promoted', 'retired', 'draft'] as const;
 export type ToolStatus = EnumValues<typeof TOOL_STATUSES>;
+
+// ─── Sprint Backlog ──────────────────────────────────────────
+
+export const SPRINT_STAGES = ['plan', 'implement', 'review', 'test', 'ship', 'monitor', 'done', 'failed'] as const;
+export type SprintStage = EnumValues<typeof SPRINT_STAGES>;
+
+export const RISK_LEVELS = ['low', 'medium', 'high', 'critical'] as const;
+export type RiskLevel = EnumValues<typeof RISK_LEVELS>;
+
+// ─── Alerts ──────────────────────────────────────────────────
+
+export const ALERT_SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
+export type AlertSeverity = EnumValues<typeof ALERT_SEVERITIES>;
 
 // ─── CodeBeast Findings ─────────────────────────────────────
 
