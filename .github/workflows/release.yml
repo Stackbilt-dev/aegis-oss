@@ -1,17 +1,16 @@
-name: CI
+name: Publish
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    tags:
+      - 'v*'
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test & Typecheck
+  publish:
+    name: npm publish
     runs-on: ubuntu-latest
 
     steps:
@@ -20,8 +19,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: web/package-lock.json
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         working-directory: web
@@ -34,3 +32,9 @@ jobs:
       - name: Test
         working-directory: web
         run: npm test
+
+      - name: Publish
+        working-directory: web
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
