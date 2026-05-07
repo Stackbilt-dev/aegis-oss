@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 (2026-05-07)
+
+### Added
+- `wiki/client` — EmDash CMS client ported from daemon; `WikiClientEnv.wikiBaseUrl` replaces hardcoded Stackbilt URL (configurable by consuming apps)
+- `wiki/types` — `WikiScope`, `WikiType`, `WikiConfidence`, `WikiStatus` enums + all page/write/result interfaces
+- Exported at `@stackbilt/aegis-core/wiki/client` and `@stackbilt/aegis-core/wiki/types`
+
 ## 0.3.0 (2026-05-07)
 
 ### Added
