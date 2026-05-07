@@ -65,7 +65,6 @@ CREATE TABLE IF NOT EXISTS episodic_memory (
   reclassified INTEGER NOT NULL DEFAULT 0,
   thread_id TEXT,                              -- conversation thread for dreaming cycle
   executor TEXT,                               -- which executor handled this
-  court_card TEXT,                             -- composite court card (king/queen/knight/page)
   complexity_tier TEXT,                        -- aegis#563: procedureKey complement (low|mid|high); NULL for non-dispatcher producers
   executor_config TEXT,                        -- aegis#563: config snapshot at emit time (evaluator-replay fidelity)
   created_at TEXT NOT NULL DEFAULT (datetime('now'))

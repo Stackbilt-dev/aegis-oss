@@ -1,13 +1,21 @@
 # Changelog
 
+## 0.5.1 (2026-05-07)
+
+### Changed
+- Removed `court_card` from `EpisodicEntry` interface and `episodic_memory` schema — it is TarotScript/Stackbilt-specific, not generic agent framework content (scope creep from 0.5.0)
+
+### Migration
+- `episodic_memory` schema: if you applied 0.5.0's `court_card TEXT` column, drop it: `ALTER TABLE episodic_memory DROP COLUMN court_card` (SQLite 3.35+) or recreate the table
+
 ## 0.5.0 (2026-05-07)
 
 ### Added
 - `kernel/memory-service` — `MemoryService` class and `memoryServiceFor()` factory ported from daemon (aegis-oss#34 PR 2)
 - `recordGapSignal` / `clearGapSignal` added to `kernel/memory/procedural` and exported from `kernel/memory` index
 - `gap_signal_count` / `gap_last_seen` columns added to `procedural_memory` schema
-- `court_card` / `executor_config` columns added to `episodic_memory` schema (parity with daemon)
-- `EpisodicEntry` extended with `court_card`, `complexity_tier`, `executor_config` optional fields
+- `executor_config` column added to `episodic_memory` schema (parity with daemon)
+- `EpisodicEntry` extended with `complexity_tier`, `executor_config` optional fields
 - `ProceduralEntry` extended with `gap_signal_count`, `gap_last_seen` optional fields
 
 ## 0.4.0 (2026-05-07)

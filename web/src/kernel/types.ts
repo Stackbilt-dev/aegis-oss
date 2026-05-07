@@ -38,7 +38,6 @@ export interface EpisodicEntry {
   reclassified?: boolean;
   thread_id?: string | null;
   executor?: string | null;
-  court_card?: string | null;
   complexity_tier?: string | null;
   executor_config?: string | null;
   created_at?: string;
