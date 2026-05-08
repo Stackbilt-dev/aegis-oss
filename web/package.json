@@ -33,6 +33,8 @@
     "./kernel/argus-correlation": "./src/kernel/argus-correlation.ts",
     "./kernel/port": "./src/kernel/port.ts",
     "./kernel/executor-port": "./src/kernel/executor-port.ts",
+    "./kernel/executor-router": "./src/kernel/executor-router.ts",
+    "./kernel/provider-factory": "./src/kernel/provider-factory.ts",
     "./kernel/executors": "./src/kernel/executors/index.ts",
     "./kernel/scheduled": "./src/kernel/scheduled/index.ts",
     "./kernel/scheduled/dreaming": "./src/kernel/scheduled/dreaming.ts",
