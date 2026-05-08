@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.3 (2026-05-08)
+
+### Changed
+- All executor LLM calls now routed through `@stackbilt/llm-providers` `LLMProviderFactory` — eliminates hand-rolled inference in `executeGroq`, `executeWorkersAi`, and `executeGptOss` (Phase D.1–D.5)
+- `executeGptOss` two-phase tool loop migrated to factory: `LLMMessage[]` message format, cost from `result.usage.cost`, `topP`/`frequencyPenalty` forwarded via new `LLMRequest` fields
+- `kernel/executors` now exports `EXECUTOR_FNS` — uniform `(intent, env) → {text, cost}` dispatch map for groq, workers_ai, gpt_oss, claude; powers route-driven dispatch in `dispatch.ts`
+- `dispatch.ts` switch collapsed: groq/workers_ai/gpt_oss/shadow-exploration cases replaced by `EXECUTOR_FNS` lookup; explicit branches kept only for claude/claude_opus failover, composite, direct, claude_code, tarotscript
+- New: `kernel/executor-router.ts` — `EXECUTOR_ROUTES` catalog (provider, model fn, fallback chain) for all 7 LLM executors; `getExecutorRoute()` helper
+- New: `kernel/provider-factory.ts` — `buildLLMProviderFactory(env)` wraps `@stackbilt/llm-providers` with EdgeEnv bindings
+
+### Dependencies
+- `@stackbilt/llm-providers` bumped to `^1.6.4` (published):
+  - `gpt-oss-120b` cost rates fixed: `$0.35/$0.75 per MTok` (was `$0.0008/MTok` placeholder)
+  - `topP` and `frequencyPenalty` added to `LLMRequest`; forwarded as `top_p`/`frequency_penalty` by the Cloudflare provider
+
 ## 0.6.2 (2026-05-07)
 
 ### Added

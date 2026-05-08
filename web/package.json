@@ -1,6 +1,6 @@
 {
   "name": "@stackbilt/aegis-core",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Persistent AI agent framework for Cloudflare Workers. Multi-tier memory, autonomous goals, dreaming cycles, MCP native.",
   "license": "Apache-2.0",
   "publishConfig": {
