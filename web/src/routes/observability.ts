@@ -56,6 +56,7 @@ observability.get('/api/shadow-read-stats', async (c) => {
 // ─── Entropy ────────────────────────────────────────────────
 
 observability.get('/api/entropy', async (c) => {
+  // detectEntropy needs the full EdgeEnv (API keys, model config) — not just c.env.DB
   const env = buildEdgeEnv(c.env);
   const report = await detectEntropy(env);
   return c.json(report);
@@ -70,6 +71,8 @@ observability.get('/api/shadow-read-drift', async (c) => {
   const latestWhere = reader
     ? "WHERE reader = ? AND sampled_at > datetime('now', '-' || ? || ' days')"
     : "WHERE sampled_at > datetime('now', '-' || ? || ' days')";
+  // latestBindings: reader-first to match latestWhere (WHERE reader = ? AND sampled_at...)
+  // windowBindings: days-first to match the WHERE sampled_at... AND reader = ? pattern used in distribution/topDrifters
   const latestBindings = reader ? [reader, days] : [days];
   const windowBindings = reader ? [days, reader] : [days];
 

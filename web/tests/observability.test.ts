@@ -226,6 +226,19 @@ describe('observability routes', () => {
       expect(db._queries[1].bindings).toEqual([7]);
       expect(db._queries[2].bindings).toEqual([7]);
     });
+
+    it('defaults days=0 to fallback', async () => {
+      const db = createMockDb({
+        firstResults: [{ total_pairs: 0, distinct_procedures: 0, clean_pairs: 0, ready_pairs: 0 }],
+        allResults: [[], []],
+      });
+      const app = createApp(db);
+
+      const res = await app.request('/api/shadow-read-drift?days=0');
+      expect(res.status).toBe(200);
+      const json = await res.json() as any;
+      expect(json.days).toBe(7);
+    });
   });
 
   describe('GET /agenda', () => {
