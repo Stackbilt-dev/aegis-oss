@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EXECUTOR_ROUTES, getExecutorRoute } from '../src/kernel/executor-router.js';
+import { EXECUTOR_FNS } from '../src/kernel/executors/index.js';
 import type { Executor } from '../src/kernel/types.js';
 
 // Non-LLM executors intentionally absent from EXECUTOR_ROUTES.
@@ -69,5 +70,22 @@ describe('executor-router', () => {
 
   it('gpt_oss has no fallback (terminal)', () => {
     expect(EXECUTOR_ROUTES.gpt_oss.fallback).toBeUndefined();
+  });
+});
+
+describe('EXECUTOR_FNS', () => {
+  it('contains groq, workers_ai, gpt_oss, and claude', () => {
+    expect(typeof EXECUTOR_FNS.groq).toBe('function');
+    expect(typeof EXECUTOR_FNS.workers_ai).toBe('function');
+    expect(typeof EXECUTOR_FNS.gpt_oss).toBe('function');
+    expect(typeof EXECUTOR_FNS.claude).toBe('function');
+  });
+
+  it('does not contain non-uniform executors', () => {
+    expect(EXECUTOR_FNS.claude_opus).toBeUndefined();
+    expect(EXECUTOR_FNS.composite).toBeUndefined();
+    expect(EXECUTOR_FNS.direct).toBeUndefined();
+    expect(EXECUTOR_FNS.claude_code).toBeUndefined();
+    expect(EXECUTOR_FNS.tarotscript).toBeUndefined();
   });
 });

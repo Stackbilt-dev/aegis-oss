@@ -2,14 +2,31 @@ import { McpClient, McpRegistry } from '../../mcp-client.js';
 import { operatorConfig } from '../../operator/index.js';
 import type { Executor } from '../types.js';
 import type { EdgeEnv } from '../dispatch.js';
-import { executeGptOss } from './workers-ai.js';
+import type { KernelIntent } from '../types.js';
 
-// Re-export all executors
-export { executeClaude, executeClaudeOpus, executeClaudeStream } from './claude.js';
-export { executeGroq } from './groq.js';
-export { executeWorkersAi, executeGptOss } from './workers-ai.js';
-export { executeDirect, executeCodeTask } from './direct.js';
-export { executeTarotScript } from './tarotscript.js';
+// Import then re-export so EXECUTOR_FNS can hold live references
+import { executeClaude, executeClaudeOpus, executeClaudeStream } from './claude.js';
+import { executeGroq } from './groq.js';
+import { executeWorkersAi, executeGptOss } from './workers-ai.js';
+import { executeDirect, executeCodeTask } from './direct.js';
+import { executeTarotScript } from './tarotscript.js';
+export { executeClaude, executeClaudeOpus, executeClaudeStream };
+export { executeGroq };
+export { executeWorkersAi, executeGptOss };
+export { executeDirect, executeCodeTask };
+export { executeTarotScript };
+
+// ─── Uniform Executor Dispatch Map ──────────────────────────
+// Executors that share the (intent, env) → {text, cost} signature.
+// Used by dispatch to drive simple cases from the route table,
+// eliminating per-executor switch branches for groq/workers_ai/gpt_oss.
+// claude is included for the shadow exploration path (no failover there).
+export const EXECUTOR_FNS: Partial<Record<Executor, (intent: KernelIntent, env: EdgeEnv) => Promise<{ text: string; cost: number }>>> = {
+  groq: executeGroq,
+  workers_ai: executeWorkersAi,
+  gpt_oss: executeGptOss,
+  claude: executeClaude,
+};
 
 // ─── MCP Registry ────────────────────────────────────────────
 

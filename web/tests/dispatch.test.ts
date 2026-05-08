@@ -129,18 +129,25 @@ vi.mock('../src/operator/prompt-builder.js', () => ({
 }));
 
 // Mock executors
-vi.mock('../src/kernel/executors/index.js', () => ({
-  executeClaude: vi.fn().mockResolvedValue({ text: 'claude result', cost: 0.05 }),
-  executeClaudeOpus: vi.fn().mockResolvedValue({ text: 'opus result', cost: 0.15 }),
-  executeClaudeStream: vi.fn().mockResolvedValue({ text: 'stream result', cost: 0.05 }),
-  executeGroq: vi.fn().mockResolvedValue({ text: 'groq result', cost: 0.0001 }),
-  executeWorkersAi: vi.fn().mockResolvedValue({ text: 'workers_ai result', cost: 0 }),
-  executeGptOss: vi.fn().mockResolvedValue({ text: 'gpt_oss result', cost: 0.005 }),
-  executeDirect: vi.fn().mockResolvedValue({ text: 'direct result', cost: 0 }),
-  executeCodeTask: vi.fn().mockResolvedValue({ text: 'code task result', cost: 0.05 }),
-  executeWithAnthropicFailover: vi.fn().mockResolvedValue({ text: 'claude result', cost: 0.05, actualExecutor: 'claude' }),
-  buildMcpRegistry: vi.fn().mockReturnValue({}),
-}));
+vi.mock('../src/kernel/executors/index.js', () => {
+  const executeClaude = vi.fn().mockResolvedValue({ text: 'claude result', cost: 0.05 });
+  const executeGroq = vi.fn().mockResolvedValue({ text: 'groq result', cost: 0.0001 });
+  const executeWorkersAi = vi.fn().mockResolvedValue({ text: 'workers_ai result', cost: 0 });
+  const executeGptOss = vi.fn().mockResolvedValue({ text: 'gpt_oss result', cost: 0.005 });
+  return {
+    executeClaude,
+    executeClaudeOpus: vi.fn().mockResolvedValue({ text: 'opus result', cost: 0.15 }),
+    executeClaudeStream: vi.fn().mockResolvedValue({ text: 'stream result', cost: 0.05 }),
+    executeGroq,
+    executeWorkersAi,
+    executeGptOss,
+    executeDirect: vi.fn().mockResolvedValue({ text: 'direct result', cost: 0 }),
+    executeCodeTask: vi.fn().mockResolvedValue({ text: 'code task result', cost: 0.05 }),
+    executeWithAnthropicFailover: vi.fn().mockResolvedValue({ text: 'claude result', cost: 0.05, actualExecutor: 'claude' }),
+    buildMcpRegistry: vi.fn().mockReturnValue({}),
+    EXECUTOR_FNS: { groq: executeGroq, workers_ai: executeWorkersAi, gpt_oss: executeGptOss, claude: executeClaude },
+  };
+});
 
 // Import after mocks
 const { createIntent, dispatch, dispatchStream } = await import('../src/kernel/dispatch.js');

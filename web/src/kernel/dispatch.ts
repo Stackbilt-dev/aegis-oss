@@ -8,17 +8,14 @@ import { executeComposite } from '../composite.js';
 import { buildGroqSystemPrompt } from '../operator/prompt-builder.js';
 import type { KernelIntent, DispatchResult, Executor } from './types.js';
 import {
-  executeClaude,
-  executeClaudeOpus,
-  executeClaudeStream,
-  executeGroq,
-  executeWorkersAi,
   executeGptOss,
+  executeClaudeStream,
   executeDirect,
   executeCodeTask,
   executeWithAnthropicFailover,
   executeTarotScript,
   buildMcpRegistry,
+  EXECUTOR_FNS,
 } from './executors/index.js';
 // ─── Edge Environment ────────────────────────────────────────
 
@@ -366,15 +363,6 @@ async function probeAndExecute(
         case 'composite':
           result = await executeComposite(intent, env, buildMcpRegistry(env));
           break;
-        case 'gpt_oss':
-          result = await executeGptOss(intent, env);
-          break;
-        case 'workers_ai':
-          result = await executeWorkersAi(intent, env);
-          break;
-        case 'groq':
-          result = await executeGroq(intent, env);
-          break;
         case 'direct':
           result = await executeDirect(intent, env);
           break;
@@ -384,8 +372,11 @@ async function probeAndExecute(
         case 'tarotscript':
           result = await executeTarotScript(intent, env);
           break;
-        default:
-          throw new Error(`Unknown executor: ${plan.executor}`);
+        default: {
+          const fn = EXECUTOR_FNS[plan.executor as Executor];
+          if (!fn) throw new Error(`Unknown executor: ${plan.executor}`);
+          result = await fn(intent, env);
+        }
       }
 
       // For streaming non-Claude executors, emit full text as single delta
@@ -464,21 +455,10 @@ async function tryShadowExploration(
   try {
     // Clone intent to avoid mutation
     const shadowIntent: KernelIntent = { ...intent, classified: shadowExecutor };
-    let result: { text: string; cost: number };
 
-    switch (shadowExecutor) {
-      case 'gpt_oss':
-        result = await executeGptOss(shadowIntent, env);
-        break;
-      case 'workers_ai':
-        result = await executeWorkersAi(shadowIntent, env);
-        break;
-      case 'claude':
-        result = await executeClaude(shadowIntent, env);
-        break;
-      default:
-        return;
-    }
+    const fn = EXECUTOR_FNS[shadowExecutor];
+    if (!fn) return;
+    const result = await fn(shadowIntent, env);
 
     const passed = shadowQualityPass(primaryText, result.text);
     const outcome = passed ? 'success' : 'failure';
