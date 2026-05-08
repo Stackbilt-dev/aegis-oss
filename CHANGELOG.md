@@ -10,6 +10,10 @@
 - New: `kernel/executor-router.ts` — `EXECUTOR_ROUTES` catalog (provider, model fn, fallback chain) for all 7 LLM executors; `getExecutorRoute()` helper
 - New: `kernel/provider-factory.ts` — `buildLLMProviderFactory(env)` wraps `@stackbilt/llm-providers` with EdgeEnv bindings
 
+### Exports (aegis-oss#43)
+- `@stackbilt/aegis-core/kernel/provider-factory` — `buildLLMProviderFactory(env)` now a named subpath import
+- `@stackbilt/aegis-core/kernel/executor-router` — `EXECUTOR_ROUTES`, `getExecutorRoute`, `ExecutorRoute`, `LLMExecutor` now importable by consumers
+
 ### Dependencies
 - `@stackbilt/llm-providers` bumped to `^1.6.4` (published):
   - `gpt-oss-120b` cost rates fixed: `$0.35/$0.75 per MTok` (was `$0.0008/MTok` placeholder)
