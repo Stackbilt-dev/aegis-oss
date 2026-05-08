@@ -46,10 +46,20 @@ vi.mock('../src/mcp-client.js', () => {
   return { McpClient: MockMcpClient, McpRegistry: MockMcpRegistry };
 });
 
-// Mock askGroq for groq executor and direct (heartbeat)
+// Mock askGroq — used by executeDirect (heartbeat); no longer used by executeGroq
 const mockAskGroq = vi.fn().mockResolvedValue('{"actionable":false,"severity":"none","summary":"All clear","checks":[]}');
 vi.mock('../src/groq.js', () => ({
   askGroq: (...args: unknown[]) => mockAskGroq(...args),
+}));
+
+// Mock provider factory — used by executeGroq and executeWorkersAi after D.3 migration
+const mockGenerateResponse = vi.fn();
+vi.mock('../src/kernel/provider-factory.js', () => ({
+  buildLLMProviderFactory: () => ({
+    generateResponse: mockGenerateResponse,
+    getProvider: vi.fn(),
+    getAvailableProviders: vi.fn().mockReturnValue(['anthropic', 'groq', 'cloudflare']),
+  }),
 }));
 
 // Mock claude.ts exports used by direct executor
@@ -139,40 +149,62 @@ const { executeDirect, executeCodeTask } = await import('../src/kernel/executors
 const { executeClaude, executeClaudeStream } = await import('../src/kernel/executors/claude.js');
 
 describe('executeGroq', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns text and cost from Groq', async () => {
-    mockAskGroq.mockResolvedValue('Hello!');
-    const result = await executeGroq(makeIntent('hi'), makeEnv());
-    expect(result.text).toBe('Hello!');
-    expect(result.cost).toBe(0.0001);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGenerateResponse.mockResolvedValue({
+      message: 'Hello!',
+      usage: { cost: 0.0005, inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      model: 'llama-8b',
+      provider: 'groq',
+      responseTime: 100,
+    });
   });
 
-  it('passes correct parameters to askGroq', async () => {
-    mockAskGroq.mockResolvedValue('ok');
+  it('returns text and cost from factory', async () => {
+    const result = await executeGroq(makeIntent('hi'), makeEnv());
+    expect(result.text).toBe('Hello!');
+    expect(result.cost).toBe(0.0005);
+  });
+
+  it('passes correct parameters to generateResponse', async () => {
     const env = makeEnv();
     await executeGroq(makeIntent('test'), env);
-    expect(mockAskGroq).toHaveBeenCalledWith(
-      'test-groq-key', 'llama-8b', expect.any(String), 'test', 'https://api.groq.com',
-    );
+    expect(mockGenerateResponse).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [{ role: 'user', content: 'test' }],
+      model: 'llama-8b',
+      temperature: 0.3,
+      maxTokens: 500,
+    }));
   });
 });
 
 describe('executeWorkersAi', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns text and cost from Workers AI', async () => {
-    const env = makeEnv();
-    (env.ai!.run as ReturnType<typeof vi.fn>).mockResolvedValue({ response: 'Llama says hi' });
-    const result = await executeWorkersAi(makeIntent('hello'), env);
-    expect(result.text).toBe('Llama says hi');
-    expect(result.cost).toBe(0.005);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGenerateResponse.mockResolvedValue({
+      message: 'Llama says hi',
+      usage: { cost: 0.003, inputTokens: 20, outputTokens: 8, totalTokens: 28 },
+      model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      provider: 'cloudflare',
+      responseTime: 200,
+    });
   });
 
-  it('handles missing response field', async () => {
-    const env = makeEnv();
-    (env.ai!.run as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    const result = await executeWorkersAi(makeIntent('hello'), env);
+  it('returns text and cost from factory', async () => {
+    const result = await executeWorkersAi(makeIntent('hello'), makeEnv());
+    expect(result.text).toBe('Llama says hi');
+    expect(result.cost).toBe(0.003);
+  });
+
+  it('falls back to (no response) when message is empty', async () => {
+    mockGenerateResponse.mockResolvedValue({
+      message: '',
+      usage: { cost: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      provider: 'cloudflare',
+      responseTime: 100,
+    });
+    const result = await executeWorkersAi(makeIntent('hello'), makeEnv());
     expect(result.text).toBe('(no response)');
   });
 

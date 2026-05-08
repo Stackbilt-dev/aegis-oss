@@ -2,6 +2,7 @@ import { executeWorkersAiChat } from '../../workers-ai-chat.js';
 import { McpClient } from '../../mcp-client.js';
 import { operatorConfig } from '../../operator/index.js';
 import { buildGroqSystemPrompt } from '../../operator/prompt-builder.js';
+import { buildLLMProviderFactory } from '../provider-factory.js';
 import type { KernelIntent } from '../types.js';
 import type { EdgeEnv } from '../dispatch.js';
 import { buildMcpRegistry } from './index.js';
@@ -11,13 +12,13 @@ export async function executeWorkersAi(
   env: EdgeEnv,
 ): Promise<{ text: string; cost: number }> {
   if (!env.ai) throw new Error('Workers AI binding not available');
-  const result = await env.ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
-    messages: [
-      { role: 'system', content: buildGroqSystemPrompt() },
-      { role: 'user', content: intent.raw },
-    ],
-  }) as { response?: string };
-  return { text: result.response ?? '(no response)', cost: 0.005 };
+  const factory = buildLLMProviderFactory(env);
+  const result = await factory.generateResponse({
+    messages: [{ role: 'user', content: intent.raw }],
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    systemPrompt: buildGroqSystemPrompt(),
+  });
+  return { text: result.message || '(no response)', cost: result.usage.cost };
 }
 
 export async function executeGptOss(
