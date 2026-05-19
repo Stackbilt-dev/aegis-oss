@@ -1,7 +1,8 @@
 // Per-conversation fact extraction (#324)
 // Complements the dreaming cycle (daily, batch) with near-real-time
 // fact capture from operator chat sessions. Runs every 2 hours,
-// processes conversations updated since last run. Uses Workers AI (free).
+// processes conversations updated since last run. Uses Groq (free) with
+// Workers AI llama-3.1-8b (free tier) as fallback.
 
 import { type EdgeEnv } from '../dispatch.js';
 import { recordMemory as recordMemoryAdapter } from '../memory-adapter.js';
@@ -85,16 +86,25 @@ async function askAi(
   system: string,
   user: string,
 ): Promise<string> {
+  // Groq first — free, same 70B quality, no neuron consumption
+  if (env.groqApiKey) {
+    try {
+      return await askGroq(env.groqApiKey, env.groqResponseModel, system, user, env.groqBaseUrl);
+    } catch {
+      // fall through to Workers AI
+    }
+  }
+  // Workers AI fallback — llama-3.1-8b is on the genuine free tier
   if (env.ai) {
     const result = await env.ai.run(
-      '@cf/meta/llama-3.3-70b-instruct-fp8-fast' as Parameters<Ai['run']>[0],
+      '@cf/meta/llama-3.1-8b-instruct' as Parameters<Ai['run']>[0],
       { messages: [{ role: 'system', content: system }, { role: 'user', content: user }] },
     );
     if (typeof result === 'string') return result;
     const obj = result as { response?: string; choices?: Array<{ message?: { content?: string } }> };
     return obj.choices?.[0]?.message?.content ?? obj.response ?? '';
   }
-  return askGroq(env.groqApiKey, env.groqResponseModel, system, user, env.groqBaseUrl);
+  throw new Error('[conv-facts] No LLM provider available (groqApiKey and env.ai both missing)');
 }
 
 export async function runConversationFactExtraction(env: EdgeEnv): Promise<void> {
