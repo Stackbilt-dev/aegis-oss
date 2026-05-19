@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.4 (2026-05-19)
+
+### Added
+- `kernel/scheduled/curiosity.ts` — new `'conversation_gap'` source type (7th in `CuriosityCandidate['source']` union) surfaces consolidation pipeline gaps alongside knowledge gaps; MindSpring fanout (up to 3 parallel queries with 1.5s timeout, threshold 0.5) identifies topics with ≥1 conversation match but ≤2 MW entries; `thinTopicSeeds: string[]` collector preserves raw MW topic strings before wrapping in question format
+
 ## 0.6.3 (2026-05-08)
 
 ### Changed
