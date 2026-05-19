@@ -54,6 +54,7 @@ export interface EdgeEnv {
   codebeastFetcher?: Fetcher;
   mindspringFetcher?: Fetcher;
   mindspringToken?: string;
+  mindspringIngestToken?: string;
   devtoApiKey?: string;
   gaCredentials?: string;
   blueskyHandle?: string;

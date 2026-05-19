@@ -7,6 +7,7 @@
 import { type EdgeEnv } from '../dispatch.js';
 import { recordMemory as recordMemoryAdapter } from '../memory-adapter.js';
 import { askGroq } from '../../groq.js';
+import { pushFactsToMindSpring, type FactEntry } from './mindspring-notebook.js';
 
 const WATERMARK_KEY = 'conversation_facts_watermark';
 const MAX_CONVERSATIONS = 5;
@@ -138,6 +139,7 @@ export async function runConversationFactExtraction(env: EdgeEnv): Promise<void>
   }
 
   let totalFacts = 0;
+  const allFacts: FactEntry[] = [];
 
   for (const conv of conversations.results) {
     const messages = await env.db.prepare(`
@@ -195,6 +197,7 @@ export async function runConversationFactExtraction(env: EdgeEnv): Promise<void>
           fact.confidence ?? 0.8,
           'conversation_extraction',
         );
+        allFacts.push({ topic: topicLower, fact: fact.fact, confidence: fact.confidence ?? 0.8 });
         totalFacts++;
         console.log(`[conv-facts] Extracted: [${topicLower}] ${fact.fact.slice(0, 80)}`);
       } catch (err) {
@@ -205,6 +208,12 @@ export async function runConversationFactExtraction(env: EdgeEnv): Promise<void>
 
   await advanceWatermark(env.db);
   console.log(`[conv-facts] Processed ${conversations.results.length} conversations, extracted ${totalFacts} facts`);
+
+  // Push to MindSpring topic notebooks (non-blocking, never throws)
+  if (allFacts.length > 0) {
+    const runTag = `conv-facts-${Date.now().toString(36)}`;
+    await pushFactsToMindSpring(allFacts, runTag, env);
+  }
 }
 
 async function advanceWatermark(db: D1Database): Promise<void> {
