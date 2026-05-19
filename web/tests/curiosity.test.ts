@@ -66,10 +66,11 @@ describe('CuriosityCandidate source types', () => {
     'heartbeat_warn',
     'goal_failure',
     'self_interest',
+    'conversation_gap',
   ];
 
-  it('covers all 6 source types', () => {
-    expect(ALL_SOURCES).toHaveLength(6);
+  it('covers all 7 source types', () => {
+    expect(ALL_SOURCES).toHaveLength(7);
   });
 
   it('all source types are valid in prompt generation', () => {

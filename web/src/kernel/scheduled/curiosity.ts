@@ -8,11 +8,12 @@ import { type HeartbeatCheck } from './heartbeat.js';
 export interface CuriosityCandidate {
   topic: string;
   reason: string;
-  source: 'memory_gap' | 'low_confidence' | 'failure_rate' | 'heartbeat_warn' | 'goal_failure' | 'self_interest';
+  source: 'memory_gap' | 'low_confidence' | 'failure_rate' | 'heartbeat_warn' | 'goal_failure' | 'self_interest' | 'conversation_gap';
 }
 
 export async function gatherCuriosityTopics(env: EdgeEnv): Promise<CuriosityCandidate[]> {
   const candidates: CuriosityCandidate[] = [];
+  const thinTopicSeeds: string[] = [];
 
   // Source 1: Memory gaps — topics with few entries relative to others
   if (env.memoryBinding) {
@@ -20,6 +21,7 @@ export async function gatherCuriosityTopics(env: EdgeEnv): Promise<CuriosityCand
       const stats = await env.memoryBinding.stats('aegis');
       const thinTopics = stats.topics.filter(t => t.count <= 2).slice(0, 5);
       for (const t of thinTopics) {
+        thinTopicSeeds.push(t.topic);
         candidates.push({
           topic: `What more should I know about "${t.topic}"?`,
           reason: `Only ${t.count} memory entries — thin coverage`,
@@ -151,6 +153,37 @@ export async function gatherCuriosityTopics(env: EdgeEnv): Promise<CuriosityCand
         reason: `Self-model interest — keeping current in areas that matter to me`,
         source: 'self_interest',
       });
+    }
+  }
+
+  // Source 8: MindSpring conversation gap — topics MW barely knows but that appear in
+  // conversation history signal a consolidation pipeline failure, not just a knowledge gap.
+  const { mindspringFetcher, mindspringToken } = env;
+  if (mindspringFetcher && mindspringToken && thinTopicSeeds.length > 0) {
+    try {
+      const queryResults = await Promise.allSettled(
+        thinTopicSeeds.slice(0, 3).map(async (seed) => {
+          const url = `https://mindspring/api/search?q=${encodeURIComponent(seed)}&limit=5&threshold=0.5`;
+          const res = await mindspringFetcher.fetch(url, {
+            signal: AbortSignal.timeout(1500),
+            headers: { Authorization: `Bearer ${mindspringToken}` },
+          });
+          if (!res.ok) return { seed, count: 0 };
+          const data = await res.json<{ results: Array<{ title: string; score: number }> }>();
+          return { seed, count: (data.results ?? []).length };
+        })
+      );
+      for (const r of queryResults) {
+        if (r.status === 'fulfilled' && r.value.count > 0) {
+          candidates.push({
+            topic: `"${r.value.seed}" appears in conversation history but has thin memory coverage`,
+            reason: `${r.value.count} MindSpring matches vs ≤2 memory entries — consolidation gap`,
+            source: 'conversation_gap',
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[curiosity] MindSpring gap scan failed:', err instanceof Error ? err.message : String(err));
     }
   }
 
