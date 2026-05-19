@@ -43,6 +43,8 @@ interface MindSpringResult {
   title: string;
   text: string;
   score: number;
+  notebook_id?: string;
+  notebook_title?: string;
 }
 
 // ─── RRF (Reciprocal Rank Fusion) ────────────────────────────
@@ -143,8 +145,12 @@ export async function recallForQuery(
         : query;
 
       const msResponse = await env.mindspringFetcher.fetch(
-        `https://mindspring/api/search?q=${encodeURIComponent(msQuery)}&limit=5&threshold=0.4`,
-        { headers: { 'Authorization': `Bearer ${env.mindspringToken}` } },
+        'https://mindspring/api/v2/workspaces/aegis-daemon/search',
+        {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${env.mindspringToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: msQuery, limit: 5, threshold: 0.4 }),
+        },
       );
 
       if (msResponse.ok) {

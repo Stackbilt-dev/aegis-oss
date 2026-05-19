@@ -163,10 +163,11 @@ export async function gatherCuriosityTopics(env: EdgeEnv): Promise<CuriosityCand
     try {
       const queryResults = await Promise.allSettled(
         thinTopicSeeds.slice(0, 3).map(async (seed) => {
-          const url = `https://mindspring/api/search?q=${encodeURIComponent(seed)}&limit=5&threshold=0.5`;
-          const res = await mindspringFetcher.fetch(url, {
+          const res = await mindspringFetcher.fetch('https://mindspring/api/v2/workspaces/aegis-daemon/search', {
+            method: 'POST',
             signal: AbortSignal.timeout(1500),
-            headers: { Authorization: `Bearer ${mindspringToken}` },
+            headers: { Authorization: `Bearer ${mindspringToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: seed, limit: 5, threshold: 0.5 }),
           });
           if (!res.ok) return { seed, count: 0 };
           const data = await res.json<{ results: Array<{ title: string; score: number }> }>();
