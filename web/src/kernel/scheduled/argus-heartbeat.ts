@@ -21,7 +21,15 @@ import type { CorrelationResult, IncidentCluster, ArgusDiagnosis } from '../argu
 // ─── Configuration ───────────────────────────────────────────
 
 const RUN_CADENCE_HOURS = 3;
-const COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12h cooldown per pattern alert
+const COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12h default cooldown per pattern alert
+
+// Per-pattern cooldown overrides. Drought patterns are expected to persist in
+// pre-revenue or low-activity states — a longer cooldown prevents daily noise
+// from a condition that isn't going to self-resolve on a 12h cycle.
+const PATTERN_COOLDOWN_MS: Record<string, number> = {
+  drought_stripe: 72 * 60 * 60 * 1000,  // 72h — expected in pre-revenue
+  drought_github: 48 * 60 * 60 * 1000,  // 48h
+};
 
 // Pattern thresholds
 const CI_FAILURE_WINDOW_HOURS = 6;
@@ -179,7 +187,8 @@ async function isOnCooldown(db: D1Database, pattern: string): Promise<boolean> {
   ).bind(key).first<{ received_at: string }>();
 
   if (!last) return false;
-  return (Date.now() - new Date(last.received_at + 'Z').getTime()) < COOLDOWN_MS;
+  const cooldown = PATTERN_COOLDOWN_MS[pattern] ?? COOLDOWN_MS;
+  return (Date.now() - new Date(last.received_at + 'Z').getTime()) < cooldown;
 }
 
 async function recordCooldown(db: D1Database, pattern: string): Promise<void> {
