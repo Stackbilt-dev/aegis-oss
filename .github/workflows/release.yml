@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write  # required for npm OIDC trusted publishing + provenance attestation
 
 jobs:
   publish:
@@ -35,6 +36,4 @@ jobs:
 
       - name: Publish
         working-directory: web
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
