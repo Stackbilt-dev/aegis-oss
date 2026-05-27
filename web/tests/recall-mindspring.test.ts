@@ -152,13 +152,12 @@ describe('recall-pipeline: Stage 3.5 MindSpring', () => {
       mindspringToken: 'test-token',
     });
 
-    // Verify the fetch URL includes graph-expanded terms
+    // Verify the request body includes graph-expanded terms
     const fetchCall = (ms.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const url = fetchCall[0] as string;
-    expect(url).toContain('billing');
-    expect(url).toContain(encodeURIComponent('billing'));
+    const body = JSON.parse((fetchCall[1] as RequestInit).body as string) as { query: string };
+    expect(body.query).toContain('billing');
     // Graph expansion terms should be appended
-    expect(url).toContain(encodeURIComponent('billing stripe'));
+    expect(body.query).toContain('billing stripe');
   });
 
   it('limits graph expansions in MindSpring query to 5', async () => {
