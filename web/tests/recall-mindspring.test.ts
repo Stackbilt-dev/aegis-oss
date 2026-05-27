@@ -192,11 +192,11 @@ describe('recall-pipeline: Stage 3.5 MindSpring', () => {
     });
 
     const fetchCall = (ms.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const url = fetchCall[0] as string;
+    const body = JSON.parse((fetchCall[1] as RequestInit).body as string) as { query: string };
     // Should only have first 5 graph expansions (n1-n5), not n6/n7
-    expect(url).toContain('n5');
-    expect(url).not.toContain('n6');
-    expect(url).not.toContain('n7');
+    expect(body.query).toContain('n5');
+    expect(body.query).not.toContain('n6');
+    expect(body.query).not.toContain('n7');
   });
 
   it('skips MindSpring when fetcher is not provided', async () => {
@@ -389,7 +389,7 @@ describe('recall-pipeline: MindSpring + Memory Worker fusion', () => {
     expect(result.facts[0].semantic_score).toBe(0.72);
   });
 
-  it('uses correct search URL with encoded query, limit=5, threshold=0.4', async () => {
+  it('uses v2 workspace search endpoint with POST body { query, limit: 5, threshold: 0.4 }', async () => {
     const ms = createMockMindspring([]);
 
     await recallForQuery('what is AEGIS?', {
@@ -400,10 +400,14 @@ describe('recall-pipeline: MindSpring + Memory Worker fusion', () => {
 
     const fetchCall = (ms.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const url = fetchCall[0] as string;
-    expect(url).toContain('limit=5');
-    expect(url).toContain('threshold=0.4');
-    expect(url).toContain(encodeURIComponent('what is AEGIS?'));
-    expect(url).toMatch(/^https:\/\/mindspring\/api\/search/);
+    const reqInit = fetchCall[1] as RequestInit;
+    const body = JSON.parse(reqInit.body as string) as { query: string; limit: number; threshold: number };
+
+    expect(url).toBe('https://mindspring/api/v2/workspaces/aegis-daemon/search');
+    expect(reqInit.method).toBe('POST');
+    expect(body.query).toContain('what is AEGIS?');
+    expect(body.limit).toBe(5);
+    expect(body.threshold).toBe(0.4);
   });
 
   it('passes Authorization header with Bearer token', async () => {
@@ -417,6 +421,9 @@ describe('recall-pipeline: MindSpring + Memory Worker fusion', () => {
 
     const fetchCall = (ms.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const reqInit = fetchCall[1] as RequestInit;
-    expect(reqInit.headers).toEqual({ 'Authorization': 'Bearer my-secret-token' });
+    expect(reqInit.headers).toEqual({
+      'Authorization': 'Bearer my-secret-token',
+      'Content-Type': 'application/json',
+    });
   });
 });
