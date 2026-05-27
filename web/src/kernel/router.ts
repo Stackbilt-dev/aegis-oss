@@ -79,8 +79,14 @@ async function classifyWithWorkersAI(
     ],
     max_tokens: 200,
     temperature: 0.1,
-  }) as { response?: string };
-  return result.response ?? '';
+  }) as { response?: unknown };
+  const raw = result.response;
+  if (typeof raw === 'string') return raw;
+  if (raw == null) return '';
+  // Workers AI sometimes returns structured responses (objects with tool_calls,
+  // arrays of segments, etc.). Coerce to string so downstream .trim()/JSON.parse
+  // callers don't crash on non-string payloads.
+  return typeof raw === 'object' ? JSON.stringify(raw) : String(raw);
 }
 
 

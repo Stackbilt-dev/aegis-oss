@@ -30,11 +30,16 @@ export async function askGroq(
   }
 
   const data = await response.json<{
-    choices: { message: { content: string } }[];
+    choices: { message: { content: unknown } }[];
     usage?: { total_tokens: number };
   }>();
 
-  return data.choices[0]?.message?.content ?? '';
+  const content = data.choices[0]?.message?.content;
+  if (typeof content === 'string') return content;
+  if (content == null) return '';
+  // Some Groq-routed models (notably gpt-oss tool-calling variants) return content
+  // as an array of content blocks. Coerce so downstream string operations don't crash.
+  return typeof content === 'object' ? JSON.stringify(content) : String(content);
 }
 
 // ─── Logprobs-enabled classification ─────────────────────────
