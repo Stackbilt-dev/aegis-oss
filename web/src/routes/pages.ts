@@ -15,6 +15,10 @@ const pages = new Hono<{ Bindings: Env }>();
 // ─── Landing ────────────────────────────────────────────────
 
 pages.get('/', (c) => {
+  return c.html(chatPage());
+});
+
+pages.get('/about', (c) => {
   return c.html(landingPage());
 });
 
@@ -44,7 +48,7 @@ pages.get('/manifest.json', (c) => {
   return c.json({
     name: 'AEGIS',
     short_name: 'AEGIS',
-    start_url: '/chat',
+    start_url: '/',
     display: 'standalone',
     background_color: '#0a0a0f',
     theme_color: '#8b8bff',

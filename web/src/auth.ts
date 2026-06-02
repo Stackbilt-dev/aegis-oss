@@ -3,7 +3,15 @@ import type { Env } from './types.js';
 
 export async function bearerAuth(c: Context<{ Bindings: Env }>, next: Next): Promise<Response | void> {
   // Public routes — no auth required
-  if (c.req.path === '/health' || c.req.path === '/pulse' || (c.req.path === '/' && c.req.method === 'GET') || c.req.path.startsWith('/tech') || c.req.path === '/api/feedback' || c.req.path === '/observe' || c.req.path.startsWith('/api/overworld/public')) {
+  if (
+    c.req.path === '/health' ||
+    c.req.path === '/pulse' ||
+    ((c.req.path === '/' || c.req.path === '/chat' || c.req.path === '/manifest.json' || c.req.path === '/sw.js') && c.req.method === 'GET') ||
+    c.req.path.startsWith('/tech') ||
+    c.req.path === '/api/feedback' ||
+    c.req.path === '/observe' ||
+    c.req.path.startsWith('/api/overworld/public')
+  ) {
     return next();
   }
 

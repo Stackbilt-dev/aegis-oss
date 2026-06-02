@@ -78,11 +78,23 @@ describe('pages routes', () => {
   });
 
   describe('GET /', () => {
-    it('returns landing page HTML', async () => {
+    it('returns chat page HTML', async () => {
       const db = createMockDb();
       const app = createApp(db);
 
       const res = await app.request('/');
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain('chat');
+    });
+  });
+
+  describe('GET /about', () => {
+    it('returns landing page HTML', async () => {
+      const db = createMockDb();
+      const app = createApp(db);
+
+      const res = await app.request('/about');
       expect(res.status).toBe(200);
       const text = await res.text();
       expect(text).toContain('landing');
@@ -135,7 +147,7 @@ describe('pages routes', () => {
       const json = await res.json() as any;
       expect(json.name).toBe('AEGIS');
       expect(json.short_name).toBe('AEGIS');
-      expect(json.start_url).toBe('/chat');
+      expect(json.start_url).toBe('/');
       expect(json.display).toBe('standalone');
       expect(json.background_color).toBe('#0a0a0f');
       expect(json.theme_color).toBe('#8b8bff');

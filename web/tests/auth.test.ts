@@ -43,7 +43,7 @@ describe('bearerAuth', () => {
   });
 
   describe('public routes', () => {
-    const publicPaths = ['/health', '/pulse', '/.well-known/oauth-protected-resource', '/.well-known/oauth-authorization-server', '/.well-known/openid-configuration'];
+    const publicPaths = ['/health', '/pulse', '/chat', '/manifest.json', '/sw.js', '/.well-known/oauth-protected-resource', '/.well-known/oauth-authorization-server', '/.well-known/openid-configuration'];
 
     for (const path of publicPaths) {
       it(`passes through ${path} without auth`, async () => {
@@ -111,8 +111,8 @@ describe('bearerAuth', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    it('shows login page for an HTML navigation (GET /chat, Accept: text/html) without token', async () => {
-      const c = makeContext({ path: '/chat', method: 'GET', accept: 'text/html,application/xhtml+xml' });
+    it('shows login page for a protected HTML navigation without token', async () => {
+      const c = makeContext({ path: '/dashboard', method: 'GET', accept: 'text/html,application/xhtml+xml' });
       await bearerAuth(c, next);
       expect(next).not.toHaveBeenCalled();
       expect(c.html).toHaveBeenCalledWith(expect.stringContaining('AEGIS'), 401);
