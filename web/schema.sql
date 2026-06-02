@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS episodic_memory (
   executor TEXT,                               -- which executor handled this
   complexity_tier TEXT,                        -- aegis#563: procedureKey complement (low|mid|high); NULL for non-dispatcher producers
   executor_config TEXT,                        -- aegis#563: config snapshot at emit time (evaluator-replay fidelity)
+  grounding_gap INTEGER NOT NULL DEFAULT 0,     -- aegis#497/#34: unresolved grounding gap observed on this episode
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -208,6 +209,7 @@ CREATE INDEX IF NOT EXISTS idx_episodic_class ON episodic_memory(intent_class);
 CREATE INDEX IF NOT EXISTS idx_episodic_created ON episodic_memory(created_at);
 CREATE INDEX IF NOT EXISTS idx_episodic_thread ON episodic_memory(thread_id);
 CREATE INDEX IF NOT EXISTS idx_episodic_class_complexity ON episodic_memory(intent_class, complexity_tier);
+CREATE INDEX IF NOT EXISTS idx_episodic_grounding_gap ON episodic_memory(grounding_gap, created_at);
 CREATE INDEX IF NOT EXISTS idx_procedural_pattern ON procedural_memory(task_pattern);
 CREATE INDEX IF NOT EXISTS idx_procedural_status ON procedural_memory(status);
 CREATE INDEX IF NOT EXISTS idx_heartbeat_created ON heartbeat_results(created_at);
