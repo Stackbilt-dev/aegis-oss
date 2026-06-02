@@ -241,6 +241,7 @@ AEGIS pairs with other Stackbilt open-source tools:
 - [Configuration](docs/configuration.md) — Full operator config reference
 - [Memory System](docs/memory-system.md) — Memory tiers, consolidation, and dreaming cycle
 - [Connecting MCP Clients](docs/connecting-mcp-clients.md) — OpenClaw, Claude Desktop, Claude Code, Cursor, and any MCP client
+- [Publishing](docs/publishing.md) — Release workflow, npm trusted publishing, and token fallback
 
 ## Contributing
 

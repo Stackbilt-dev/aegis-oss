@@ -19,8 +19,9 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       - name: Install dependencies
         working-directory: web
@@ -36,4 +37,13 @@ jobs:
 
       - name: Publish
         working-directory: web
-        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "Publishing with NPM_TOKEN fallback and provenance."
+            npm publish --provenance --access public
+          else
+            echo "Publishing with npm trusted publishing (OIDC)."
+            npm publish --access public
+          fi
