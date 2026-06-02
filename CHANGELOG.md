@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.5 (2026-06-02)
+
+### Fixed
+- `auth.ts` — the bearer-token login form now renders for **any** HTML navigation (GET request with `Accept: text/html`) instead of a hardcoded `'/chat' | '/overworld' | '/console'` path list. Path-agnostic, so downstream variant pages (e.g. the daemon's `/lite` mobile surface) get the fresh-device login form for free with no core-side route coupling. Non-HTML (fetch/XHR) requests still get a JSON 401. (aegis-oss#50)
+
 ## 0.6.4 (2026-05-19)
 
 ### Added
