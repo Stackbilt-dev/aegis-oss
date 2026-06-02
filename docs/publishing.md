@@ -7,8 +7,8 @@
 Push a semver tag from `main`:
 
 ```bash
-git tag v0.6.6
-git push origin v0.6.6
+git tag v0.7.0
+git push origin v0.7.0
 ```
 
 The workflow installs dependencies, runs typecheck/tests, then publishes `web/package.json` to npm.

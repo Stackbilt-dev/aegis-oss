@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0 (2026-06-02)
+
+### Added
+- `cli/aegis.mjs` and the `aegis` package binary, including quick-start connection handling and executor override support for terminal demos. (aegis-oss#55)
+- `/chat/ws`, `ChatSession`, and `ChatSessionAuth` primitives for websocket-backed chat sessions, plus schema/configuration docs and tests. (aegis-oss#55)
+- Standalone chat shell UI support and a disambiguation firewall for safer routing and demo-path trust hardening.
+
+### Changed
+- Migrated the remaining in-repo LLM inference paths through `@stackbilt/llm-providers`: Claude executor, dynamic tools, Groq helpers, Workers AI helper fallbacks, composite execution, and the last raw Groq logprobs path. (aegis-oss#24)
+- Hardened digest delivery, grounding dispatch, and grounding-gap persistence so failed or missing evidence is recorded more consistently.
+
+### Fixed
+- Restored the release workflow's npm publish auth fallback while preserving trusted publishing support. (aegis-oss#51)
+
 ## 0.6.5 (2026-06-02)
 
 ### Fixed
