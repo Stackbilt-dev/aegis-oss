@@ -4,7 +4,7 @@ Deploy your own AEGIS agent on Cloudflare Workers in under 10 minutes.
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) 18+
+- [Node.js](https://nodejs.org/) 22+ for local development and deployment with the current Wrangler toolchain
 - A [Cloudflare](https://cloudflare.com) account (free tier works)
 - Workers AI enabled in your Cloudflare account
 - Optional: external model keys for Claude or Groq if you want those executors
