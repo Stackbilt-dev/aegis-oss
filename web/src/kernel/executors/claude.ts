@@ -28,6 +28,7 @@ function buildClaudeConfig(env: EdgeEnv, intent: KernelIntent, model: string, re
     braveApiKey: env.braveApiKey,
     roundtableDb: env.roundtableDb,
     memoryBinding: env.memoryBinding,
+    edgeEnv: env,
   };
 }
 
