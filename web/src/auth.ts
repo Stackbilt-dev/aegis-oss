@@ -31,8 +31,12 @@ export async function bearerAuth(c: Context<{ Bindings: Env }>, next: Next): Pro
   const token = extractBearer(authHeader) ?? cookieToken ?? queryToken;
 
   if (!token || token !== c.env.AEGIS_TOKEN) {
-    // UI pages — show login page
-    if ((c.req.path === '/chat' || c.req.path === '/overworld' || c.req.path === '/console') && c.req.method === 'GET') {
+    // UI pages — show the login form for top-level HTML navigations (a GET
+    // whose Accept includes text/html) so the operator can enter a token.
+    // Path-agnostic on purpose: any page route — core or downstream-variant
+    // (e.g. the daemon's /lite) — gets the form without core enumerating it.
+    // API/fetch requests (Accept */* or application/json) get JSON 401.
+    if (c.req.method === 'GET' && (c.req.header('Accept') ?? '').includes('text/html')) {
       return c.html(loginPage(), 401);
     }
     return c.json({ error: 'Unauthorized' }, 401);

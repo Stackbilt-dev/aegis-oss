@@ -11,8 +11,9 @@ function makeContext(overrides: {
   authHeader?: string;
   cookie?: string;
   queryToken?: string;
+  accept?: string;
 }): Context<{ Bindings: Env }> {
-  const { path, method = 'GET', authHeader, cookie, queryToken } = overrides;
+  const { path, method = 'GET', authHeader, cookie, queryToken, accept } = overrides;
   return {
     req: {
       path,
@@ -20,6 +21,7 @@ function makeContext(overrides: {
       header: (name: string) => {
         if (name === 'Authorization') return authHeader;
         if (name === 'Cookie') return cookie ?? '';
+        if (name === 'Accept') return accept;
         return undefined;
       },
       query: (name: string) => {
@@ -109,11 +111,26 @@ describe('bearerAuth', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    it('shows login page for GET /chat without token', async () => {
-      const c = makeContext({ path: '/chat', method: 'GET' });
+    it('shows login page for an HTML navigation (GET /chat, Accept: text/html) without token', async () => {
+      const c = makeContext({ path: '/chat', method: 'GET', accept: 'text/html,application/xhtml+xml' });
       await bearerAuth(c, next);
       expect(next).not.toHaveBeenCalled();
       expect(c.html).toHaveBeenCalledWith(expect.stringContaining('AEGIS'), 401);
+    });
+
+    it('shows login page for any page route navigation (GET /lite, Accept: text/html) — path-agnostic', async () => {
+      const c = makeContext({ path: '/lite', method: 'GET', accept: 'text/html' });
+      await bearerAuth(c, next);
+      expect(next).not.toHaveBeenCalled();
+      expect(c.html).toHaveBeenCalledWith(expect.stringContaining('AEGIS'), 401);
+    });
+
+    it('returns JSON 401 (not the login form) for a fetch/API request without token', async () => {
+      const c = makeContext({ path: '/api/agenda', method: 'GET', accept: '*/*' });
+      await bearerAuth(c, next);
+      expect(next).not.toHaveBeenCalled();
+      expect(c.json).toHaveBeenCalledWith({ error: 'Unauthorized' }, 401);
+      expect(c.html).not.toHaveBeenCalled();
     });
 
     it('prioritizes Authorization header over cookie', async () => {
