@@ -12,6 +12,10 @@ Request → Auth → Cognitive Kernel → Response
                      ├── Execute (model dispatch)
                      └── Learn (episode recording)
 
+Browser console → ASSETS binding → /api/message/stream
+                              └── /chat/ws
+Voice console   → Agents SDK → /agents/aegis-voice-adapter/operator
+
 Cron (hourly) → Scheduled Tasks
                      │
                      ├── Phase 1: Free (D1 only)
@@ -21,6 +25,32 @@ Cron (hourly) → Scheduled Tasks
                      └── Phase 3: Heavy (budget-aware)
                          └── Goals, dreaming, curiosity
 ```
+
+## Standalone deployment surface
+
+As of 0.8.0, the public package ships as a self-sufficient Cloudflare Worker app, not just a kernel library. A fresh checkout can build and deploy the browser console, text chat, voice adapter, scheduled tasks, MCP server, and core API routes without private Stackbilt UI code.
+
+The standalone Worker uses these bindings:
+
+| Binding | Type | Purpose |
+|---------|------|---------|
+| `ASSETS` | Workers static assets | Serves the Vite-built web console from `web/public/` |
+| `DB` | D1 database | Stores conversations, memory, goals, agenda, tools, and task state |
+| `AI` | Workers AI | Base chat, voice, classification fallback, and low-cost summarization |
+| `CHAT_SESSION` | Durable Object | Maintains ordered terminal/browser chat sessions for `/chat/ws` |
+| `AegisVoiceAdapter` | Durable Object | Hosts the Cloudflare Voice/Agents SDK adapter |
+
+The deployment path is intentionally small:
+
+1. `npm run build:ui` builds `web/src/ui/` into `web/public/`.
+2. `wrangler.toml.example` wires `ASSETS`, `DB`, `AI`, `CHAT_SESSION`, and `AegisVoiceAdapter`.
+3. `npm run deploy` builds the UI and runs `wrangler deploy`.
+4. Visiting the Worker root serves the embedded console through `ASSETS`.
+5. `/api/*`, `/health`, `/chat/ws`, and `/agents/*` run through the Worker before static asset fallback.
+
+All interactive routes use the same `AEGIS_TOKEN` bearer-token boundary. The browser voice route also accepts the token through the voice call query path so the Agents SDK adapter can authenticate the session before model routing.
+
+Package consumers can still import `createAegisApp()` and compose their own routes, scheduled tasks, executors, and MCP tools. The standalone app is the reference assembly; the package exports the primitives needed to build variants.
 
 ## The dispatch cycle
 
@@ -53,10 +83,10 @@ AEGIS supports multiple AI backends, selected per-request based on intent and le
 
 | Executor | Model | Use case |
 |----------|-------|----------|
-| `claude` | Claude Sonnet | Complex reasoning, code, analysis |
-| `claude-opus` | Claude Opus | Highest capability tasks |
-| `groq` | Llama 3.3 70B | Fast responses, classification |
-| `workers-ai` | Workers AI models | Free inference, summarization |
+| `workers-ai` | Workers AI models | Base chat path, voice, classification fallback, free inference, summarization |
+| `claude` | Claude Sonnet | Optional complex reasoning, code, analysis |
+| `claude-opus` | Claude Opus | Optional highest capability tasks |
+| `groq` | Llama 3.3 70B | Optional fast responses and classification |
 | `composite` | Multi-model | Complex queries requiring multiple perspectives |
 | `direct` | None (D1 only) | Memory lookups, agenda management |
 | `tarotscript` | Symbolic engine | Deterministic computation (optional) |

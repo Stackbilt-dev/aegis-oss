@@ -23,13 +23,13 @@ AEGIS is a framework for building **personal AI agents** that remember everythin
 - **Standalone** — Clone, configure, deploy. Full agent in minutes.
 - **As a dependency** — `npm install @stackbilt/aegis-core` and extend with your own routes, scheduled tasks, executors, and MCP tools via `createAegisApp()`.
 
-The production instance runs 26 scheduled tasks, has executed 236+ autonomous coding sessions, and costs $0/month to host (Cloudflare Workers free tier + Workers AI for inference).
+The reference deployment runs the same scheduled-task framework and is designed for $0/month hosting on the Cloudflare Workers free tier, with Workers AI as the base inference path.
 
 Built on Cloudflare Workers for edge-native deployment. Zero cold starts. Global distribution. Pay-per-request economics.
 
 ### Core Capabilities
 
-- **Cognitive Kernel** — Multi-model dispatch (Claude, Groq, Workers AI) with procedural memory routing. The right model for the right task, automatically.
+- **Cognitive Kernel** — Workers AI-first dispatch with optional Claude and Groq executors, plus procedural memory routing. The right model for the right task, automatically.
 - **Multi-Tier Memory** — Episodic (what happened), semantic (what matters), procedural (what works), narrative (the story arc). Memory consolidates, decays, and strengthens over time.
 - **Autonomous Goals** — Set goals with standing orders and let AEGIS pursue them on a schedule. Progress tracked, blockers surfaced, results reported.
 - **Dreaming Cycle** — Nightly self-reflection over conversation history. Discovers patterns, proposes improvements, proposes new tools, consolidates knowledge. PRISM synthesis finds cross-domain connections.
@@ -71,7 +71,7 @@ Talk to the same deployment from a terminal:
 AEGIS_HOST=your-worker.workers.dev AEGIS_TOKEN=your-token npx @stackbilt/aegis-core --quick
 ```
 
-Release proof: [AEGIS 0.8.0 Proof of Work](docs/proof-of-work-0.8.0.md).
+Release proof: [AEGIS 0.8.0 Proof of Work](docs/proof-of-work-0.8.0.md). Demo path: [AEGIS 0.8.0 Demo Script](docs/demo-script-0.8.0.md).
 
 ## Use as a Dependency
 
@@ -110,7 +110,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md#using-as-a-dependency) for full documentat
     │                   COGNITIVE KERNEL                          │
     │                                                            │
     │  Classify → Route (procedural memory) → Execute            │
-    │  (intent)   (learned patterns)          (Claude/Groq/WAI)  │
+    │  (intent)   (learned patterns)          (WAI + optional)   │
     │                                                            │
     │  ┌──────────────────────────────────────────────────────┐  │
     │  │              MEMORY TIERS                             │  │
@@ -221,7 +221,8 @@ AEGIS runs 26 tasks on an hourly cron, split into heartbeat (always-run) and tim
 
 - **Runtime**: Cloudflare Workers (V8 isolates, global edge)
 - **Database**: Cloudflare D1 (SQLite at the edge)
-- **AI Models**: Claude (Anthropic), Groq (Llama 3.3), Workers AI (free inference)
+- **Base Inference**: Cloudflare Workers AI
+- **Optional Executors**: Claude (Anthropic), Groq (Llama 3.3)
 - **Framework**: Hono (lightweight, edge-native HTTP)
 - **Language**: TypeScript (strict mode)
 - **Protocol**: MCP (Model Context Protocol)
@@ -247,6 +248,8 @@ AEGIS pairs with other Stackbilt open-source tools:
 - [Configuration](docs/configuration.md) — Full operator config reference
 - [Memory System](docs/memory-system.md) — Memory tiers, consolidation, and dreaming cycle
 - [Connecting MCP Clients](docs/connecting-mcp-clients.md) — OpenClaw, Claude Desktop, Claude Code, Cursor, and any MCP client
+- [AEGIS 0.8.0 Demo Script](docs/demo-script-0.8.0.md) — Browser console plus CLI proof path
+- [AEGIS 0.8.0 Proof of Work](docs/proof-of-work-0.8.0.md) — Release evidence and validation notes
 - [Publishing](docs/publishing.md) — Release workflow, npm trusted publishing, and token fallback
 
 ## Contributing
