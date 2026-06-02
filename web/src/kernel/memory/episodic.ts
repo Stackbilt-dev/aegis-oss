@@ -16,13 +16,15 @@ export function sanitizeEpisodicOutcome(raw: string | null | undefined): Episodi
 
 export async function recordEpisode(db: D1Database, entry: Omit<EpisodicEntry, 'id' | 'created_at'>): Promise<void> {
   const safeOutcome = sanitizeEpisodicOutcome(entry.outcome);
+  const groundingGap = entry.grounding_gap ? 1 : 0;
   await db.prepare(
-    'INSERT INTO episodic_memory (intent_class, channel, summary, outcome, cost, latency_ms, near_miss, classifier_confidence, reclassified, thread_id, executor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO episodic_memory (intent_class, channel, summary, outcome, cost, latency_ms, near_miss, classifier_confidence, reclassified, thread_id, executor, grounding_gap) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).bind(
     entry.intent_class, entry.channel, entry.summary, safeOutcome,
     entry.cost, entry.latency_ms, entry.near_miss ?? null,
     entry.classifier_confidence ?? null, entry.reclassified ? 1 : 0,
     entry.thread_id ?? null, entry.executor ?? null,
+    groundingGap,
   ).run();
 }
 

@@ -40,6 +40,7 @@ export interface EpisodicEntry {
   executor?: string | null;
   complexity_tier?: string | null;
   executor_config?: string | null;
+  grounding_gap?: boolean | number;
   created_at?: string;
 }
 

@@ -350,7 +350,7 @@ describe('dispatch — error handling', () => {
     // recordEpisode should be called with outcome 'failure'
     expect(recordEpisode).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ outcome: 'failure' }),
+      expect.objectContaining({ outcome: 'failure', grounding_gap: false }),
     );
   });
 
@@ -536,7 +536,7 @@ describe('dispatch — partial failure detection', () => {
     // partial_failure episodes should be recorded as 'failure'
     expect(recordEpisode).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ outcome: 'failure' }),
+      expect.objectContaining({ outcome: 'failure', grounding_gap: false }),
     );
   });
 });
@@ -819,7 +819,7 @@ describe('dispatch — grounding layer integration', () => {
     );
     expect(recordEpisode).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ outcome: 'failure' }),
+      expect.objectContaining({ outcome: 'failure', grounding_gap: true }),
     );
     expect(upsertProcedure).toHaveBeenCalledWith(
       expect.anything(),

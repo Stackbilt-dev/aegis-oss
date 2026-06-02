@@ -98,8 +98,26 @@ describe('recordEpisode', () => {
 
     expect(db._queries).toHaveLength(1);
     expect(db._queries[0].sql).toContain('INSERT INTO episodic_memory');
+    expect(db._queries[0].sql).toContain('grounding_gap');
     expect(db._queries[0].bindings[0]).toBe('greeting');
     expect(db._queries[0].bindings[3]).toBe('success');
+    expect(db._queries[0].bindings[11]).toBe(0);
+  });
+
+  it('persists grounding gap as an integer flag', async () => {
+    const db = createMockDb({ runResults: [{ success: true }] });
+
+    await recordEpisode(db, {
+      intent_class: 'bizops_read',
+      channel: 'web',
+      summary: 'Read had unresolved entity',
+      outcome: 'failure',
+      cost: 0.01,
+      latency_ms: 400,
+      grounding_gap: true,
+    });
+
+    expect(db._queries[0].bindings[11]).toBe(1);
   });
 
   it('sanitizes invalid outcome to failure before insert', async () => {

@@ -121,6 +121,7 @@ async function recordOutcome(
   latencyMs: number,
   nearMiss: string | null | undefined,
   outcome: 'success' | 'failure' | 'partial_failure',
+  groundingGap: boolean,
   reclassified?: boolean,
 ): Promise<void> {
   await recordEpisode(env.db, {
@@ -135,6 +136,7 @@ async function recordOutcome(
     reclassified,
     thread_id: intent.source.threadId,
     executor: plan.executor,
+    grounding_gap: groundingGap,
   });
 
   await upsertProcedure(env.db, procKey, plan.executor, JSON.stringify({ executor: plan.executor }), outcome, latencyMs, cost);
@@ -498,11 +500,14 @@ async function finalizeGrounding(
   env: EdgeEnv,
   exec: ExecuteResult,
   latencyMs: number,
-): Promise<{ result: DispatchResult; outcome: 'success' | 'failure' | 'partial_failure' }> {
+): Promise<{ result: DispatchResult; outcome: 'success' | 'failure' | 'partial_failure'; groundingGap: boolean }> {
   const result = buildResult(ctx, intent, exec, latencyMs);
   await applyFabricationCheck(result, exec.text, env);
   const outcome = applyGroundingProof(exec.outcome, ctx.classification, result);
-  return { result, outcome };
+  const groundingGap =
+    (result.unverified_claims?.length ?? 0) > 0 ||
+    (result.unknowns?.length ?? 0) > 0;
+  return { result, outcome, groundingGap };
 }
 
 // ─── Main Dispatch Loop ──────────────────────────────────────
@@ -517,8 +522,8 @@ export async function dispatch(intent: KernelIntent, env: EdgeEnv): Promise<Disp
 
   const exec = await probeAndExecute(ctx, intent, env, startMs);
   const latencyMs = Date.now() - startMs;
-  const { result, outcome } = await finalizeGrounding(ctx, intent, env, exec, latencyMs);
-  await recordOutcome(env, intent, ctx.classification, ctx.procKey, ctx.plan, ctx.existingProcedure, exec.text, exec.cost, latencyMs, ctx.nearMiss, outcome, ctx.reclassified);
+  const { result, outcome, groundingGap } = await finalizeGrounding(ctx, intent, env, exec, latencyMs);
+  await recordOutcome(env, intent, ctx.classification, ctx.procKey, ctx.plan, ctx.existingProcedure, exec.text, exec.cost, latencyMs, ctx.nearMiss, outcome, groundingGap, ctx.reclassified);
   await applyGapSignal(result, ctx.procKey, ctx.classification, env);
 
   // Background: shadow exploration + shadow read
@@ -550,8 +555,8 @@ export async function dispatchStream(
 
   const exec = await probeAndExecute(ctx, intent, env, startMs, onDelta);
   const latencyMs = Date.now() - startMs;
-  const { result, outcome } = await finalizeGrounding(ctx, intent, env, exec, latencyMs);
-  await recordOutcome(env, intent, ctx.classification, ctx.procKey, ctx.plan, ctx.existingProcedure, exec.text, exec.cost, latencyMs, ctx.nearMiss, outcome, ctx.reclassified);
+  const { result, outcome, groundingGap } = await finalizeGrounding(ctx, intent, env, exec, latencyMs);
+  await recordOutcome(env, intent, ctx.classification, ctx.procKey, ctx.plan, ctx.existingProcedure, exec.text, exec.cost, latencyMs, ctx.nearMiss, outcome, groundingGap, ctx.reclassified);
   await applyGapSignal(result, ctx.procKey, ctx.classification, env);
 
   // Background: shadow exploration + shadow read
