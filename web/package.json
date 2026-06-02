@@ -1,6 +1,6 @@
 {
   "name": "@stackbilt/aegis-core",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Persistent AI agent framework for Cloudflare Workers. Multi-tier memory, autonomous goals, dreaming cycles, MCP native.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -80,8 +80,9 @@
     "./kernel/patterns": "./src/kernel/patterns.ts"
   },
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "npm run build:ui && wrangler dev",
+    "deploy": "npm run build:ui && wrangler deploy",
+    "build:ui": "vite build --config vite.ui.config.ts",
     "d1:create": "wrangler d1 create aegis-web",
     "d1:migrate": "wrangler d1 execute aegis-web --file=schema.sql",
     "d1:migrate:local": "wrangler d1 execute aegis-web --file=schema.sql --local",
@@ -96,10 +97,15 @@
     "@stackbilt/llm-providers": "^1.6.4",
     "agents": "^0.12.3",
     "hono": "^4.12.12",
+    "partysocket": "^1.1.19",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241218.0",
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
     "typescript": "^5.7.3",
     "vite": "^8.0.5",
     "vitest": "^4.0.18",
@@ -108,6 +114,10 @@
   "files": [
     "cli/**/*.mjs",
     "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/ui/**/*.css",
+    "src/ui/**/*.html",
+    "public/**/*",
     "schema.sql"
   ],
   "keywords": [

@@ -5,6 +5,25 @@ compatibility_flags = ["nodejs_compat"]
 
 # account_id = "YOUR_ACCOUNT_ID"
 
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = [
+  "/api/*",
+  "/mcp*",
+  "/authorize",
+  "/token",
+  "/register",
+  "/health",
+  "/pulse",
+  "/dashboard",
+  "/chat/ws",
+  "/agents/*",
+  "/.well-known/*",
+  "/webhooks/*"
+]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "my-agent"
@@ -17,9 +36,17 @@ binding = "AI"
 name = "CHAT_SESSION"
 class_name = "ChatSession"
 
+[[durable_objects.bindings]]
+name = "AegisVoiceAdapter"
+class_name = "AegisVoiceAdapter"
+
 [[migrations]]
 tag = "v1-chat-session"
 new_sqlite_classes = ["ChatSession"]
+
+[[migrations]]
+tag = "v2-aegis-voice-adapter"
+new_sqlite_classes = ["AegisVoiceAdapter"]
 
 # Triggers — hourly cron for scheduled tasks
 [triggers]

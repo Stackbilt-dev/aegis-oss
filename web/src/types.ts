@@ -4,7 +4,9 @@ export interface Env {
   DB: D1Database;
   AI: Ai;
   AEGIS_TOKEN: string;
+  ASSETS?: Fetcher;
   CHAT_SESSION?: DurableObjectNamespace;
+  AegisVoiceAdapter?: DurableObjectNamespace;
 
   // OAuth 2.1 (injected by OAuthProvider wrapper at runtime)
   OAUTH_PROVIDER: OAuthHelpers;

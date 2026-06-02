@@ -58,14 +58,12 @@ npx wrangler d1 execute my-agent --file=schema.sql
 
 # Set secrets
 npx wrangler secret put AEGIS_TOKEN            # Random bearer token for auth
-npx wrangler secret put ANTHROPIC_API_KEY      # Claude API key
-npx wrangler secret put GROQ_API_KEY           # Groq key (free tier available)
 
 # Deploy
-npx wrangler deploy
+npm run deploy
 ```
 
-Visit `https://your-worker.workers.dev` and authenticate with your AEGIS_TOKEN.
+Visit `https://your-worker.workers.dev` and authenticate with your AEGIS_TOKEN. The embedded console uses Workers AI for the base chat and voice path; Claude and Groq keys are optional executor upgrades.
 
 Talk to the same deployment from a terminal:
 

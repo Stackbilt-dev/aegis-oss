@@ -6,8 +6,8 @@ Deploy your own AEGIS agent on Cloudflare Workers in under 10 minutes.
 
 - [Node.js](https://nodejs.org/) 18+
 - A [Cloudflare](https://cloudflare.com) account (free tier works)
-- An [Anthropic](https://console.anthropic.com) API key (for Claude)
-- Optional: [Groq](https://console.groq.com) API key (free tier available, used for fast classification)
+- Workers AI enabled in your Cloudflare account
+- Optional: external model keys for Claude or Groq if you want those executors
 
 ## 1. Clone and install
 
@@ -37,7 +37,10 @@ npx wrangler d1 create my-agent
 
 This prints a `database_id` — paste it into `wrangler.toml` under `[[d1_databases]]`.
 
-The example Wrangler config also includes the `CHAT_SESSION` Durable Object binding and SQLite-backed migration required by `/chat/ws`.
+The example Wrangler config also includes:
+- the `ASSETS` binding for the Vite-built web console in `public/`
+- the `CHAT_SESSION` Durable Object binding required by `/chat/ws`
+- the `AegisVoiceAdapter` Durable Object binding required by the browser voice call flow
 
 Then run the schema migration:
 
@@ -56,16 +59,16 @@ Edit `config.ts` to set your name, persona traits, and which integrations to ena
 
 ## 5. Set secrets
 
-At minimum, you need an auth token and an AI model key:
+At minimum, you need an auth token:
 
 ```bash
 npx wrangler secret put AEGIS_TOKEN            # A random bearer token you'll use to authenticate
-npx wrangler secret put ANTHROPIC_API_KEY      # Your Claude API key
 ```
 
 Optional secrets for additional capabilities:
 
 ```bash
+npx wrangler secret put ANTHROPIC_API_KEY      # Claude executors
 npx wrangler secret put GROQ_API_KEY           # Fast classification (Llama 3.3 70B)
 npx wrangler secret put GITHUB_TOKEN           # Repository scanning, issue management
 npx wrangler secret put BRAVE_API_KEY          # Web research
@@ -75,10 +78,10 @@ npx wrangler secret put RESEND_API_KEY         # Email notifications
 ## 6. Deploy
 
 ```bash
-npx wrangler deploy
+npm run deploy
 ```
 
-Your agent is now live at `https://your-worker-name.your-subdomain.workers.dev`.
+The deploy script builds the embedded SPA into `public/` and then runs `wrangler deploy`. Your agent is now live at `https://your-worker-name.your-subdomain.workers.dev`.
 
 ## 7. Authenticate
 
@@ -102,12 +105,10 @@ For local development without deploying:
 # Create a .dev.vars file with your secrets
 cat > ../.dev.vars << 'EOF'
 AEGIS_TOKEN=test-token
-ANTHROPIC_API_KEY=sk-ant-...
-GROQ_API_KEY=gsk_...
 EOF
 
 # Run locally
-npx wrangler dev
+npm run dev
 ```
 
 ## Next steps
