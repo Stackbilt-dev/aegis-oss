@@ -1,12 +1,20 @@
 import { route } from './router.js';
 import { recordEpisode, retrogradeEpisode, upsertProcedure, addRefinement, degradeProcedure, getProcedure, procedureKey } from './memory/index.js';
-import { searchMemoryByKeywords, getAllMemoryForContext } from './memory-adapter.js';
+import { getAllMemoryForContext } from './memory-adapter.js';
 import { generateBriefing, formatBriefing } from './briefing.js';
-import { fetchRelevantInsights } from './insight-cache.js';
 import { probeConsistency } from '../groq.js';
 import { executeComposite } from '../composite.js';
 import { buildGroqSystemPrompt } from '../operator/prompt-builder.js';
 import type { KernelIntent, DispatchResult, Executor } from './types.js';
+import type { GroundingEnvelope } from './grounding/fanout.js';
+import {
+  augmentWithEntityGrounding,
+  augmentWithInsights,
+  augmentWithMemoryRecall,
+  applyFabricationCheck,
+  applyGapSignal,
+  applyGroundingProof,
+} from './grounding-layer.js';
 import {
   executeGptOss,
   executeClaudeStream,
@@ -156,6 +164,7 @@ interface AugmentedContext {
   classification: string;
   procKey: string;
   existingProcedure: Awaited<ReturnType<typeof getProcedure>>;
+  grounding?: GroundingEnvelope;
 }
 
 async function augmentIntent(intent: KernelIntent, env: EdgeEnv): Promise<AugmentedContext> {
@@ -165,34 +174,11 @@ async function augmentIntent(intent: KernelIntent, env: EdgeEnv): Promise<Augmen
   const procKey = procedureKey(classification, intent.complexity);
   const existingProcedure = await getProcedure(env.db, procKey);
 
-  // 1.3. Cross-repo insight augmentation (CRIX #106)
-  if (env.memoryBinding && classification !== 'greeting' && classification !== 'heartbeat') {
-    try {
-      const insightContext = await fetchRelevantInsights(env, classification, intent.raw);
-      if (insightContext) {
-        intent.raw = `${insightContext}\n\n${intent.raw}`;
-      }
-    } catch (err) {
-      console.warn('[dispatch] Insight fetch failed (non-fatal):', err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  // 1.5. Memory-recall augmentation
-  if (classification === 'memory_recall') {
-    try {
-      if (env.memoryBinding) {
-        const relevant = await searchMemoryByKeywords(env.memoryBinding, intent.raw, 10);
-        if (relevant.length > 0) {
-          const memLines = relevant.map(m => `- [${m.topic}] ${m.fact} (confidence: ${m.confidence})`).join('\n');
-          intent.raw = `[Relevant memory entries matching this query]\n${memLines}\n\n[User's question]\n${intent.raw}`;
-        }
-      } else {
-        console.warn('[dispatch] Memory binding unavailable — skipping memory recall augmentation');
-      }
-    } catch (err) {
-      console.warn('[dispatch] Memory search failed (non-fatal):', err instanceof Error ? err.message : String(err));
-    }
-  }
+  // 1.3-1.5. Grounding-layer augmentations: cross-repo insights, entity
+  // grounding, and memory recall. Each helper is non-fatal by contract.
+  await augmentWithInsights(intent, classification, env);
+  const grounding = await augmentWithEntityGrounding(intent, classification, env);
+  await augmentWithMemoryRecall(intent, classification, env);
 
   // 1.6. Implicit feedback — retrograde previous episode on user correction
   if (classification === 'user_correction' && intent.source.threadId) {
@@ -221,7 +207,7 @@ async function augmentIntent(intent: KernelIntent, env: EdgeEnv): Promise<Augmen
     }
   }
 
-  return { plan, nearMiss, reclassified, classification, procKey, existingProcedure };
+  return { plan, nearMiss, reclassified, classification, procKey, existingProcedure, grounding };
 }
 
 // ─── Self-Improvement ACK ────────────────────────────────────
@@ -275,7 +261,6 @@ interface ExecuteResult {
   meta?: unknown;
   outcome: 'success' | 'failure' | 'partial_failure';
   probeResult?: 'agreed' | 'split' | 'escalated';
-  earlyReturn?: DispatchResult; // probe agreed → skip executor
 }
 
 async function probeAndExecute(
@@ -302,11 +287,8 @@ async function probeAndExecute(
         probeResult = 'agreed';
         plan.executor = 'groq';
         if (onDelta) onDelta(text);
-        const latencyMs = Date.now() - startMs;
-        await recordOutcome(env, intent, classification, procKey, plan, existingProcedure, text, cost, latencyMs, nearMiss, 'success', ctx.reclassified);
         return {
           text, cost, outcome: 'success', probeResult,
-          earlyReturn: { text, executor: plan.executor, cost, latency_ms: latencyMs, procedureHit: !!plan.procedureId, classification, confidence: intent.confidence, reclassified: ctx.reclassified, probeResult, meta: undefined },
         };
       } else if (probe.sigma === 1.0) {
         const prev = plan.executor;
@@ -489,7 +471,7 @@ function buildResult(
   exec: ExecuteResult,
   latencyMs: number,
 ): DispatchResult {
-  return {
+  const result: DispatchResult = {
     text: exec.text,
     executor: ctx.plan.executor,
     cost: exec.cost,
@@ -501,6 +483,26 @@ function buildResult(
     probeResult: exec.probeResult,
     meta: exec.meta,
   };
+  if (ctx.grounding) {
+    result.grounded = ctx.grounding.grounded;
+    result.sources = ctx.grounding.sources;
+    result.unknowns = ctx.grounding.unknowns;
+    result.searched = ctx.grounding.searched;
+  }
+  return result;
+}
+
+async function finalizeGrounding(
+  ctx: AugmentedContext,
+  intent: KernelIntent,
+  env: EdgeEnv,
+  exec: ExecuteResult,
+  latencyMs: number,
+): Promise<{ result: DispatchResult; outcome: 'success' | 'failure' | 'partial_failure' }> {
+  const result = buildResult(ctx, intent, exec, latencyMs);
+  await applyFabricationCheck(result, exec.text, env);
+  const outcome = applyGroundingProof(exec.outcome, ctx.classification, result);
+  return { result, outcome };
 }
 
 // ─── Main Dispatch Loop ──────────────────────────────────────
@@ -514,10 +516,10 @@ export async function dispatch(intent: KernelIntent, env: EdgeEnv): Promise<Disp
   if (ack) return ack;
 
   const exec = await probeAndExecute(ctx, intent, env, startMs);
-  if (exec.earlyReturn) return exec.earlyReturn;
-
   const latencyMs = Date.now() - startMs;
-  await recordOutcome(env, intent, ctx.classification, ctx.procKey, ctx.plan, ctx.existingProcedure, exec.text, exec.cost, latencyMs, ctx.nearMiss, exec.outcome, ctx.reclassified);
+  const { result, outcome } = await finalizeGrounding(ctx, intent, env, exec, latencyMs);
+  await recordOutcome(env, intent, ctx.classification, ctx.procKey, ctx.plan, ctx.existingProcedure, exec.text, exec.cost, latencyMs, ctx.nearMiss, outcome, ctx.reclassified);
+  await applyGapSignal(result, ctx.procKey, ctx.classification, env);
 
   // Background: shadow exploration + shadow read
   if (env.ctx) {
@@ -533,7 +535,7 @@ export async function dispatch(intent: KernelIntent, env: EdgeEnv): Promise<Disp
     }
   }
 
-  return buildResult(ctx, intent, exec, latencyMs);
+  return result;
 }
 
 // ─── Streaming Dispatch ──────────────────────────────────────
@@ -547,10 +549,10 @@ export async function dispatchStream(
   const ctx = await augmentIntent(intent, env);
 
   const exec = await probeAndExecute(ctx, intent, env, startMs, onDelta);
-  if (exec.earlyReturn) return exec.earlyReturn;
-
   const latencyMs = Date.now() - startMs;
-  await recordOutcome(env, intent, ctx.classification, ctx.procKey, ctx.plan, ctx.existingProcedure, exec.text, exec.cost, latencyMs, ctx.nearMiss, exec.outcome, ctx.reclassified);
+  const { result, outcome } = await finalizeGrounding(ctx, intent, env, exec, latencyMs);
+  await recordOutcome(env, intent, ctx.classification, ctx.procKey, ctx.plan, ctx.existingProcedure, exec.text, exec.cost, latencyMs, ctx.nearMiss, outcome, ctx.reclassified);
+  await applyGapSignal(result, ctx.procKey, ctx.classification, env);
 
   // Background: shadow exploration + shadow read
   if (env.ctx) {
@@ -566,5 +568,5 @@ export async function dispatchStream(
     }
   }
 
-  return buildResult(ctx, intent, exec, latencyMs);
+  return result;
 }

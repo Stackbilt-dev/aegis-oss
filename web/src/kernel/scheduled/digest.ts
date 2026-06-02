@@ -17,9 +17,11 @@ import {
 // Operator log runs at 08:00 UTC to generate content before this fires.
 
 export async function runDailyDigest(env: EdgeEnv): Promise<void> {
-  // Time gate: fire at 09:00 UTC (4:00 AM CT)
+  // Time gate: fire at or after 09:00 UTC (4:00 AM CT).
+  // The 22h cooldown below prevents double-sends, while allowing same-day
+  // catch-up after a transient 09:00 send failure.
   const now = new Date();
-  if (now.getUTCHours() !== 9) return;
+  if (now.getUTCHours() < 9) return;
 
   // Cooldown: 22 hours since last digest
   const lastDigest = await env.db.prepare(
@@ -253,7 +255,7 @@ export async function runDailyDigest(env: EdgeEnv): Promise<void> {
   }
 
   // ── Send digest email ──
-  await sendDailyDigest(
+  await sendDailyDigestWithRetry(
     { resendApiKey: env.resendApiKey, resendApiKeyPersonal: env.resendApiKeyPersonal },
     sections,
     env.notifyEmail,
@@ -270,6 +272,31 @@ export async function runDailyDigest(env: EdgeEnv): Promise<void> {
   ).run();
 
   console.log(`[digest] Daily digest sent: ${sections.completedTasks.length} completed, ${sections.failedTasks.length} failed, ${sections.proposedTasks.length} proposed, ${sections.healthChecks.length} health checks`);
+}
+
+export async function sendDailyDigestWithRetry(
+  apiKeys: { resendApiKey: string; resendApiKeyPersonal: string },
+  sections: DigestSections,
+  notifyEmail?: string,
+  delaysMs: number[] = [1_000, 5_000],
+): Promise<void> {
+  let attempt = 0;
+  for (;;) {
+    try {
+      await sendDailyDigest(apiKeys, sections, notifyEmail);
+      return;
+    } catch (err) {
+      if (attempt >= delaysMs.length) throw err;
+      const delayMs = delaysMs[attempt];
+      attempt += 1;
+      console.warn(
+        `[digest] Daily digest send failed; retrying in ${delayMs}ms ` +
+        `(attempt ${attempt + 1}/${delaysMs.length + 1}):`,
+        err instanceof Error ? err.message : String(err),
+      );
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
 }
 
 // ─── Health Check Deduplication (#309) ──────────────────────

@@ -110,6 +110,15 @@ vi.mock('../src/kernel/memory-adapter.js', () => ({
   getAllMemoryForContext: vi.fn().mockResolvedValue({ text: '', ids: [] }),
 }));
 
+vi.mock('../src/kernel/grounding-layer.js', () => ({
+  augmentWithInsights: vi.fn().mockResolvedValue(undefined),
+  augmentWithEntityGrounding: vi.fn().mockResolvedValue(undefined),
+  augmentWithMemoryRecall: vi.fn().mockResolvedValue(undefined),
+  applyFabricationCheck: vi.fn().mockResolvedValue(undefined),
+  applyGapSignal: vi.fn().mockResolvedValue(undefined),
+  applyGroundingProof: vi.fn((outcome: 'success' | 'failure' | 'partial_failure') => outcome),
+}));
+
 // Mock groq (probeConsistency)
 vi.mock('../src/groq.js', () => ({
   probeConsistency: vi.fn().mockResolvedValue({ sigma: 0.5, agreedText: null }),
@@ -153,10 +162,17 @@ vi.mock('../src/kernel/executors/index.js', () => {
 const { createIntent, dispatch, dispatchStream } = await import('../src/kernel/dispatch.js');
 const { route } = await import('../src/kernel/router.js');
 const { recordEpisode, upsertProcedure, retrogradeEpisode, degradeProcedure, getProcedure } = await import('../src/kernel/memory/index.js');
-const { searchMemoryByKeywords } = await import('../src/kernel/memory-adapter.js');
 const { probeConsistency } = await import('../src/groq.js');
 const { executeGptOss, executeGroq, executeDirect, executeWorkersAi, executeCodeTask, executeWithAnthropicFailover, executeClaudeStream } = await import('../src/kernel/executors/index.js');
 const { executeComposite } = await import('../src/composite.js');
+const {
+  augmentWithInsights,
+  augmentWithEntityGrounding,
+  augmentWithMemoryRecall,
+  applyFabricationCheck,
+  applyGapSignal,
+  applyGroundingProof,
+} = await import('../src/kernel/grounding-layer.js');
 
 function makeEdgeEnv(overrides: Partial<EdgeEnv> = {}): EdgeEnv {
   return {
@@ -442,27 +458,28 @@ describe('dispatch — memory recall augmentation', () => {
     vi.mocked(getProcedure).mockResolvedValue(null);
   });
 
-  it('augments intent with memory entries for memory_recall classification', async () => {
+  it('delegates memory_recall augmentation to the grounding layer', async () => {
     setupRoute('gpt_oss', 'memory_recall');
-    vi.mocked(searchMemoryByKeywords).mockResolvedValue([
-      { id: '1', topic: 'test', fact: 'test fact', confidence: 0.9 },
-    ]);
+    vi.mocked(augmentWithMemoryRecall).mockImplementationOnce(async (intent) => {
+      intent.raw = `[Relevant wiki pages matching this query]\n- test fact\n\n[User's question]\n${intent.raw}`;
+    });
 
     const intent = createIntent('t', 'what do you remember about X');
-    const env = makeEdgeEnv({ memoryBinding: { recall: vi.fn(), store: vi.fn(), forget: vi.fn(), decay: vi.fn(), consolidate: vi.fn(), health: vi.fn(), stats: vi.fn() } as any });
-    await dispatch(intent, env);
+    await dispatch(intent, makeEdgeEnv());
 
-    expect(searchMemoryByKeywords).toHaveBeenCalled();
-    expect(intent.raw).toContain('Relevant memory entries');
+    expect(augmentWithMemoryRecall).toHaveBeenCalledWith(intent, 'memory_recall', expect.anything());
+    expect(intent.raw).toContain('Relevant wiki pages');
   });
 
-  it('memory recall augmentation failure is non-fatal', async () => {
+  it('skips memory_recall mutation when the grounding layer has no hits', async () => {
     setupRoute('gpt_oss', 'memory_recall');
-    vi.mocked(searchMemoryByKeywords).mockRejectedValue(new Error('memory down'));
+    const intent = createIntent('t', 'recall');
 
-    const env = makeEdgeEnv({ memoryBinding: {} as any });
-    const result = await dispatch(createIntent('t', 'recall'), env);
-    expect(result).toBeDefined(); // should not throw
+    const result = await dispatch(intent, makeEdgeEnv());
+
+    expect(augmentWithMemoryRecall).toHaveBeenCalled();
+    expect(result).toBeDefined();
+    expect(intent.raw).toBe('recall');
   });
 });
 
@@ -761,6 +778,67 @@ describe('dispatch — result shape', () => {
   });
 });
 
+describe('dispatch — grounding layer integration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getProcedure).mockResolvedValue(null);
+  });
+
+  it('includes grounding envelope fields returned by entity grounding', async () => {
+    setupRoute('gpt_oss', 'bizops_read');
+    vi.mocked(augmentWithEntityGrounding).mockResolvedValueOnce({
+      grounded: true,
+      sources: ['d1:agenda/12'],
+      unknowns: [],
+      searched: ['d1.agenda'],
+    });
+
+    const result = await dispatch(createIntent('t', 'what is #12?'), makeEdgeEnv());
+
+    expect(result.grounded).toBe(true);
+    expect(result.sources).toEqual(['d1:agenda/12']);
+    expect(result.unknowns).toEqual([]);
+    expect(result.searched).toEqual(['d1.agenda']);
+  });
+
+  it('runs fabrication check before recording the grounded outcome', async () => {
+    setupRoute('gpt_oss', 'bizops_read');
+    vi.mocked(applyFabricationCheck).mockImplementationOnce(async (result) => {
+      result.grounded = false;
+      result.unverified_claims = ['unverified task mutation'];
+    });
+    vi.mocked(applyGroundingProof).mockReturnValueOnce('partial_failure');
+
+    await dispatch(createIntent('t', 'show #12'), makeEdgeEnv());
+
+    expect(applyFabricationCheck).toHaveBeenCalled();
+    expect(applyGroundingProof).toHaveBeenCalledWith(
+      'success',
+      'bizops_read',
+      expect.objectContaining({ unverified_claims: ['unverified task mutation'] }),
+    );
+    expect(recordEpisode).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ outcome: 'failure' }),
+    );
+    expect(upsertProcedure).toHaveBeenCalledWith(
+      expect.anything(),
+      'bizops_read:mid',
+      expect.anything(),
+      expect.anything(),
+      'partial_failure',
+      expect.any(Number),
+      expect.any(Number),
+    );
+    expect(applyGapSignal).toHaveBeenCalledWith(
+      expect.objectContaining({ unverified_claims: ['unverified task mutation'] }),
+      'bizops_read:mid',
+      'bizops_read',
+      expect.anything(),
+    );
+  });
+});
+
 // ── Insight injection tests ─────────────────────────────────
 
 describe('dispatch — CRIX insight injection', () => {
@@ -771,94 +849,43 @@ describe('dispatch — CRIX insight injection', () => {
     // We rely on memoryBinding.recall being freshly mocked each test
   });
 
-  it('injects relevant insights into intent.raw when memoryBinding available', async () => {
+  it('delegates insight injection to the grounding layer', async () => {
     setupRoute('gpt_oss', 'general_knowledge');
-    const mockRecall = vi.fn().mockResolvedValue([
-      { content: '[pattern] (from demo-app) Deploy using wrangler deploy command' },
-      { content: '[antipattern] (from img-forge) Never use direct D1 access from frontend' },
-    ]);
-
+    vi.mocked(augmentWithInsights).mockImplementationOnce(async (intent) => {
+      intent.raw = `[Cross-Repo Intelligence]\n- Deploy using wrangler deploy command\n\n${intent.raw}`;
+    });
     const intent = createIntent('t', 'how do I deploy using wrangler');
-    const env = makeEdgeEnv({
-      memoryBinding: {
-        recall: mockRecall,
-        store: vi.fn(),
-        forget: vi.fn(),
-        decay: vi.fn(),
-        consolidate: vi.fn(),
-        health: vi.fn(),
-        stats: vi.fn(),
-      } as any,
-    });
 
-    await dispatch(intent, env);
+    await dispatch(intent, makeEdgeEnv());
 
-    // The recall should have been called for insights
-    expect(mockRecall).toHaveBeenCalledWith('aegis', expect.objectContaining({
-      topic: 'cross_repo_insights',
-    }));
+    expect(augmentWithInsights).toHaveBeenCalledWith(intent, 'general_knowledge', expect.anything());
+    expect(intent.raw).toContain('Cross-Repo Intelligence');
   });
 
-  it('skips insight injection for greeting classification', async () => {
+  it('delegates greeting insight skip decisions to the grounding layer', async () => {
     setupRoute('groq', 'greeting');
-    const mockRecall = vi.fn().mockResolvedValue([]);
 
-    const env = makeEdgeEnv({
-      memoryBinding: {
-        recall: mockRecall,
-        store: vi.fn(),
-        forget: vi.fn(),
-        decay: vi.fn(),
-        consolidate: vi.fn(),
-        health: vi.fn(),
-        stats: vi.fn(),
-      } as any,
-    });
+    const intent = createIntent('t', 'hello');
+    await dispatch(intent, makeEdgeEnv());
 
-    await dispatch(createIntent('t', 'hello'), env);
-
-    // Should NOT call recall for greeting/heartbeat
-    expect(mockRecall).not.toHaveBeenCalled();
+    expect(augmentWithInsights).toHaveBeenCalledWith(intent, 'greeting', expect.anything());
   });
 
-  it('skips insight injection for heartbeat classification', async () => {
+  it('delegates heartbeat insight skip decisions to the grounding layer', async () => {
     setupRoute('direct', 'heartbeat');
-    const mockRecall = vi.fn().mockResolvedValue([]);
 
-    const env = makeEdgeEnv({
-      memoryBinding: {
-        recall: mockRecall,
-        store: vi.fn(),
-        forget: vi.fn(),
-        decay: vi.fn(),
-        consolidate: vi.fn(),
-        health: vi.fn(),
-        stats: vi.fn(),
-      } as any,
-    });
+    const intent = createIntent('t', 'heartbeat');
+    await dispatch(intent, makeEdgeEnv());
 
-    await dispatch(createIntent('t', 'heartbeat'), env);
-    expect(mockRecall).not.toHaveBeenCalled();
+    expect(augmentWithInsights).toHaveBeenCalledWith(intent, 'heartbeat', expect.anything());
   });
 
-  it('insight fetch failure is non-fatal', async () => {
+  it('runs normally when the grounding layer leaves the query unchanged', async () => {
     setupRoute('gpt_oss', 'general_knowledge');
     vi.mocked(executeGptOss).mockResolvedValue({ text: 'gpt_oss result', cost: 0.005 });
-    const mockRecall = vi.fn().mockRejectedValue(new Error('memory worker down'));
 
-    const env = makeEdgeEnv({
-      memoryBinding: {
-        recall: mockRecall,
-        store: vi.fn(),
-        forget: vi.fn(),
-        decay: vi.fn(),
-        consolidate: vi.fn(),
-        health: vi.fn(),
-        stats: vi.fn(),
-      } as any,
-    });
+    const result = await dispatch(createIntent('t', 'test query'), makeEdgeEnv());
 
-    const result = await dispatch(createIntent('t', 'test query'), env);
     expect(result).toBeDefined();
     expect(result.text).toBe('gpt_oss result');
   });
