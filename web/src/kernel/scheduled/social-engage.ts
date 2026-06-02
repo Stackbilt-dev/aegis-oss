@@ -2,6 +2,7 @@
 // Runs every 6 hours. Likes replies, follows back real accounts,
 // replies to substantive comments with Workers AI.
 
+import { createLLMProviderFactory } from '@stackbilt/llm-providers';
 import { type EdgeEnv } from '../dispatch.js';
 import {
   getNotifications,
@@ -153,21 +154,24 @@ async function generateReply(
   incomingText: string,
   authorHandle: string,
 ): Promise<string | null> {
-  const result = await ai.run('@cf/meta/llama-3.1-8b-instruct' as Parameters<Ai['run']>[0], {
+  const result = await createLLMProviderFactory({
+    cloudflare: { ai },
+    fallbackRules: [],
+    enableCircuitBreaker: true,
+    enableRetries: true,
+  }).generateResponse({
+    model: '@cf/meta/llama-3.1-8b-instruct',
+    systemPrompt: `You are the operator's social media voice. Direct, builder-energy, anti-corporate. No emoji spam. No "excited to announce." Keep replies under 200 chars. Be genuine and conversational. If you can't add value, return SKIP.`,
     messages: [
-      {
-        role: 'system',
-        content: `You are the operator's social media voice. Direct, builder-energy, anti-corporate. No emoji spam. No "excited to announce." Keep replies under 200 chars. Be genuine and conversational. If you can't add value, return SKIP.`,
-      },
       {
         role: 'user',
         content: `@${authorHandle} replied to our Bluesky post: "${incomingText}"\n\nWrite a brief, genuine reply. Return ONLY the reply text, or SKIP if there's nothing meaningful to add.`,
       },
     ],
-    max_tokens: 100,
-  }) as { response?: string };
+    maxTokens: 100,
+  });
 
-  const reply = result.response?.trim();
+  const reply = result.message?.trim();
   if (!reply || reply === 'SKIP' || reply.length < 5) return null;
 
   // Safety: truncate to 300 chars (Bluesky limit)

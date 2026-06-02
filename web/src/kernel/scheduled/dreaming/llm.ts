@@ -1,6 +1,7 @@
 // Shared LLM helper — Groq first (free, 70B quality), Workers AI 70B fallback
 
 import type { EdgeEnv } from '../../dispatch.js';
+import { buildLLMProviderFactory } from '../../provider-factory.js';
 import { askGroq } from '../../../groq.js';
 
 export async function askWorkersAiOrGroq(
@@ -20,11 +21,14 @@ export async function askWorkersAiOrGroq(
   }
   // Workers AI fallback — only fires if Groq is unavailable or throws
   if (env.ai) {
-    const result = await env.ai.run(
-      '@cf/meta/llama-3.3-70b-instruct-fp8-fast' as Parameters<Ai['run']>[0],
-      { messages: [{ role: 'system', content: system }, { role: 'user', content: user }] },
-    ) as { response?: string; choices?: Array<{ message?: { content?: string } }> };
-    return result.choices?.[0]?.message?.content ?? result.response ?? '';
+    const result = await buildLLMProviderFactory(env).generateResponse({
+      model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      systemPrompt: system,
+      messages: [{ role: 'user', content: user }],
+      maxTokens: 2048,
+      temperature: 0.2,
+    });
+    return result.message ?? '';
   }
   throw new Error('[dreaming] No LLM provider available (groqApiKey and env.ai both missing)');
 }

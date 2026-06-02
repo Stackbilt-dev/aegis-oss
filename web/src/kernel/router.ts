@@ -1,3 +1,4 @@
+import { createLLMProviderFactory } from '@stackbilt/llm-providers';
 import { getProcedure, findNearMiss, procedureKey, PROCEDURE_MIN_SUCCESSES, PROCEDURE_MIN_SUCCESS_RATE, getConversationHistory } from './memory/index.js';
 import { askGroq, askGroqWithLogprobs } from '../groq.js';
 import type { KernelIntent, ExecutionPlan, Executor } from './types.js';
@@ -73,21 +74,21 @@ async function classifyWithWorkersAI(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<string> {
-  const result = await ai.run('@cf/meta/llama-3.2-3b-instruct', {
+  const result = await createLLMProviderFactory({
+    cloudflare: { ai },
+    fallbackRules: [],
+    enableCircuitBreaker: true,
+    enableRetries: true,
+  }).generateResponse({
+    model: '@cf/meta/llama-3.1-8b-instruct',
+    systemPrompt,
     messages: [
-      { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
-    max_tokens: 200,
+    maxTokens: 200,
     temperature: 0.1,
-  }) as { response?: unknown };
-  const raw = result.response;
-  if (typeof raw === 'string') return raw;
-  if (raw == null) return '';
-  // Workers AI sometimes returns structured responses (objects with tool_calls,
-  // arrays of segments, etc.). Coerce to string so downstream .trim()/JSON.parse
-  // callers don't crash on non-string payloads.
-  return typeof raw === 'object' ? JSON.stringify(raw) : String(raw);
+  });
+  return result.message ?? '';
 }
 
 
