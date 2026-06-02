@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { createIntent, dispatch, dispatchStream } from '../kernel/dispatch.js';
 import { askGroq } from '../groq.js';
 import type { Env, MessageMetadata } from '../types.js';
+import type { Executor } from '../kernel/types.js';
 import { buildEdgeEnv } from '../edge-env.js';
 
 // 100 KB — generous for chat text, blocks payload abuse
@@ -47,7 +48,7 @@ async function generateConversationTitle(
 
 // ─── Send Message (edge-native kernel) ───────────────────────
 messages.post('/api/message', bodyLimit({ maxSize: MESSAGE_BODY_LIMIT }), async (c) => {
-  const body = await c.req.json<{ text: string; conversationId?: string }>();
+  const body = await c.req.json<{ text: string; conversationId?: string; executor?: Executor }>();
   if (!body.text?.trim()) {
     return c.json({ error: 'text is required' }, 400);
   }
@@ -80,7 +81,7 @@ messages.post('/api/message', bodyLimit({ maxSize: MESSAGE_BODY_LIMIT }), async 
   ).bind(userMessageId, conversationId, 'user', text).run();
 
   // Fire-and-forget title generation for new conversations (#21)
-  if (isNewConversation && c.executionCtx) {
+  if (isNewConversation && c.executionCtx && c.env.GROQ_API_KEY) {
     c.executionCtx.waitUntil(
       generateConversationTitle(c.env.DB, conversationId, text, c.env.GROQ_API_KEY, c.env.GROQ_MODEL || 'llama-3.3-70b-versatile', groqBaseUrl(c.env)),
     );
@@ -88,7 +89,9 @@ messages.post('/api/message', bodyLimit({ maxSize: MESSAGE_BODY_LIMIT }), async 
 
   // Dispatch through edge kernel
   const edgeEnv = buildEdgeEnv(c.env, c.executionCtx);
-  const intent = createIntent(conversationId, text);
+  const intent = createIntent(conversationId, text, {
+    forcedExecutor: body.executor,
+  });
 
   try {
     const result = await dispatch(intent, edgeEnv);
@@ -146,7 +149,7 @@ messages.post('/api/message', bodyLimit({ maxSize: MESSAGE_BODY_LIMIT }), async 
 
 // ─── Streaming Message (SSE) ─────────────────────────────────
 messages.post('/api/message/stream', bodyLimit({ maxSize: MESSAGE_BODY_LIMIT }), async (c) => {
-  const body = await c.req.json<{ text: string; conversationId?: string }>();
+  const body = await c.req.json<{ text: string; conversationId?: string; executor?: Executor }>();
   if (!body.text?.trim()) {
     return c.json({ error: 'text is required' }, 400);
   }
@@ -169,14 +172,16 @@ messages.post('/api/message/stream', bodyLimit({ maxSize: MESSAGE_BODY_LIMIT }),
   await c.env.DB.prepare('INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)').bind(userMessageId, conversationId, 'user', text).run();
 
   // Fire-and-forget title generation for new conversations (#21)
-  if (isNewConvStream && c.executionCtx) {
+  if (isNewConvStream && c.executionCtx && c.env.GROQ_API_KEY) {
     c.executionCtx.waitUntil(
       generateConversationTitle(c.env.DB, conversationId, text, c.env.GROQ_API_KEY, c.env.GROQ_MODEL || 'llama-3.3-70b-versatile', groqBaseUrl(c.env)),
     );
   }
 
   const edgeEnv = buildEdgeEnv(c.env, c.executionCtx);
-  const intent = createIntent(conversationId, text);
+  const intent = createIntent(conversationId, text, {
+    forcedExecutor: body.executor,
+  });
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const writer = writable.getWriter();

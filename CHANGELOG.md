@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.0 (2026-06-02)
+
+### Added
+- Vite-built embedded web console served through the Worker `ASSETS` binding, including text chat, conversation history, health summary, and a voice panel using `@cloudflare/voice/react`. (aegis-oss#40)
+- `AegisVoiceAdapter` standalone Worker export and Agents SDK `/agents/aegis-voice-adapter/operator` routing for Cloudflare-native voice calls. (aegis-oss#40)
+- Built `public/` SPA assets in the package so a fresh checkout can deploy a working console without a private Stackbilt UI dependency. (aegis-oss#40)
+
+### Changed
+- `npm run deploy` and `npm run dev` now build the embedded UI before invoking Wrangler, and `wrangler.toml.example` includes `ASSETS`, `CHAT_SESSION`, `AegisVoiceAdapter`, `DB`, and `AI` bindings.
+- The browser console uses Workers AI for its base chat path and treats Claude/Groq keys as optional executor upgrades.
+
+### Fixed
+- `/agents/*` voice routes now enforce the same `AEGIS_TOKEN` via bearer header, cookie, or query token before reaching the Agents SDK router.
+- HTTP message routes skip Groq title generation when `GROQ_API_KEY` is unset.
+
 ## 0.7.0 (2026-06-02)
 
 ### Added

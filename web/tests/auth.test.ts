@@ -43,7 +43,7 @@ describe('bearerAuth', () => {
   });
 
   describe('public routes', () => {
-    const publicPaths = ['/health', '/pulse', '/chat', '/manifest.json', '/sw.js', '/.well-known/oauth-protected-resource', '/.well-known/oauth-authorization-server', '/.well-known/openid-configuration'];
+    const publicPaths = ['/health', '/pulse', '/chat', '/manifest.json', '/sw.js', '/assets/index.js', '/favicon.svg', '/.well-known/oauth-protected-resource', '/.well-known/oauth-authorization-server', '/.well-known/openid-configuration'];
 
     for (const path of publicPaths) {
       it(`passes through ${path} without auth`, async () => {

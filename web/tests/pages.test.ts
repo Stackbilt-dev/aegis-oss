@@ -87,6 +87,24 @@ describe('pages routes', () => {
       const text = await res.text();
       expect(text).toContain('chat');
     });
+
+    it('serves the Vite SPA index when ASSETS is bound', async () => {
+      const db = createMockDb();
+      const assets = {
+        fetch: vi.fn().mockResolvedValue(new Response('<html>spa</html>')),
+      };
+      const app = createApp(db, { ASSETS: assets });
+
+      const res = await app.request('/');
+
+      expect(res.status).toBe(200);
+      await expect(res.text()).resolves.toContain('spa');
+      expect(assets.fetch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'http://localhost/index.html',
+        }),
+      );
+    });
   });
 
   describe('GET /about', () => {
@@ -110,6 +128,24 @@ describe('pages routes', () => {
       expect(res.status).toBe(200);
       const text = await res.text();
       expect(text).toContain('chat');
+    });
+
+    it('serves the Vite SPA index when ASSETS is bound', async () => {
+      const db = createMockDb();
+      const assets = {
+        fetch: vi.fn().mockResolvedValue(new Response('<html>spa</html>')),
+      };
+      const app = createApp(db, { ASSETS: assets });
+
+      const res = await app.request('/chat');
+
+      expect(res.status).toBe(200);
+      await expect(res.text()).resolves.toContain('spa');
+      expect(assets.fetch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'http://localhost/index.html',
+        }),
+      );
     });
   });
 

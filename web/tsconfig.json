@@ -8,9 +8,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
+    "jsx": "react-jsx",
     "noEmit": true,
     "types": ["@cloudflare/workers-types"],
-    "lib": ["ES2022"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

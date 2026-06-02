@@ -9,6 +9,7 @@
 import { Hono } from 'hono';
 import OAuthProvider from '@cloudflare/workers-oauth-provider';
 import { bearerAuth } from './auth.js';
+import { routeAegisAgentRequest } from './agent-routing.js';
 import { runScheduledTasks } from './kernel/scheduled/index.js';
 import type { Env } from './types.js';
 import { handleMcpRequest } from './mcp-server.js';
@@ -84,10 +85,15 @@ const oauthProvider = new OAuthProvider<Env>({
 });
 
 export default {
-  fetch: oauthProvider.fetch.bind(oauthProvider),
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const agentResponse = await routeAegisAgentRequest(request, env);
+    if (agentResponse) return agentResponse;
+    return oauthProvider.fetch(request, env, ctx);
+  },
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(runScheduledTasks(buildEdgeEnv(env)));
   },
 };
 
 export { ChatSession } from './durable-objects/chat-session.js';
+export { AegisVoiceAdapter } from './adapters/voice/cloudflare-agent.js';

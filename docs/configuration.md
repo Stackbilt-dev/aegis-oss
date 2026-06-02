@@ -137,11 +137,27 @@ Set via `npx wrangler secret put <NAME>`:
 | Secret | Required | Purpose |
 |--------|----------|---------|
 | `AEGIS_TOKEN` | Yes | Bearer token for chat UI auth |
-| `ANTHROPIC_API_KEY` | Yes | Claude API key |
+| `ANTHROPIC_API_KEY` | No | Claude executor API key |
 | `GROQ_API_KEY` | No | Groq API key for fast classification |
 | `GITHUB_TOKEN` | No | GitHub PAT for repo access |
 | `BRAVE_API_KEY` | No | Brave Search API key |
 | `RESEND_API_KEY` | No | Resend API key for email |
+
+Base chat and voice operation use the Cloudflare Workers AI binding configured in `wrangler.toml`.
+
+## Embedded web console
+
+Standalone deployments serve the Vite-built web console from `web/public/` through the `ASSETS` binding:
+
+```toml
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/health", "/agents/*"]
+```
+
+`npm run build:ui` builds `src/ui/` into `public/`. `npm run deploy` and `npm run dev` run that build before Wrangler starts.
 
 ## Service bindings (optional)
 
@@ -197,4 +213,18 @@ Fresh databases created from `schema.sql` include the required `conversations.us
 ```sql
 ALTER TABLE conversations ADD COLUMN user_id TEXT NOT NULL DEFAULT 'operator';
 CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at);
+```
+
+## Voice Durable Object
+
+The browser voice UI uses `@cloudflare/voice/react` and connects through the Agents SDK path `/agents/aegis-voice-adapter/operator`. Configure the matching Durable Object binding:
+
+```toml
+[[durable_objects.bindings]]
+name = "AegisVoiceAdapter"
+class_name = "AegisVoiceAdapter"
+
+[[migrations]]
+tag = "v2-aegis-voice-adapter"
+new_sqlite_classes = ["AegisVoiceAdapter"]
 ```

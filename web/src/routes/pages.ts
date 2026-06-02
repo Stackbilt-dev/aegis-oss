@@ -3,6 +3,7 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../types.js';
+import { serveSpaIndex } from '../assets.js';
 import { chatPage } from '../ui.js';
 import { landingPage } from '../landing.js';
 import { dashboardPage, getDashboardData } from '../dashboard.js';
@@ -15,6 +16,9 @@ const pages = new Hono<{ Bindings: Env }>();
 // ─── Landing ────────────────────────────────────────────────
 
 pages.get('/', (c) => {
+  if (c.env.ASSETS) {
+    return serveSpaIndex(c.req.raw, c.env.ASSETS);
+  }
   return c.html(chatPage());
 });
 
@@ -25,6 +29,9 @@ pages.get('/about', (c) => {
 // ─── Chat ───────────────────────────────────────────────────
 
 pages.get('/chat', (c) => {
+  if (c.env.ASSETS) {
+    return serveSpaIndex(c.req.raw, c.env.ASSETS);
+  }
   return c.html(chatPage());
 });
 
