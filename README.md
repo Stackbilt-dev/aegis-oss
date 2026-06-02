@@ -71,6 +71,8 @@ Talk to the same deployment from a terminal:
 AEGIS_HOST=your-worker.workers.dev AEGIS_TOKEN=your-token npx @stackbilt/aegis-core --quick
 ```
 
+Release proof: [AEGIS 0.8.0 Proof of Work](docs/proof-of-work-0.8.0.md).
+
 ## Use as a Dependency
 
 Install `@stackbilt/aegis-core` and compose your own agent:
