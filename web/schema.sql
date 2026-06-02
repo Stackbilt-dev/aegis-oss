@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   id TEXT PRIMARY KEY,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  user_id TEXT NOT NULL DEFAULT 'operator',
   title TEXT
 );
 
@@ -200,6 +201,7 @@ CREATE TABLE IF NOT EXISTS operator_log (
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_memory_topic ON memory_entries(topic);
 CREATE INDEX IF NOT EXISTS idx_memory_dedup ON memory_entries(topic, fact_hash);
 CREATE INDEX IF NOT EXISTS idx_memory_expires ON memory_entries(expires_at);

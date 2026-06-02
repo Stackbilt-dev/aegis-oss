@@ -13,6 +13,14 @@ database_name = "my-agent"
 [ai]
 binding = "AI"
 
+[[durable_objects.bindings]]
+name = "CHAT_SESSION"
+class_name = "ChatSession"
+
+[[migrations]]
+tag = "v1-chat-session"
+new_sqlite_classes = ["ChatSession"]
+
 # Triggers — hourly cron for scheduled tasks
 [triggers]
 crons = ["0 * * * *"]

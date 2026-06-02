@@ -24,6 +24,7 @@ import { observability } from './routes/observability.js';
 import { pages } from './routes/pages.js';
 import { ccTasks } from './routes/cc-tasks.js';
 import { messages } from './routes/messages.js';
+import { chatWs } from './routes/chat-ws.js';
 import { content } from './routes/content.js';
 import { codebeast } from './routes/codebeast.js';
 import { bluesky } from './routes/bluesky.js';
@@ -44,6 +45,7 @@ app.route('/', observability);
 app.route('/', pages);
 app.route('/', ccTasks);
 app.route('/', messages);
+app.route('/', chatWs);
 app.route('/', content);
 app.route('/', codebeast);
 app.route('/', bluesky);
@@ -87,3 +89,5 @@ export default {
     ctx.waitUntil(runScheduledTasks(buildEdgeEnv(env)));
   },
 };
+
+export { ChatSession } from './durable-objects/chat-session.js';

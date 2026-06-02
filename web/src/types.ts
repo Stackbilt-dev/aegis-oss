@@ -4,6 +4,7 @@ export interface Env {
   DB: D1Database;
   AI: Ai;
   AEGIS_TOKEN: string;
+  CHAT_SESSION?: DurableObjectNamespace;
 
   // OAuth 2.1 (injected by OAuthProvider wrapper at runtime)
   OAUTH_PROVIDER: OAuthHelpers;
@@ -190,5 +191,10 @@ export interface MessageMetadata {
   confidence?: number;
   reclassified?: boolean;
   probeResult?: string;
+  grounded?: boolean;
+  sources?: string[];
+  unknowns?: string[];
+  searched?: string[];
+  unverifiedClaims?: string[];
   error?: boolean;
 }

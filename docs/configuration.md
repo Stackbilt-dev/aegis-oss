@@ -159,3 +159,42 @@ entrypoint = "MemoryService"
 binding = "TAROTSCRIPT"
 service = "tarotscript-worker"
 ```
+
+## Chat WebSocket Durable Object
+
+The `/chat/ws` route uses a Durable Object binding named `CHAT_SESSION` to keep terminal and browser chat sessions attached to one ordered stream.
+
+```toml
+[[durable_objects.bindings]]
+name = "CHAT_SESSION"
+class_name = "ChatSession"
+
+[[migrations]]
+tag = "v1-chat-session"
+new_sqlite_classes = ["ChatSession"]
+```
+
+The route is protected by the same `AEGIS_TOKEN` as the HTTP API. Connect with `wss://<host>/chat/ws?token=<AEGIS_TOKEN>` and request the `aegis-chat` subprotocol.
+
+Client frames. `eventId` is optional but recommended for reconnect/replay deduplication:
+
+```json
+{ "type": "message", "text": "What changed today?", "conversationId": "optional-uuid", "eventId": "optional-client-event-id" }
+```
+
+Server frames:
+
+```json
+{ "type": "history", "conversationId": null, "messages": [] }
+{ "type": "start", "conversationId": "uuid" }
+{ "type": "delta", "text": "partial text" }
+{ "type": "done", "conversationId": "uuid", "metadata": { "id": "message-id" } }
+{ "type": "error", "error": "message" }
+```
+
+Fresh databases created from `schema.sql` include the required `conversations.user_id` column. Existing deployments should add it before enabling `/chat/ws`:
+
+```sql
+ALTER TABLE conversations ADD COLUMN user_id TEXT NOT NULL DEFAULT 'operator';
+CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at);
+```

@@ -27,6 +27,7 @@ import { observability } from './routes/observability.js';
 import { pages } from './routes/pages.js';
 import { ccTasks } from './routes/cc-tasks.js';
 import { messages } from './routes/messages.js';
+import { chatWs } from './routes/chat-ws.js';
 import { dynamicToolsRoutes } from './routes/dynamic-tools.js';
 
 // ─── Scheduled Task Plugin ──────────────────────────────────
@@ -213,6 +214,7 @@ export function createAegisApp(config: AegisAppConfig): AegisApp {
   app.route('/', pages);
   app.route('/', ccTasks);
   app.route('/', messages);
+  app.route('/', chatWs);
   app.route('/', dynamicToolsRoutes);
 
   // ── Extension routes ──
@@ -268,6 +270,7 @@ export function createAegisApp(config: AegisAppConfig): AegisApp {
     pages,
     ccTasks,
     messages,
+    chatWs,
     dynamicTools: dynamicToolsRoutes,
   };
 
@@ -287,6 +290,8 @@ export type {
   MemoryStatsResult,
   MessageMetadata,
 } from './types.js';
+
+export { ChatSession } from './durable-objects/chat-session.js';
 
 export type { EdgeEnv } from './kernel/dispatch.js';
 

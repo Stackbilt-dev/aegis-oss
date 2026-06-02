@@ -37,6 +37,8 @@ npx wrangler d1 create my-agent
 
 This prints a `database_id` — paste it into `wrangler.toml` under `[[d1_databases]]`.
 
+The example Wrangler config also includes the `CHAT_SESSION` Durable Object binding and SQLite-backed migration required by `/chat/ws`.
+
 Then run the schema migration:
 
 ```bash
