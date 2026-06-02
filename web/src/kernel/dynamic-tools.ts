@@ -3,6 +3,7 @@
 // No eval(). No code execution. Just parameterized prompts.
 
 import { type EdgeEnv } from './dispatch.js';
+import { buildLLMProviderFactory } from './provider-factory.js';
 import type { ToolExecutor, ToolStatus } from '../schema-enums.js';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -160,58 +161,20 @@ export async function executeDynamicTool(
 ): Promise<ToolInvocationResult> {
   const rendered = renderPrompt(tool.prompt_template, inputs);
   const start = Date.now();
-  let text = '';
-  let cost = 0;
-
-  if (tool.executor === 'workers_ai' && env.ai) {
-    // Workers AI — free inference
-    const result = await env.ai.run('@cf/meta/llama-3.1-8b-instruct' as Parameters<Ai['run']>[0], {
-      messages: [
-        { role: 'system', content: 'You are a focused tool. Answer precisely. No preamble.' },
-        { role: 'user', content: rendered },
-      ],
-      max_tokens: 1024,
-    }) as { response?: string };
-    text = result.response ?? '';
-    cost = 0;
-  } else if (tool.executor === 'groq' && env.groqApiKey) {
-    // Groq — fast, cheap
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.groqApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: env.groqModel ?? 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'You are a focused tool. Answer precisely. No preamble.' },
-          { role: 'user', content: rendered },
-        ],
-        max_tokens: 1024,
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) throw new Error(`Groq error: ${res.status}`);
-    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
-    text = data.choices[0]?.message?.content ?? '';
-    cost = 0.001; // ~$0.001 per Groq call
-  } else {
-    // Default: Workers AI fallback (always available on CF Workers)
-    if (env.ai) {
-      const result = await env.ai.run('@cf/meta/llama-3.1-8b-instruct' as Parameters<Ai['run']>[0], {
-        messages: [
-          { role: 'system', content: 'You are a focused tool. Answer precisely. No preamble.' },
-          { role: 'user', content: rendered },
-        ],
-        max_tokens: 1024,
-      }) as { response?: string };
-      text = result.response ?? '';
-      cost = 0;
-    } else {
-      throw new Error(`Executor "${tool.executor}" not available — no API key or binding`);
-    }
-  }
+  const executor = tool.executor as ToolExecutor;
+  const model = resolveDynamicToolModel(executor, env);
+  const factory = buildLLMProviderFactory(env);
+  const result = await factory.generateResponse({
+    model,
+    messages: [
+      { role: 'system', content: 'You are a focused tool. Answer precisely. No preamble.' },
+      { role: 'user', content: rendered },
+    ],
+    maxTokens: 1024,
+    temperature: 0.2,
+  });
+  const text = result.message ?? '';
+  const cost = result.usage.cost;
 
   const latencyMs = Date.now() - start;
 
@@ -227,6 +190,21 @@ export async function executeDynamicTool(
   `).bind(newCount, newAvgLatency, newAvgCost, tool.id).run();
 
   return { text, cost, latency_ms: latencyMs, executor: tool.executor };
+}
+
+function resolveDynamicToolModel(executor: ToolExecutor, env: EdgeEnv): string {
+  if (executor === 'workers_ai') {
+    if (!env.ai) throw new Error('Executor "workers_ai" not available — no AI binding');
+    return '@cf/meta/llama-3.1-8b-instruct';
+  }
+
+  if (executor === 'groq') {
+    if (!env.groqApiKey) throw new Error('Executor "groq" not available — no Groq API key');
+    return env.groqModel ?? 'llama-3.3-70b-versatile';
+  }
+
+  if (!env.ai) throw new Error(`Executor "${executor}" not available — no AI binding`);
+  return env.gptOssModel;
 }
 
 // ─── Lifecycle (GC + Promotion) ─────────────────────────────
