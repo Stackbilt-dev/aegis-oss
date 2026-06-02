@@ -78,6 +78,14 @@ vi.mock('../src/groq.js', () => ({
   askGroqJson: (...args: unknown[]) => mockAskGroqJson(...args),
 }));
 
+// Mock provider factory for gather + Claude synthesis
+const mockProviderGenerateResponse = vi.fn();
+vi.mock('../src/kernel/provider-factory.js', () => ({
+  buildLLMProviderFactory: () => ({
+    generateResponse: mockProviderGenerateResponse,
+  }),
+}));
+
 // Mock Workers AI chat for gather fallback and DAG drift fallback
 const mockExecuteWorkersAiChat = vi.fn().mockResolvedValue({ text: 'Workers AI fallback', cost: 0.002 });
 vi.mock('../src/workers-ai-chat.js', () => ({
@@ -90,10 +98,6 @@ vi.mock('../src/workers-ai-chat.js', () => ({
   extractToolCalls: vi.fn().mockReturnValue([]),
   extractUsage: vi.fn().mockReturnValue({ prompt_tokens: 100, completion_tokens: 50 }),
 }));
-
-// Mock global fetch for Claude synthesis
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
 
 const { executeComposite } = await import('../src/composite.js');
 const { buildContext: _buildContext, handleInProcessTool: _handleInProcessTool, callMcpWithRetry: _callMcpWithRetry, resolveMcpTool: _resolveMcpTool } = await import('../src/claude.js');
@@ -151,6 +155,17 @@ function makeEnv(overrides?: Partial<EdgeEnv>): EdgeEnv {
   };
 }
 
+function providerResponse(message: string, cost = 0.0001, toolCalls?: Array<{ id: string; function: { name: string; arguments: string } }>) {
+  return {
+    message,
+    usage: { cost, inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+    model: 'test-model',
+    provider: 'test-provider',
+    responseTime: 10,
+    toolCalls: toolCalls?.map(call => ({ ...call, type: 'function' as const })),
+  };
+}
+
 describe('executeComposite', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -172,6 +187,7 @@ describe('executeComposite', () => {
     vi.mocked(_budgetConversationHistory).mockReturnValue([]);
     vi.mocked(_getCognitiveState).mockResolvedValue(null);
     vi.mocked(_formatCognitiveContext).mockReturnValue('');
+    mockProviderGenerateResponse.mockResolvedValue(providerResponse('gathered data'));
   });
 
   it('falls back to gpt_oss when orchestration fails', async () => {
@@ -220,11 +236,13 @@ describe('executeComposite', () => {
         usage: { prompt_tokens: 150, completion_tokens: 75 },
       });
 
-    // Phase 4: Claude synthesis
-    mockFetch.mockResolvedValue(new Response(JSON.stringify({
-      content: [{ type: 'text', text: 'Everything looks good. No overdue items and routine activity.' }],
-      usage: { input_tokens: 500, output_tokens: 200 },
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    mockProviderGenerateResponse
+      // Phase 2: Gather subtask 1
+      .mockResolvedValueOnce(providerResponse('gathered data'))
+      // Phase 2: Gather subtask 2
+      .mockResolvedValueOnce(providerResponse('gathered data'))
+      // Phase 4: Claude synthesis
+      .mockResolvedValueOnce(providerResponse('Everything looks good. No overdue items and routine activity.'));
 
     const result = await executeComposite(makeIntent('check compliance and review activity'), makeEnv());
 
@@ -269,8 +287,13 @@ describe('executeComposite', () => {
         usage: { prompt_tokens: 200, completion_tokens: 100 },
       });
 
-    // Claude synthesis fails with credit error
-    mockFetch.mockResolvedValue(new Response('Your credit balance is too low', { status: 400 }));
+    mockProviderGenerateResponse
+      // Gather subtask 1
+      .mockResolvedValueOnce(providerResponse('gathered data'))
+      // Gather subtask 2
+      .mockResolvedValueOnce(providerResponse('gathered data'))
+      // Claude synthesis fails with credit error
+      .mockRejectedValueOnce(new Error('Your credit balance is too low'));
 
     const result = await executeComposite(makeIntent('analyze data and check metrics'), makeEnv());
     expect(result.text).toBe('Groq synthesized result');
@@ -300,11 +323,6 @@ describe('executeComposite', () => {
       usage: { prompt_tokens: 100, completion_tokens: 50 },
     });
 
-    mockFetch.mockResolvedValue(new Response(JSON.stringify({
-      content: [{ type: 'text', text: 'Synthesized' }],
-      usage: { input_tokens: 300, output_tokens: 100 },
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-
     // Set maxCost very low to trigger budget exhaustion
     const result = await executeComposite(makeIntent('do task one and task two'), makeEnv(), undefined, 0.0001);
     expect(result.meta).toBeDefined();
@@ -330,7 +348,7 @@ describe('executeComposite', () => {
     // No analyze or synthesize calls — just the orchestrate + 1 gather
     // askGroqJson called only once (for orchestrate)
     expect(mockAskGroqJson).toHaveBeenCalledOnce();
-    // No Claude fetch (no synthesis)
-    expect(mockFetch).not.toHaveBeenCalled();
+    // Provider called once for gather only; no synthesis call.
+    expect(mockProviderGenerateResponse).toHaveBeenCalledOnce();
   });
 });
