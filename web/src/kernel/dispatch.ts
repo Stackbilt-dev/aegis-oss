@@ -172,6 +172,14 @@ interface AugmentedContext {
 async function augmentIntent(intent: KernelIntent, env: EdgeEnv): Promise<AugmentedContext> {
   // 1. Route
   const { plan, nearMiss, reclassified } = await route(intent, env.db, env.groqApiKey, env.groqModel, env.groqBaseUrl, env.ai, env.tarotscriptFetcher);
+  if (intent.forcedExecutor) {
+    plan.executor = intent.forcedExecutor;
+    plan.reasoning = `Forced by channel frame: ${intent.forcedExecutor}`;
+    plan.costCeiling = intent.forcedExecutor === 'direct' ? 'free'
+      : intent.forcedExecutor === 'workers_ai' || intent.forcedExecutor === 'gpt_oss' || intent.forcedExecutor === 'groq'
+        ? 'cheap'
+        : 'expensive';
+  }
   const classification = intent.classified ?? 'unknown';
   const procKey = procedureKey(classification, intent.complexity);
   const existingProcedure = await getProcedure(env.db, procKey);

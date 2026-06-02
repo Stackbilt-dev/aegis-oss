@@ -67,6 +67,12 @@ npx wrangler deploy
 
 Visit `https://your-worker.workers.dev` and authenticate with your AEGIS_TOKEN.
 
+Talk to the same deployment from a terminal:
+
+```bash
+AEGIS_HOST=your-worker.workers.dev AEGIS_TOKEN=your-token npx @stackbilt/aegis-core --quick
+```
+
 ## Use as a Dependency
 
 Install `@stackbilt/aegis-core` and compose your own agent:

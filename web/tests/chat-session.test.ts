@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 vi.mock('../src/kernel/dispatch.js', () => ({
-  createIntent: vi.fn((conversationId: string, text: string) => ({ conversationId, text })),
+  createIntent: vi.fn((conversationId: string, text: string, overrides?: unknown) => ({ conversationId, text, overrides })),
   dispatchStream: vi.fn(),
 }));
 
@@ -10,7 +10,7 @@ vi.mock('../src/edge-env.js', () => ({
 }));
 
 import { ChatSession } from '../src/durable-objects/chat-session.js';
-import { dispatchStream } from '../src/kernel/dispatch.js';
+import { createIntent, dispatchStream } from '../src/kernel/dispatch.js';
 import type { Env } from '../src/types.js';
 
 const CONVERSATION_ID = '018f9e54-7f61-4e01-8a04-7b54c23b2e10';
@@ -89,6 +89,7 @@ describe('ChatSession Durable Object', () => {
       text: 'What changed?',
       conversationId: CONVERSATION_ID,
       eventId: 'evt-1',
+      executor: 'workers_ai',
     }));
 
     const frames = sentFrames(ws);
@@ -104,6 +105,9 @@ describe('ChatSession Durable Object', () => {
       query.bindings.includes('operator'),
     )).toBe(true);
     expect(dispatchStream).toHaveBeenCalledTimes(1);
+    expect(createIntent).toHaveBeenCalledWith(CONVERSATION_ID, 'What changed?', {
+      forcedExecutor: 'workers_ai',
+    });
   });
 
   it('rejects foreign conversations before dispatching', async () => {

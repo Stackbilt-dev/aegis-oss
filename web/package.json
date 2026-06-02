@@ -14,6 +14,9 @@
   "type": "module",
   "main": "src/exports.ts",
   "types": "src/exports.ts",
+  "bin": {
+    "aegis": "./cli/aegis.mjs"
+  },
   "exports": {
     ".": "./src/exports.ts",
     "./core": "./src/core.ts",
@@ -103,6 +106,7 @@
     "wrangler": "^4.76.0"
   },
   "files": [
+    "cli/**/*.mjs",
     "src/**/*.ts",
     "schema.sql"
   ],
