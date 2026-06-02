@@ -53,7 +53,11 @@ export async function executeGptOss(
     githubToken: env.githubToken,
     githubRepo: env.githubRepo,
     braveApiKey: env.braveApiKey,
+    roundtableDb: env.roundtableDb,
+    memoryBinding: env.memoryBinding,
+    resendApiKeys: { resendApiKey: env.resendApiKey, resendApiKeyPersonal: env.resendApiKeyPersonal },
     userQuery: intent.raw,
+    edgeEnv: env,
   };
   const { systemPrompt, tools: anthropicTools } = await buildContext(pseudoConfig);
   // toOpenAiTools output matches factory Tool shape exactly
@@ -105,6 +109,7 @@ export async function executeGptOss(
         env.githubToken, env.githubRepo, env.braveApiKey,
         undefined, undefined, env.memoryBinding,
         { resendApiKey: env.resendApiKey, resendApiKeyPersonal: env.resendApiKeyPersonal },
+        env,
       );
 
       if (inProcess !== null) {
