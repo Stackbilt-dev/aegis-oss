@@ -5,6 +5,7 @@
 // Workers AI llama-3.1-8b (free tier) as fallback.
 
 import { type EdgeEnv } from '../dispatch.js';
+import { buildLLMProviderFactory } from '../provider-factory.js';
 import { recordMemory as recordMemoryAdapter } from '../memory-adapter.js';
 import { askGroq } from '../../groq.js';
 import { pushFactsToMindSpring, type FactEntry } from './mindspring-notebook.js';
@@ -97,13 +98,14 @@ async function askAi(
   }
   // Workers AI fallback — llama-3.1-8b is on the genuine free tier
   if (env.ai) {
-    const result = await env.ai.run(
-      '@cf/meta/llama-3.1-8b-instruct' as Parameters<Ai['run']>[0],
-      { messages: [{ role: 'system', content: system }, { role: 'user', content: user }] },
-    );
-    if (typeof result === 'string') return result;
-    const obj = result as { response?: string; choices?: Array<{ message?: { content?: string } }> };
-    return obj.choices?.[0]?.message?.content ?? obj.response ?? '';
+    const result = await buildLLMProviderFactory(env).generateResponse({
+      model: '@cf/meta/llama-3.1-8b-instruct',
+      systemPrompt: system,
+      messages: [{ role: 'user', content: user }],
+      maxTokens: 1024,
+      temperature: 0.2,
+    });
+    return result.message ?? '';
   }
   throw new Error('[conv-facts] No LLM provider available (groqApiKey and env.ai both missing)');
 }
