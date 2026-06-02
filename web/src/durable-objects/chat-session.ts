@@ -1,15 +1,25 @@
 import type { Env, MessageMetadata } from '../types.js';
 import { buildEdgeEnv } from '../edge-env.js';
 import { createIntent, dispatchStream } from '../kernel/dispatch.js';
-import type { DispatchResult } from '../kernel/types.js';
+import type { DispatchResult, Executor } from '../kernel/types.js';
 import { isValidConversationId, verifyConversationOwnership } from './chat-session-auth.js';
 import { z } from 'zod';
+
+const ExecutorSchema = z.enum([
+  'claude',
+  'groq',
+  'workers_ai',
+  'claude_opus',
+  'gpt_oss',
+  'composite',
+]);
 
 const MessageFrameSchema = z.object({
   type: z.literal('message'),
   text: z.string().trim().min(1),
   conversationId: z.string().optional(),
   eventId: z.string().trim().min(1).optional(),
+  executor: ExecutorSchema.optional(),
 }).passthrough();
 
 type StoredMessage = {
@@ -91,7 +101,9 @@ export class ChatSession implements DurableObject {
 
     try {
       const edgeEnv = buildEdgeEnv(this.env);
-      const intent = createIntent(conversationId, text);
+      const intent = createIntent(conversationId, text, {
+        forcedExecutor: parsed.data.executor as Executor | undefined,
+      });
       const result = await dispatchStream(intent, edgeEnv, (delta) => {
         this.send(ws, { type: 'delta', text: delta });
       });

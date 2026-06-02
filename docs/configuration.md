@@ -176,10 +176,10 @@ new_sqlite_classes = ["ChatSession"]
 
 The route is protected by the same `AEGIS_TOKEN` as the HTTP API. Connect with `wss://<host>/chat/ws?token=<AEGIS_TOKEN>` and request the `aegis-chat` subprotocol.
 
-Client frames. `eventId` is optional but recommended for reconnect/replay deduplication:
+Client frames. `eventId` is optional but recommended for reconnect/replay deduplication. `executor` is optional and may be `workers_ai`, `gpt_oss`, `groq`, `claude`, `claude_opus`, or `composite`.
 
 ```json
-{ "type": "message", "text": "What changed today?", "conversationId": "optional-uuid", "eventId": "optional-client-event-id" }
+{ "type": "message", "text": "What changed today?", "conversationId": "optional-uuid", "eventId": "optional-client-event-id", "executor": "optional-executor" }
 ```
 
 Server frames:

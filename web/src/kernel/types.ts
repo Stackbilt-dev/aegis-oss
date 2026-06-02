@@ -25,6 +25,7 @@ export interface KernelIntent {
   timestamp: number;
   costCeiling: 'free' | 'cheap' | 'expensive';
   classifierSource?: 'classify-cast' | 'workers-ai' | 'groq';
+  forcedExecutor?: Executor;
 }
 
 // ─── Memory Types ────────────────────────────────────────────
