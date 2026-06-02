@@ -81,6 +81,7 @@ If conversation context is provided, use it to understand what the user is reall
 
 Categories:
 - heartbeat: Explicitly asking to run a health check, status check, or heartbeat — ONLY when the user directly requests a system diagnostic. NOT for pasting technical data, reporting findings, discussing system state, or asking what needs attention
+- request_clarification: The user asks for an internal data or metric concept whose definition is not strictly specified. Halt and ask which definition to use instead of guessing
 ${bizopsCategories}
 - general_knowledge: General factual questions, conceptual explanations, abstract advice with NO connection to the operator's businesses, projects, or operations
 - memory_recall: Questions about what the agent remembers, past conversations
@@ -100,6 +101,7 @@ Tiebreaker: "roundtable", "generate a roundtable", "show roundtable drafts", "pu
 Tiebreaker: When the user discusses actions to take on their business infrastructure, projects, migrations, deployments, or asks for recommendations tied to business operations → prefer bizops_mutate over general_knowledge. "general_knowledge" is for questions with NO business/operational context (e.g., "what is OAuth?", "explain quantum computing").
 Tiebreaker: When a message reports a bug, error, broken feature, or asks for help using a Stackbilt product → always support_triage, never bizops_read. "bizops_read" is for the operator querying internal business state, not for end-user support requests.
 Tiebreaker: If the user asks "what do you think?" or "what are your thoughts?" in a conversation about business decisions, projects, or operations → bizops_mutate (they want actionable advice + BizOps actions, not a generic essay).
+Disambiguation firewall: If the user asks for data or metrics and the definition is not strictly defined in context, DO NOT GUESS. Use request_clarification. Example: "what is churn?" is ambiguous; ask whether they mean churn by seat count, account count, revenue, MRR, or another defined basis.
 
 Examples:
 - "hi" → {"pattern":"greeting","complexity":0,"needs_tools":false,"confidence":0.99}
@@ -167,6 +169,7 @@ export function getTaskPatterns(): readonly string[] {
 
   const patterns: string[] = [
     'heartbeat',
+    'request_clarification',
     'general_knowledge',
     'memory_recall',
     'greeting',

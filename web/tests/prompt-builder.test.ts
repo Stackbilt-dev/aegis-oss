@@ -197,6 +197,7 @@ describe('getTaskPatterns', () => {
   it('includes base patterns', () => {
     const patterns = getTaskPatterns();
     expect(patterns).toContain('heartbeat');
+    expect(patterns).toContain('request_clarification');
     expect(patterns).toContain('general_knowledge');
     expect(patterns).toContain('greeting');
     expect(patterns).toContain('code_task');

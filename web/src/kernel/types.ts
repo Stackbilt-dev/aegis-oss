@@ -18,6 +18,10 @@ export interface KernelIntent {
   confidence?: number;
   domain?: string;
   domainConfidence?: number;
+  disambiguation?: {
+    concept: string;
+    question: string;
+  };
   timestamp: number;
   costCeiling: 'free' | 'cheap' | 'expensive';
   classifierSource?: 'classify-cast' | 'workers-ai' | 'groq';

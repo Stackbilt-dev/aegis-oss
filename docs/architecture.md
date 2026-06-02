@@ -34,6 +34,19 @@ Every user message follows the same path through the kernel:
 
 4. **Learn** — Record the episode: what was asked, which executor handled it, whether it succeeded, how long it took, what it cost. This feeds back into procedural memory over time.
 
+## Disambiguation firewall
+
+AEGIS halts before model routing when a user asks for an internal data or metric concept that is not strictly defined. For example, "what is churn?" is ambiguous unless the user specifies seat count, account count, revenue, MRR, or another basis. The router classifies these requests as `request_clarification` and sends them to the `direct` executor, which returns a zero-cost clarification prompt instead of letting an LLM guess.
+
+Known typed data surfaces, such as compliance deadlines, documents, projects, agenda items, goals, and health checks, continue through normal routing. So do metric requests where the user already names the basis, such as "show churn by MRR for last 30 days."
+
+The pattern for OSS integrations is:
+
+- expose business data through typed MCP tools or strict JSON-schema endpoints
+- keep the schema definitions at the tool boundary, not in free-form model context
+- route undefined data concepts to `request_clarification`
+- only allow LLM executors to analyze data returned by those typed tools
+
 ## Executors
 
 AEGIS supports multiple AI backends, selected per-request based on intent and learned performance:

@@ -24,6 +24,7 @@
     "./kernel/dispatch": "./src/kernel/dispatch.ts",
     "./kernel/router": "./src/kernel/router.ts",
     "./kernel/types": "./src/kernel/types.ts",
+    "./kernel/disambiguation": "./src/kernel/disambiguation.ts",
     "./kernel/memory": "./src/kernel/memory/index.ts",
     "./kernel/memory-adapter": "./src/kernel/memory-adapter.ts",
     "./kernel/resilience": "./src/kernel/resilience.ts",

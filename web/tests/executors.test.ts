@@ -218,6 +218,24 @@ describe('executeWorkersAi', () => {
 describe('executeDirect', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('returns a clarification request without LLM cost', async () => {
+    const intent = makeIntent('what is churn?', 'request_clarification');
+    intent.disambiguation = {
+      concept: 'churn',
+      question: 'Do you mean churn by seat count, account count, revenue, MRR, or another defined basis?',
+    };
+
+    const result = await executeDirect(intent, makeEnv());
+
+    expect(result.text).toContain('seat count');
+    expect(result.cost).toBe(0);
+    expect(result.meta).toEqual({
+      clarificationRequired: true,
+      concept: 'churn',
+      source: 'disambiguation_firewall',
+    });
+  });
+
   it('handles heartbeat classification', async () => {
     mockAskGroq.mockResolvedValue('{"actionable":false,"severity":"none","summary":"All systems nominal","checks":[]}');
     const env = makeEnv();

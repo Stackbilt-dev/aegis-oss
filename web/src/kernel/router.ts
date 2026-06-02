@@ -3,6 +3,7 @@ import { askGroq, askGroqWithLogprobs } from '../groq.js';
 import type { KernelIntent, ExecutionPlan, Executor } from './types.js';
 import { buildClassifySystem, getTaskPatterns } from '../operator/prompt-builder.js';
 import { domainPreFilter } from './domain.js';
+import { detectDisambiguationNeed } from './disambiguation.js';
 
 // ─── Confidence Thresholds ──────────────────────────────────
 const CONFIDENCE_TRUST = 0.80;   // ≥ 0.80 → use classification as-is
@@ -94,6 +95,7 @@ async function classifyWithWorkersAI(
 // Fallback routes — used for degraded procedure replanning and when JSON classification fails
 const DEFAULT_ROUTES: Record<string, Executor> = {
   heartbeat: 'direct',
+  request_clarification: 'direct',
   bizops_read: 'gpt_oss',
   bizops_mutate: 'gpt_oss',
   general_knowledge: 'gpt_oss',
@@ -238,6 +240,25 @@ export async function route(
         reasoning: `Internal trigger "${intent.classified}" — no mature procedure, using default`,
         costCeiling: 'free',
       },
+    };
+  }
+
+  // ─── Phase 0.25: Disambiguation firewall ──────────────────
+  const disambiguation = detectDisambiguationNeed(intent.raw);
+  if (disambiguation) {
+    intent.classified = 'request_clarification';
+    intent.complexity = 0;
+    intent.needsTools = false;
+    intent.confidence = 1;
+    intent.disambiguation = disambiguation;
+    return {
+      plan: {
+        executor: 'direct',
+        reasoning: `Disambiguation firewall halted undefined data concept "${disambiguation.concept}"`,
+        costCeiling: 'free',
+      },
+      nearMiss: `disambiguation:${disambiguation.concept}`,
+      reclassified: false,
     };
   }
 
