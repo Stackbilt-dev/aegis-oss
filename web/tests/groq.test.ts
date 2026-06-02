@@ -1,7 +1,16 @@
-// Groq client tests — askGroq, askGroqJson, askGroqWithLogprobs, probeConsistency
-// Mocks fetch() to test API interaction without real calls
+// Groq helper tests — askGroq, askGroqJson, askGroqWithLogprobs, probeConsistency
+// Mocks provider factory and fetch() to test API interaction without real calls
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const providerMocks = vi.hoisted(() => ({
+  createLLMProviderFactory: vi.fn(),
+  generateResponse: vi.fn(),
+}));
+
+vi.mock('@stackbilt/llm-providers', () => ({
+  createLLMProviderFactory: providerMocks.createLLMProviderFactory,
+}));
 
 // Mock tokenize/jaccardSimilarity before importing groq.ts
 vi.mock('../src/kernel/memory/index.js', () => ({
@@ -19,11 +28,14 @@ vi.stubGlobal('fetch', mockFetch);
 
 const { askGroq, askGroqJson, askGroqWithLogprobs, probeConsistency } = await import('../src/groq.js');
 
-function groqResponse(content: string, usage?: { prompt_tokens: number; completion_tokens: number }) {
-  return new Response(JSON.stringify({
-    choices: [{ message: { content } }],
+function providerResponse(content: unknown, usage = { inputTokens: 100, outputTokens: 50, totalTokens: 150, cost: 0.001 }) {
+  return {
+    message: content,
     usage,
-  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    model: 'llama-test',
+    provider: 'groq',
+    responseTime: 10,
+  };
 }
 
 function groqLogprobResponse(content: string, logprobs: Array<{ token: string; logprob: number }>) {
@@ -36,52 +48,59 @@ function groqLogprobResponse(content: string, logprobs: Array<{ token: string; l
 }
 
 describe('askGroq', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    providerMocks.createLLMProviderFactory.mockReturnValue({ generateResponse: providerMocks.generateResponse });
+  });
 
   it('returns content from Groq API', async () => {
-    mockFetch.mockResolvedValue(groqResponse('Hello!'));
+    providerMocks.generateResponse.mockResolvedValue(providerResponse('Hello!'));
     const result = await askGroq('key', 'model', 'system', 'user');
     expect(result).toBe('Hello!');
-    expect(mockFetch).toHaveBeenCalledOnce();
+    expect(providerMocks.generateResponse).toHaveBeenCalledOnce();
   });
 
   it('sends correct request shape', async () => {
-    mockFetch.mockResolvedValue(groqResponse('ok'));
+    providerMocks.generateResponse.mockResolvedValue(providerResponse('ok'));
     await askGroq('test-key', 'llama-70b', 'sys prompt', 'user prompt', 'https://custom.api');
 
-    const [url, opts] = mockFetch.mock.calls[0];
-    expect(url).toBe('https://custom.api/openai/v1/chat/completions');
-    expect(opts.method).toBe('POST');
-    expect(opts.headers['Authorization']).toBe('Bearer test-key');
-    const body = JSON.parse(opts.body);
-    expect(body.model).toBe('llama-70b');
-    expect(body.messages).toHaveLength(2);
-    expect(body.messages[0].role).toBe('system');
-    expect(body.messages[1].role).toBe('user');
+    expect(providerMocks.createLLMProviderFactory).toHaveBeenCalledWith({
+      groq: { apiKey: 'test-key', baseUrl: 'https://custom.api' },
+      fallbackRules: [],
+      enableCircuitBreaker: true,
+      enableRetries: true,
+    });
+    expect(providerMocks.generateResponse).toHaveBeenCalledWith({
+      model: 'llama-70b',
+      systemPrompt: 'sys prompt',
+      temperature: 0.3,
+      maxTokens: 500,
+      messages: [{ role: 'user', content: 'user prompt' }],
+    });
   });
 
   it('throws on API error', async () => {
-    mockFetch.mockResolvedValue(new Response('rate limited', { status: 429 }));
-    await expect(askGroq('key', 'model', 'sys', 'user')).rejects.toThrow('Groq API error 429');
+    providerMocks.generateResponse.mockRejectedValue(new Error('rate limited'));
+    await expect(askGroq('key', 'model', 'sys', 'user')).rejects.toThrow('Groq API error: rate limited');
   });
 
   it('returns empty string when no content', async () => {
-    mockFetch.mockResolvedValue(new Response(
-      JSON.stringify({ choices: [{ message: { content: null } }] }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    ));
+    providerMocks.generateResponse.mockResolvedValue(providerResponse(null));
     const result = await askGroq('key', 'model', 'sys', 'user');
     expect(result).toBe('');
   });
 });
 
 describe('askGroqJson', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    providerMocks.createLLMProviderFactory.mockReturnValue({ generateResponse: providerMocks.generateResponse });
+  });
 
   it('parses JSON response', async () => {
-    mockFetch.mockResolvedValue(groqResponse(
+    providerMocks.generateResponse.mockResolvedValue(providerResponse(
       '{"name":"test","value":42}',
-      { prompt_tokens: 100, completion_tokens: 50 },
+      { inputTokens: 100, outputTokens: 50, totalTokens: 150, cost: 0.001 },
     ));
     const { parsed, raw, usage } = await askGroqJson<{ name: string; value: number }>(
       'key', 'model', 'sys', 'user',
@@ -93,9 +112,9 @@ describe('askGroqJson', () => {
   });
 
   it('handles prefill by concatenating', async () => {
-    mockFetch.mockResolvedValue(groqResponse(
+    providerMocks.generateResponse.mockResolvedValue(providerResponse(
       'hello","done":true}',
-      { prompt_tokens: 50, completion_tokens: 20 },
+      { inputTokens: 50, outputTokens: 20, totalTokens: 70, cost: 0.001 },
     ));
     const { parsed } = await askGroqJson<{ greeting: string; done: boolean }>(
       'key', 'model', 'sys', 'user', undefined,
@@ -106,20 +125,24 @@ describe('askGroqJson', () => {
   });
 
   it('sends json_object response_format', async () => {
-    mockFetch.mockResolvedValue(groqResponse('{}'));
+    providerMocks.generateResponse.mockResolvedValue(providerResponse('{}'));
     await askGroqJson('key', 'model', 'sys', 'user');
-    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.response_format).toEqual({ type: 'json_object' });
+    expect(providerMocks.generateResponse).toHaveBeenCalledWith(expect.objectContaining({
+      response_format: { type: 'json_object' },
+    }));
   });
 
   it('throws on API error', async () => {
-    mockFetch.mockResolvedValue(new Response('server error', { status: 500 }));
-    await expect(askGroqJson('key', 'model', 'sys', 'user')).rejects.toThrow('Groq API error 500');
+    providerMocks.generateResponse.mockRejectedValue(new Error('server error'));
+    await expect(askGroqJson('key', 'model', 'sys', 'user')).rejects.toThrow('Groq API error: server error');
   });
 });
 
 describe('askGroqWithLogprobs', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    providerMocks.createLLMProviderFactory.mockReturnValue({ generateResponse: providerMocks.generateResponse });
+  });
 
   it('parses classification with token confidence', async () => {
     mockFetch.mockResolvedValue(groqLogprobResponse(
@@ -161,11 +184,13 @@ describe('askGroqWithLogprobs', () => {
 });
 
 describe('probeConsistency', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    providerMocks.createLLMProviderFactory.mockReturnValue({ generateResponse: providerMocks.generateResponse });
+  });
 
   it('returns sigma=0 when all responses agree', async () => {
-    // Each call needs a fresh Response (body can only be read once)
-    mockFetch.mockImplementation(() => Promise.resolve(groqResponse('The answer is 42')));
+    providerMocks.generateResponse.mockResolvedValue(providerResponse('The answer is 42'));
     const result = await probeConsistency('key', 'model', 'sys', 'user');
     expect(result.sigma).toBe(0);
     expect(result.agreedText).toBe('The answer is 42');
@@ -173,18 +198,18 @@ describe('probeConsistency', () => {
   });
 
   it('returns sigma=1.0 when responses completely disagree', async () => {
-    mockFetch
-      .mockResolvedValueOnce(groqResponse('alpha beta gamma delta epsilon'))
-      .mockResolvedValueOnce(groqResponse('one two three four five six seven'))
-      .mockResolvedValueOnce(groqResponse('red green blue purple orange yellow'));
+    providerMocks.generateResponse
+      .mockResolvedValueOnce(providerResponse('alpha beta gamma delta epsilon'))
+      .mockResolvedValueOnce(providerResponse('one two three four five six seven'))
+      .mockResolvedValueOnce(providerResponse('red green blue purple orange yellow'));
     const result = await probeConsistency('key', 'model', 'sys', 'user');
     expect(result.sigma).toBe(1.0);
     expect(result.agreedText).toBeNull();
   });
 
   it('makes exactly 3 parallel calls', async () => {
-    mockFetch.mockImplementation(() => Promise.resolve(groqResponse('same')));
+    providerMocks.generateResponse.mockResolvedValue(providerResponse('same'));
     await probeConsistency('key', 'model', 'sys', 'user');
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(providerMocks.generateResponse).toHaveBeenCalledTimes(3);
   });
 });

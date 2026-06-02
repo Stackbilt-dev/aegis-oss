@@ -1,4 +1,24 @@
-// Edge-native Groq client — fetch-based, no OpenAI SDK dependency
+// Edge-native Groq helpers backed by @stackbilt/llm-providers
+
+import { createLLMProviderFactory, type LLMMessage } from '@stackbilt/llm-providers';
+import { tokenize, jaccardSimilarity } from './kernel/memory/index.js';
+import { cosineSimilarity } from './kernel/memory/semantic.js';
+import type { MemoryServiceBinding } from './types.js';
+
+function buildGroqFactory(apiKey: string, baseUrl: string) {
+  return createLLMProviderFactory({
+    groq: { apiKey, baseUrl },
+    fallbackRules: [],
+    enableCircuitBreaker: true,
+    enableRetries: true,
+  });
+}
+
+function coerceText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (content == null) return '';
+  return typeof content === 'object' ? JSON.stringify(content) : String(content);
+}
 
 export async function askGroq(
   apiKey: string,
@@ -7,39 +27,21 @@ export async function askGroq(
   userPrompt: string,
   baseUrl = 'https://api.groq.com',
 ): Promise<string> {
-  const response = await fetch(`${baseUrl}/openai/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
+  try {
+    const result = await buildGroqFactory(apiKey, baseUrl).generateResponse({
       model,
+      systemPrompt,
       temperature: 0.3,
-      max_tokens: 500,
+      maxTokens: 500,
       messages: [
-        { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-    }),
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq API error ${response.status}: ${errText}`);
+    });
+    return coerceText(result.message);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Groq API error: ${msg}`);
   }
-
-  const data = await response.json<{
-    choices: { message: { content: unknown } }[];
-    usage?: { total_tokens: number };
-  }>();
-
-  const content = data.choices[0]?.message?.content;
-  if (typeof content === 'string') return content;
-  if (content == null) return '';
-  // Some Groq-routed models (notably gpt-oss tool-calling variants) return content
-  // as an array of content blocks. Coerce so downstream string operations don't crash.
-  return typeof content === 'object' ? JSON.stringify(content) : String(content);
 }
 
 // ─── Logprobs-enabled classification ─────────────────────────
@@ -130,10 +132,6 @@ export async function askGroqWithLogprobs(
 // Jaccard when memoryBinding is unavailable.
 // Returns σ metric: 0=all agree, 0.5=partial, 1.0=disagree.
 
-import { tokenize, jaccardSimilarity } from './kernel/memory/index.js';
-import { cosineSimilarity } from './kernel/memory/semantic.js';
-import type { MemoryServiceBinding } from './types.js';
-
 const PROBE_TIMEOUT_MS = 3_000;
 const JACCARD_AGREEMENT_THRESHOLD = 0.5;
 const COSINE_AGREEMENT_THRESHOLD = 0.85;
@@ -210,8 +208,7 @@ export async function askGroqJson<T = unknown>(
   baseUrl = 'https://api.groq.com',
   options?: { maxTokens?: number; temperature?: number; prefill?: string },
 ): Promise<{ parsed: T; raw: string; usage?: { prompt_tokens: number; completion_tokens: number } }> {
-  const messages: Array<{ role: string; content: string }> = [
-    { role: 'system', content: systemPrompt },
+  const messages: LLMMessage[] = [
     { role: 'user', content: userPrompt },
   ];
   // Prefilling: seed the assistant response to steer tone/format
@@ -219,34 +216,30 @@ export async function askGroqJson<T = unknown>(
     messages.push({ role: 'assistant', content: options.prefill });
   }
 
-  const response = await fetch(`${baseUrl}/openai/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
+  try {
+    const result = await buildGroqFactory(apiKey, baseUrl).generateResponse({
       model,
+      systemPrompt,
       temperature: options?.temperature ?? 0.2,
-      max_tokens: options?.maxTokens ?? 2000,
+      maxTokens: options?.maxTokens ?? 2000,
       response_format: { type: 'json_object' },
       messages,
-    }),
-  });
+    });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq API error ${response.status}: ${errText}`);
+    const completion = result.message ?? '{}';
+    // If prefilled, the model continues from the prefill — concatenate for valid JSON
+    const raw = options?.prefill ? options.prefill + completion : completion;
+    const parsed = JSON.parse(raw) as T;
+    return {
+      parsed,
+      raw,
+      usage: {
+        prompt_tokens: result.usage.inputTokens,
+        completion_tokens: result.usage.outputTokens,
+      },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Groq API error: ${msg}`);
   }
-
-  const data = await response.json<{
-    choices: { message: { content: string } }[];
-    usage?: { prompt_tokens: number; completion_tokens: number };
-  }>();
-
-  const completion = data.choices[0]?.message?.content ?? '{}';
-  // If prefilled, the model continues from the prefill — concatenate for valid JSON
-  const raw = options?.prefill ? options.prefill + completion : completion;
-  const parsed = JSON.parse(raw) as T;
-  return { parsed, raw, usage: data.usage };
 }
