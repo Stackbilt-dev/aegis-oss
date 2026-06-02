@@ -1,5 +1,5 @@
 // Groq helper tests — askGroq, askGroqJson, askGroqWithLogprobs, probeConsistency
-// Mocks provider factory and fetch() to test API interaction without real calls
+// Mocks provider factory to test API interaction without real calls
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -22,10 +22,6 @@ vi.mock('../src/kernel/memory/index.js', () => ({
   },
 }));
 
-// Mock global fetch
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
-
 const { askGroq, askGroqJson, askGroqWithLogprobs, probeConsistency } = await import('../src/groq.js');
 
 function providerResponse(content: unknown, usage = { inputTokens: 100, outputTokens: 50, totalTokens: 150, cost: 0.001 }) {
@@ -36,15 +32,6 @@ function providerResponse(content: unknown, usage = { inputTokens: 100, outputTo
     provider: 'groq',
     responseTime: 10,
   };
-}
-
-function groqLogprobResponse(content: string, logprobs: Array<{ token: string; logprob: number }>) {
-  return new Response(JSON.stringify({
-    choices: [{
-      message: { content },
-      logprobs: { content: logprobs },
-    }],
-  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }
 
 describe('askGroq', () => {
@@ -144,39 +131,31 @@ describe('askGroqWithLogprobs', () => {
     providerMocks.createLLMProviderFactory.mockReturnValue({ generateResponse: providerMocks.generateResponse });
   });
 
-  it('parses classification with token confidence', async () => {
-    mockFetch.mockResolvedValue(groqLogprobResponse(
+  it('parses classification with provider-backed confidence', async () => {
+    providerMocks.generateResponse.mockResolvedValue(providerResponse(
       '{"pattern":"greeting","complexity":0,"needs_tools":false,"confidence":0.99}',
-      [
-        { token: '{"', logprob: -0.01 },
-        { token: 'pattern', logprob: -0.02 },
-        { token: '":"', logprob: -0.01 },
-        { token: 'greeting', logprob: -0.05 },
-      ],
     ));
     const result = await askGroqWithLogprobs('key', 'model', 'sys', 'user');
     expect(result.pattern).toBe('greeting');
     expect(result.complexity).toBe(0);
     expect(result.needs_tools).toBe(false);
     expect(result.selfReportedConfidence).toBe(0.99);
-    expect(result.tokenConfidence).toBeGreaterThan(0);
-    expect(result.tokenConfidence).toBeLessThanOrEqual(1);
+    expect(result.tokenConfidence).toBe(0.99);
   });
 
   it('defaults missing fields', async () => {
-    mockFetch.mockResolvedValue(groqLogprobResponse('{}', []));
+    providerMocks.generateResponse.mockResolvedValue(providerResponse('{}'));
     const result = await askGroqWithLogprobs('key', 'model', 'sys', 'user');
     expect(result.pattern).toBe('general_knowledge');
     expect(result.complexity).toBe(2);
     expect(result.needs_tools).toBe(false);
     expect(result.selfReportedConfidence).toBe(0.5);
-    expect(result.tokenConfidence).toBe(0.5); // fallback when no logprobs
+    expect(result.tokenConfidence).toBe(0.5);
   });
 
   it('sanitizes pattern string', async () => {
-    mockFetch.mockResolvedValue(groqLogprobResponse(
+    providerMocks.generateResponse.mockResolvedValue(providerResponse(
       '{"pattern":"Greeting!123"}',
-      [{ token: 'x', logprob: -0.1 }],
     ));
     const result = await askGroqWithLogprobs('key', 'model', 'sys', 'user');
     expect(result.pattern).toBe('greeting');

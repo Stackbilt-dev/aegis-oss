@@ -44,10 +44,10 @@ export async function askGroq(
   }
 }
 
-// ─── Logprobs-enabled classification ─────────────────────────
-// Requests logprobs from Groq's OpenAI-compatible API and computes
-// geometric mean of token probabilities for the classification value.
-// Returns both self-reported confidence and token-level confidence.
+// ─── Classification confidence helper ────────────────────────
+// Provider-backed replacement for the former raw Groq logprobs call.
+// llm-providers does not expose provider logprob request options yet, so
+// tokenConfidence mirrors self-reported confidence until that contract lands.
 
 export interface LogprobClassification {
   pattern: string;
@@ -64,65 +64,20 @@ export async function askGroqWithLogprobs(
   userPrompt: string,
   baseUrl = 'https://api.groq.com',
 ): Promise<LogprobClassification> {
-  const response = await fetch(`${baseUrl}/openai/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      max_tokens: 200,
-      response_format: { type: 'json_object' },
-      logprobs: true,
-      top_logprobs: 3,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq logprobs API error ${response.status}: ${errText}`);
-  }
-
-  interface LogprobToken {
-    token: string;
-    logprob: number;
-  }
-
-  const data = await response.json<{
-    choices: {
-      message: { content: string };
-      logprobs?: { content?: LogprobToken[] };
-    }[];
-  }>();
-
-  const raw = data.choices[0]?.message?.content ?? '{}';
-  const parsed = JSON.parse(raw) as {
+  const { parsed } = await askGroqJson<{
     pattern?: string;
     complexity?: number;
     needs_tools?: boolean;
     confidence?: number;
-  };
-
-  // Compute geometric mean of token logprobs
-  let tokenConfidence = 0.5; // fallback if no logprobs
-  const logprobTokens = data.choices[0]?.logprobs?.content;
-  if (logprobTokens && logprobTokens.length > 0) {
-    const sumLogprobs = logprobTokens.reduce((sum, t) => sum + t.logprob, 0);
-    tokenConfidence = Math.exp(sumLogprobs / logprobTokens.length);
-  }
+  }>(apiKey, model, systemPrompt, userPrompt, baseUrl, { maxTokens: 200, temperature: 0.1 });
+  const confidence = parsed.confidence ?? 0.5;
 
   return {
     pattern: (parsed.pattern ?? 'general_knowledge').toLowerCase().replace(/[^a-z_]/g, ''),
     complexity: parsed.complexity ?? 2,
     needs_tools: parsed.needs_tools ?? false,
-    selfReportedConfidence: parsed.confidence ?? 0.5,
-    tokenConfidence,
+    selfReportedConfidence: confidence,
+    tokenConfidence: confidence,
   };
 }
 
