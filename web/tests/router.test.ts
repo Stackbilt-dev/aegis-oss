@@ -90,6 +90,44 @@ describe('Router', () => {
   // ── Basic classification + routing ─────────────────────────
 
   describe('classification parsing', () => {
+    it('halts ambiguous data concepts before LLM classification', async () => {
+      const intent = makeIntent('what is churn?');
+      const { plan, nearMiss } = await route(intent, mockDb, 'fake-key', 'fake-model');
+
+      expect(intent.classified).toBe('request_clarification');
+      expect(intent.disambiguation).toEqual(expect.objectContaining({
+        concept: 'churn',
+      }));
+      expect(plan.executor).toBe('direct');
+      expect(plan.costCeiling).toBe('free');
+      expect(plan.reasoning).toContain('Disambiguation firewall');
+      expect(nearMiss).toBe('disambiguation:churn');
+      expect(mockAskGroq).not.toHaveBeenCalled();
+      expect(getProcedure).not.toHaveBeenCalled();
+    });
+
+    it('does not halt known typed data surfaces', async () => {
+      mockAskGroq.mockResolvedValue(jsonClass('bizops_read', 1, true, 0.95));
+
+      const intent = makeIntent('what compliance deadlines are coming up?');
+      const { plan } = await route(intent, mockDb, 'fake-key', 'fake-model');
+
+      expect(intent.classified).toBe('bizops_read');
+      expect(plan.executor).toBe('gpt_oss');
+      expect(mockAskGroq).toHaveBeenCalled();
+    });
+
+    it('does not halt when the user defines the metric basis', async () => {
+      mockAskGroq.mockResolvedValue(jsonClass('bizops_read', 1, true, 0.95));
+
+      const intent = makeIntent('show churn by MRR for last 30 days');
+      const { plan } = await route(intent, mockDb, 'fake-key', 'fake-model');
+
+      expect(intent.classified).toBe('bizops_read');
+      expect(plan.executor).toBe('gpt_oss');
+      expect(mockAskGroq).toHaveBeenCalled();
+    });
+
     it('parses JSON classification and routes greeting to groq', async () => {
       mockAskGroq.mockResolvedValue(jsonClass('greeting', 0, false, 0.99));
 

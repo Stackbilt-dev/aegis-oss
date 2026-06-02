@@ -90,6 +90,20 @@ export async function executeDirect(
   intent: KernelIntent,
   env: EdgeEnv,
 ): Promise<{ text: string; cost: number; meta?: unknown }> {
+  if (intent.classified === 'request_clarification') {
+    const question = intent.disambiguation?.question
+      ?? 'This data concept is ambiguous. Which exact definition should I use?';
+    return {
+      text: question,
+      cost: 0,
+      meta: {
+        clarificationRequired: true,
+        concept: intent.disambiguation?.concept ?? 'unknown',
+        source: 'disambiguation_firewall',
+      },
+    };
+  }
+
   if (intent.classified === 'heartbeat') {
     // Edge heartbeat: call BizOps dashboard + CF infrastructure in parallel, triage with structured JSON
     const mcpClient = new McpClient({
