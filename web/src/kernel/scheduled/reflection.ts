@@ -137,6 +137,10 @@ Include a **Cognitive Health** subsection in Signals: are procedures converging 
 
 End with one sentence about what you're watching heading into tomorrow — not a summary, a forward look.
 
+## Grounding Rule
+
+In the Signals and Cognitive Health sections, you may ONLY reference classification names, executor names, or error codes that appear verbatim in the data provided in the user message. Do NOT invent, interpolate, or generalize these. If you are uncertain of the exact name, use "an unclassified dispatch" or "an unnamed executor" rather than guessing. Aggregate claims (counts, percentages, cost trends) are fine without naming. Named claims require a matching row in the data.
+
 Markdown formatting. Use ## headers for sections.`;
 
 export interface TaskActivity {
@@ -164,6 +168,15 @@ export interface CognitiveHealth {
   routingMismatches: number; // expensive executor for easy task or cheap executor that failed
 }
 
+export interface DegradedProcedure {
+  task_pattern: string;
+  executor: string;
+  consecutive_failures: number;
+  success_count: number;
+  fail_count: number;
+  status: string;
+}
+
 export interface DailyActivity {
   episodes: Array<{ summary: string; outcome: string; cost: number; latency_ms: number; created_at: string }>;
   goalActions: Array<{ description: string; outcome: string | null; created_at: string }>;
@@ -174,6 +187,7 @@ export interface DailyActivity {
   tasksCompleted: TaskActivity[];
   tasksFailed: TaskActivity[];
   cognitive: CognitiveHealth;
+  degradedProcedures: DegradedProcedure[];
 }
 
 export async function getDailyActivity(db: D1Database): Promise<DailyActivity> {
@@ -258,6 +272,16 @@ export async function getDailyActivity(db: D1Database): Promise<DailyActivity> {
     routingMismatches: routingMismatches?.cnt ?? 0,
   };
 
+  // Grounding data: actual degraded/broken procedure rows so the narrator can
+  // cite real task_pattern + executor names instead of hallucinating them.
+  const degradedRows = await db.prepare(`
+    SELECT task_pattern, executor, consecutive_failures, success_count, fail_count, status
+    FROM procedural_memory
+    WHERE status IN ('degraded', 'broken')
+    ORDER BY consecutive_failures DESC
+    LIMIT 10
+  `).all<DegradedProcedure>();
+
   return {
     episodes: episodes.results,
     goalActions: goalActions.results,
@@ -268,6 +292,7 @@ export async function getDailyActivity(db: D1Database): Promise<DailyActivity> {
     tasksCompleted: tasksCompleted.results,
     tasksFailed: tasksFailed.results,
     cognitive,
+    degradedProcedures: degradedRows.results,
   };
 }
 
@@ -349,6 +374,13 @@ ${goalSummary}
 - Dispatch cost trend: $${activity.cognitive.avgCost7d.toFixed(4)}/dispatch (7d) vs $${activity.cognitive.avgCost7dPrior.toFixed(4)}/dispatch (prior 7d) — ${activity.cognitive.avgCost7dPrior > 0 ? ((activity.cognitive.avgCost7d - activity.cognitive.avgCost7dPrior) / activity.cognitive.avgCost7dPrior * 100).toFixed(1) : 'n/a'}% change
 - Latency trend: ${activity.cognitive.avgLatency7d}ms (7d) vs ${activity.cognitive.avgLatency7dPrior}ms (prior 7d)
 - Routing mismatches (24h): ${activity.cognitive.routingMismatches}
+
+**Degraded/Broken Procedures** (grounding data — cite ONLY these names in Signals, no others):
+${activity.degradedProcedures.length > 0
+  ? activity.degradedProcedures.map(p =>
+      `  task_pattern="${p.task_pattern}" executor="${p.executor}" status=${p.status} consecutive_failures=${p.consecutive_failures} success=${p.success_count} fail=${p.fail_count} (lifetime rate: ${p.success_count + p.fail_count > 0 ? Math.round(p.success_count / (p.success_count + p.fail_count) * 100) : 0}%)`
+    ).join('\n')
+  : '  (none — all procedures healthy or learning)'}
 
 Write your worklog entry.`;
 
