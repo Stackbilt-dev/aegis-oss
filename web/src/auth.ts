@@ -21,15 +21,9 @@ export async function bearerAuth(c: Context<{ Bindings: Env }>, next: Next): Pro
     return next();
   }
 
-  // OAuth discovery endpoints — must be public so MCP clients can probe them
-  // without a token. We return 404 for the auth server and resource metadata
-  // so clients learn there is no OAuth server here and fall back to configured
-  // bearer token headers.
-  if (
-    c.req.path === '/.well-known/oauth-protected-resource' ||
-    c.req.path === '/.well-known/oauth-authorization-server' ||
-    c.req.path === '/.well-known/openid-configuration'
-  ) {
+  // All /.well-known/* paths are public by RFC 8615 — discovery endpoints
+  // (OAuth metadata, ARD catalog, OIDC config, etc.) must be reachable without credentials.
+  if (c.req.path.startsWith('/.well-known/')) {
     return next();
   }
 
