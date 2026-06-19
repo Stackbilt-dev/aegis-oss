@@ -188,6 +188,9 @@ export interface DailyActivity {
   tasksFailed: TaskActivity[];
   cognitive: CognitiveHealth;
   degradedProcedures: DegradedProcedure[];
+  // Grounding sets — narrator may ONLY cite names/codes present in these lists (aegis#617)
+  recentClassifications: string[];
+  recentErrorCodes: string[];
 }
 
 export async function getDailyActivity(db: D1Database): Promise<DailyActivity> {
@@ -274,13 +277,29 @@ export async function getDailyActivity(db: D1Database): Promise<DailyActivity> {
 
   // Grounding data: actual degraded/broken procedure rows so the narrator can
   // cite real task_pattern + executor names instead of hallucinating them.
-  const degradedRows = await db.prepare(`
-    SELECT task_pattern, executor, consecutive_failures, success_count, fail_count, status
-    FROM procedural_memory
-    WHERE status IN ('degraded', 'broken')
-    ORDER BY consecutive_failures DESC
-    LIMIT 10
-  `).all<DegradedProcedure>();
+  const [degradedRows, recentTraceClasses, recentTraceErrors] = await Promise.all([
+    db.prepare(`
+      SELECT task_pattern, executor, consecutive_failures, success_count, fail_count, status
+      FROM procedural_memory
+      WHERE status IN ('degraded', 'broken')
+      ORDER BY consecutive_failures DESC
+      LIMIT 10
+    `).all<DegradedProcedure>(),
+
+    // Positive grounding set for classification names (aegis#617)
+    db.prepare(`
+      SELECT DISTINCT classification FROM llm_traces
+      WHERE classification IS NOT NULL AND created_at > datetime('now', '-24 hours')
+      LIMIT 30
+    `).all<{ classification: string }>(),
+
+    // Positive grounding set for error codes/strings (aegis#617)
+    db.prepare(`
+      SELECT DISTINCT error FROM llm_traces
+      WHERE error IS NOT NULL AND status = 'error' AND created_at > datetime('now', '-24 hours')
+      LIMIT 20
+    `).all<{ error: string }>(),
+  ]);
 
   return {
     episodes: episodes.results,
@@ -293,6 +312,8 @@ export async function getDailyActivity(db: D1Database): Promise<DailyActivity> {
     tasksFailed: tasksFailed.results,
     cognitive,
     degradedProcedures: degradedRows.results,
+    recentClassifications: recentTraceClasses.results.map(r => r.classification),
+    recentErrorCodes: recentTraceErrors.results.map(r => r.error),
   };
 }
 
@@ -381,6 +402,16 @@ ${activity.degradedProcedures.length > 0
       `  task_pattern="${p.task_pattern}" executor="${p.executor}" status=${p.status} consecutive_failures=${p.consecutive_failures} success=${p.success_count} fail=${p.fail_count} (lifetime rate: ${p.success_count + p.fail_count > 0 ? Math.round(p.success_count / (p.success_count + p.fail_count) * 100) : 0}%)`
     ).join('\n')
   : '  (none — all procedures healthy or learning)'}
+
+**Allowed classification names** (24h observed — cite ONLY these, never invent others):
+${activity.recentClassifications.length > 0
+  ? activity.recentClassifications.map(c => `  "${c}"`).join('\n')
+  : '  (none observed)'}
+
+**Allowed error codes/strings** (24h observed — cite ONLY these, never invent others):
+${activity.recentErrorCodes.length > 0
+  ? activity.recentErrorCodes.map(e => `  "${e}"`).join('\n')
+  : '  (none — no errors in last 24h)'}
 
 Write your worklog entry.`;
 

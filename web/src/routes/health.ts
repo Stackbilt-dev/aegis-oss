@@ -7,6 +7,7 @@ import { healthPage, type HealthData } from '../health-page.js';
 /** Allow consuming apps to override the reported version (set by createAegisApp). */
 let appVersion: string | undefined;
 export function setAppVersion(v: string): void { appVersion = v; }
+export function getAppVersion(): string { return appVersion ?? VERSION; }
 
 interface CostHealthEntry {
   spend_usd: number;

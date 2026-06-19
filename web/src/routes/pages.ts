@@ -8,6 +8,7 @@ import { chatPage } from '../ui.js';
 import { landingPage } from '../landing.js';
 import { dashboardPage, getDashboardData } from '../dashboard.js';
 import { pulsePage, getPulseData } from '../pulse.js';
+import { getAppVersion } from './health.js';
 
 const DEFAULT_BODY_LIMIT = 100 * 1024;
 
@@ -38,7 +39,7 @@ pages.get('/chat', (c) => {
 // ─── Pulse ──────────────────────────────────────────────────
 
 pages.get('/pulse', async (c) => {
-  const data = await getPulseData(c.env.DB);
+  const data = await getPulseData(c.env.DB, getAppVersion(), c.env.MEMORY);
   return c.html(pulsePage(data));
 });
 
