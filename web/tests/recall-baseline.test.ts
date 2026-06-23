@@ -63,26 +63,24 @@ describe('recall-baseline: activateGraph', () => {
   });
 
   it('performs 2-hop spreading activation by default', async () => {
-    // Seed: node 1 (aegis) → hop 0 neighbor: node 2 (cloudflare) → hop 1 neighbor: node 3 (d1)
+    // Bulk load: all nodes + all edges. WASM runs BFS internally.
+    // Chain: aegis(1) --0.8--> cloudflare(2) --0.6--> d1(3)
     const db = createMockDb({
       allResults: [
-        // seed query: find nodes matching "aegis"
-        [{ id: 1, label: 'aegis', node_type: 'project' }],
-        // hop 0: neighbors of node 1
-        [{ neighbor_id: 2, weight: 0.8, edge_id: 10 }],
-        // hop 1: neighbors of node 2
-        [{ neighbor_id: 3, weight: 0.6, edge_id: 11 }],
-        // fetch missing node info for nodes 2 and 3
         [
-          { id: 2, label: 'cloudflare', node_type: 'tool' },
-          { id: 3, label: 'd1', node_type: 'tool' },
+          { id: 1, label: 'aegis', node_type: 'project', activation: 0.5 },
+          { id: 2, label: 'cloudflare', node_type: 'tool', activation: 0.3 },
+          { id: 3, label: 'd1', node_type: 'tool', activation: 0.3 },
+        ],
+        [
+          { source_id: 1, target_id: 2, weight: 0.8 },
+          { source_id: 2, target_id: 3, weight: 0.6 },
         ],
       ],
     });
 
     const result = await activateGraph(db, 'aegis');
 
-    // Seed gets 1.0
     const seed = result.find(n => n.label === 'aegis');
     expect(seed?.activation).toBe(1.0);
 
@@ -99,13 +97,11 @@ describe('recall-baseline: activateGraph', () => {
     // Single hop with weight 1.0 → activation = 1.0 * 1.0 * 0.7 = 0.7
     const db = createMockDb({
       allResults: [
-        [{ id: 1, label: 'stripe', node_type: 'tool' }],
-        // hop 0: neighbor with weight 1.0
-        [{ neighbor_id: 2, weight: 1.0, edge_id: 1 }],
-        // hop 1: no further neighbors
-        [],
-        // fetch node info for node 2
-        [{ id: 2, label: 'billing', node_type: 'concept' }],
+        [
+          { id: 1, label: 'stripe', node_type: 'tool', activation: 0.5 },
+          { id: 2, label: 'billing', node_type: 'concept', activation: 0.3 },
+        ],
+        [{ source_id: 1, target_id: 2, weight: 1.0 }],
       ],
     });
 
@@ -115,23 +111,17 @@ describe('recall-baseline: activateGraph', () => {
   });
 
   it('caps results at 10 nodes', async () => {
-    // Seed with many neighbors — only top 10 should be returned
-    const db = createMockDb({
-      allResults: [
-        // 3 seed nodes
-        Array.from({ length: 3 }, (_, i) => ({ id: i + 1, label: `seed${i}`, node_type: 'concept' })),
-        // hop 0: seed 0 has 5 neighbors
-        Array.from({ length: 5 }, (_, i) => ({ neighbor_id: 100 + i, weight: 0.5, edge_id: i })),
-        // hop 0: seed 1 has 5 neighbors
-        Array.from({ length: 5 }, (_, i) => ({ neighbor_id: 200 + i, weight: 0.5, edge_id: i + 10 })),
-        // hop 0: seed 2 has 5 neighbors
-        Array.from({ length: 5 }, (_, i) => ({ neighbor_id: 300 + i, weight: 0.5, edge_id: i + 20 })),
-        // hop 1: no further neighbors for any of the 15 new frontier nodes
-        ...Array.from({ length: 15 }, () => [] as Record<string, unknown>[]),
-        // fetch missing node info (15 nodes)
-        Array.from({ length: 15 }, (_, i) => ({ id: [100, 200, 300][Math.floor(i / 5)] + (i % 5), label: `neighbor${i}`, node_type: 'concept' })),
-      ],
-    });
+    // 3 seeds + 15 neighbors (connected via edges), top 10 returned
+    const nodes = [
+      ...Array.from({ length: 3 }, (_, i) => ({ id: i + 1, label: `seed${i}`, node_type: 'concept', activation: 0.5 })),
+      ...Array.from({ length: 15 }, (_, i) => ({ id: 100 + i, label: `neighbor${i}`, node_type: 'concept', activation: 0.3 })),
+    ];
+    const edges = [
+      ...Array.from({ length: 5 }, (_, i) => ({ source_id: 1, target_id: 100 + i, weight: 0.5 })),
+      ...Array.from({ length: 5 }, (_, i) => ({ source_id: 2, target_id: 105 + i, weight: 0.5 })),
+      ...Array.from({ length: 5 }, (_, i) => ({ source_id: 3, target_id: 110 + i, weight: 0.5 })),
+    ];
+    const db = createMockDb({ allResults: [nodes, edges] });
 
     const result = await activateGraph(db, 'seed0 seed1 seed2');
     expect(result.length).toBeLessThanOrEqual(10);
@@ -140,19 +130,14 @@ describe('recall-baseline: activateGraph', () => {
   it('results are sorted by activation descending', async () => {
     const db = createMockDb({
       allResults: [
-        [{ id: 1, label: 'aegis', node_type: 'project' }],
-        // Two neighbors with different weights
         [
-          { neighbor_id: 2, weight: 0.9, edge_id: 1 },
-          { neighbor_id: 3, weight: 0.3, edge_id: 2 },
+          { id: 1, label: 'aegis', node_type: 'project', activation: 0.5 },
+          { id: 2, label: 'high', node_type: 'concept', activation: 0.3 },
+          { id: 3, label: 'low', node_type: 'concept', activation: 0.3 },
         ],
-        // hop 1: no further neighbors
-        [],
-        [],
-        // fetch node info
         [
-          { id: 2, label: 'high', node_type: 'concept' },
-          { id: 3, label: 'low', node_type: 'concept' },
+          { source_id: 1, target_id: 2, weight: 0.9 },
+          { source_id: 1, target_id: 3, weight: 0.3 },
         ],
       ],
     });
@@ -164,27 +149,21 @@ describe('recall-baseline: activateGraph', () => {
   });
 
   it('prunes activations below 0.05 threshold', async () => {
-    // A neighbor with very low weight gets activation 1.0 * 0.05 * 0.7 = 0.035
-    // On hop 1, this node's source activation (0.035) is below the 0.05 prune threshold,
-    // so the `continue` skips it BEFORE the db query — no further spreading.
+    // aegis(1) --weight=0.05--> weak(2): spread = 1.0 * 0.05 * 0.7 = 0.035 < PRUNE_THRESHOLD
+    // 'weak' should not appear in results
     const db = createMockDb({
       allResults: [
-        // seed query
-        [{ id: 1, label: 'aegis', node_type: 'project' }],
-        // hop 0: neighbors of seed node 1
-        [{ neighbor_id: 2, weight: 0.05, edge_id: 1 }],
-        // hop 1: node 2 is in frontier but activation 0.035 < 0.05 → continue (no db call)
-        // So NO more all() calls for hop 1 neighbors.
-        // fetch missing node info for node 2
-        [{ id: 2, label: 'weak', node_type: 'concept' }],
+        [
+          { id: 1, label: 'aegis', node_type: 'project', activation: 0.5 },
+          { id: 2, label: 'weak', node_type: 'concept', activation: 0.3 },
+        ],
+        [{ source_id: 1, target_id: 2, weight: 0.05 }],
       ],
     });
 
     const result = await activateGraph(db, 'aegis');
-    // Node 2 was activated (0.035) but since it's below prune threshold,
-    // it didn't propagate further. It still appears in results though.
     const weak = result.find(n => n.label === 'weak');
-    expect(weak?.activation).toBeCloseTo(0.035, 3);
+    expect(weak).toBeUndefined();
   });
 });
 

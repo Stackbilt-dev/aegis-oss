@@ -166,9 +166,10 @@ describe('activateGraph', () => {
     expect(result).toEqual([]);
   });
 
-  it('returns empty when no seed nodes match', async () => {
+  it('returns empty when graph has no nodes', async () => {
     const db = createMockDb({
-      allResults: [[]],  // seed query returns no results
+      // Bulk load: nodes empty, edges empty (Promise.all fires both)
+      allResults: [[], []],
     });
 
     const result = await activateGraph(db, 'nonexistent thing');
@@ -178,9 +179,9 @@ describe('activateGraph', () => {
   it('returns seed nodes with activation 1.0', async () => {
     const db = createMockDb({
       allResults: [
-        // seed nodes found
-        [{ id: 1, label: 'aegis', node_type: 'project' }],
-        // hop 0: neighbors of node 1
+        // Bulk SELECT kg_nodes (all rows)
+        [{ id: 1, label: 'aegis', node_type: 'project', activation: 0.5 }],
+        // Bulk SELECT kg_edges (all rows)
         [],
       ],
     });
@@ -194,14 +195,13 @@ describe('activateGraph', () => {
   it('spreads activation to neighbors with decay', async () => {
     const db = createMockDb({
       allResults: [
-        // seed nodes
-        [{ id: 1, label: 'aegis', node_type: 'project' }],
-        // hop 0: neighbors of node 1
-        [{ neighbor_id: 2, weight: 0.8, edge_id: 10 }],
-        // hop 1: neighbors of node 2
-        [],
-        // fetch missing node info for node 2
-        [{ id: 2, label: 'cloudflare', node_type: 'tool' }],
+        // Bulk SELECT kg_nodes
+        [
+          { id: 1, label: 'aegis', node_type: 'project', activation: 0.5 },
+          { id: 2, label: 'cloudflare', node_type: 'tool', activation: 0.3 },
+        ],
+        // Bulk SELECT kg_edges
+        [{ source_id: 1, target_id: 2, weight: 0.8 }],
       ],
     });
 

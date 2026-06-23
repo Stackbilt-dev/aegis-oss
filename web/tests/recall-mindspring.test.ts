@@ -134,11 +134,13 @@ describe('recall-pipeline: Stage 3.5 MindSpring', () => {
       allResults: [
         // Stage 1: blocks empty
         [],
-        // Stage 2: activateGraph — "billing" seed → "stripe" neighbor
-        [{ id: 1, label: 'billing', node_type: 'concept' }],
-        [{ neighbor_id: 2, weight: 0.9, edge_id: 1 }],
-        [], // hop 1
-        [{ id: 2, label: 'stripe', node_type: 'tool' }],
+        // Stage 2: activateGraph — bulk nodes: billing + stripe
+        [
+          { id: 1, label: 'billing', node_type: 'concept', activation: 0.5 },
+          { id: 2, label: 'stripe', node_type: 'tool', activation: 0.3 },
+        ],
+        // Stage 2: activateGraph — bulk edges: billing → stripe
+        [{ source_id: 1, target_id: 2, weight: 0.9 }],
         // fetchNodeMemoryIds
         [],
       ],
@@ -152,31 +154,38 @@ describe('recall-pipeline: Stage 3.5 MindSpring', () => {
       mindspringToken: 'test-token',
     });
 
-    // Verify the request body includes graph-expanded terms
     const fetchCall = (ms.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const body = JSON.parse((fetchCall[1] as RequestInit).body as string) as { query: string };
     expect(body.query).toContain('billing');
-    // Graph expansion terms should be appended
-    expect(body.query).toContain('billing stripe');
+    expect(body.query).toContain('stripe');
   });
 
   it('limits graph expansions in MindSpring query to 5', async () => {
+    // hub node activates as seed (matches query 'hub'), then spreads to 6 neighbors
+    // via strictly decreasing edge weights → deterministic activation order
     const db = createMockDb({
       allResults: [
         // blocks empty
         [],
-        // activateGraph returns 7 seed nodes
+        // bulk nodes: hub + 6 neighbors
         [
-          { id: 1, label: 'n1', node_type: 'concept' },
-          { id: 2, label: 'n2', node_type: 'concept' },
-          { id: 3, label: 'n3', node_type: 'concept' },
-          { id: 4, label: 'n4', node_type: 'concept' },
-          { id: 5, label: 'n5', node_type: 'concept' },
-          { id: 6, label: 'n6', node_type: 'concept' },
-          { id: 7, label: 'n7', node_type: 'concept' },
+          { id: 1, label: 'hub', node_type: 'concept', activation: 0.5 },
+          { id: 2, label: 'node-a', node_type: 'concept', activation: 0.3 },
+          { id: 3, label: 'node-b', node_type: 'concept', activation: 0.3 },
+          { id: 4, label: 'node-c', node_type: 'concept', activation: 0.3 },
+          { id: 5, label: 'node-d', node_type: 'concept', activation: 0.3 },
+          { id: 6, label: 'node-e', node_type: 'concept', activation: 0.3 },
+          { id: 7, label: 'node-f', node_type: 'concept', activation: 0.3 },
         ],
-        // hop 0 for each: no neighbors
-        [], [], [], [], [], [], [],
+        // bulk edges: hub → each neighbor with strictly decreasing weights
+        [
+          { source_id: 1, target_id: 2, weight: 0.9 },
+          { source_id: 1, target_id: 3, weight: 0.8 },
+          { source_id: 1, target_id: 4, weight: 0.7 },
+          { source_id: 1, target_id: 5, weight: 0.6 },
+          { source_id: 1, target_id: 6, weight: 0.5 },
+          { source_id: 1, target_id: 7, weight: 0.4 },
+        ],
         // fetchNodeMemoryIds
         [],
       ],
@@ -184,7 +193,7 @@ describe('recall-pipeline: Stage 3.5 MindSpring', () => {
 
     const ms = createMockMindspring([]);
 
-    await recallForQuery('test', {
+    await recallForQuery('hub', {
       db,
       mindspringFetcher: ms,
       mindspringToken: 'test-token',
@@ -192,10 +201,11 @@ describe('recall-pipeline: Stage 3.5 MindSpring', () => {
 
     const fetchCall = (ms.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const body = JSON.parse((fetchCall[1] as RequestInit).body as string) as { query: string };
-    // Should only have first 5 graph expansions (n1-n5), not n6/n7
-    expect(body.query).toContain('n5');
-    expect(body.query).not.toContain('n6');
-    expect(body.query).not.toContain('n7');
+    // hub(1.0) → node-a(0.63) → node-b(0.56) → node-c(0.49) → node-d(0.42) in top 5
+    // node-e(0.35) and node-f(0.28) are excluded from the MindSpring query
+    expect(body.query).toContain('node-d');
+    expect(body.query).not.toContain('node-e');
+    expect(body.query).not.toContain('node-f');
   });
 
   it('skips MindSpring when fetcher is not provided', async () => {

@@ -132,24 +132,24 @@ describe('recall-pipeline: rrf', () => {
 describe('recall-pipeline: recallForQuery', () => {
   it('produces results when all 3 layers have data', async () => {
     // Blocks: active_context mentions "aegis"
-    // Graph: activateGraph finds "aegis" → "cloudflare" → "d1"
+    // Graph: WasmGraph BFS from aegis → cloudflare → d1
     // Memory Worker: returns fragments
     const db = createMockDb({
       allResults: [
         // Stage 1: getAllBlocks
         [{ id: 'active_context', content: '**aegis** is the main project', version: 2, priority: 4, max_bytes: 3072, updated_by: 'consolidation', updated_at: '2026-03-13' }],
-        // Stage 2: activateGraph seed query
-        [{ id: 1, label: 'aegis', node_type: 'project' }],
-        // hop 0: neighbors of node 1
-        [{ neighbor_id: 2, weight: 0.8, edge_id: 10 }],
-        // hop 1: neighbors of node 2
-        [{ neighbor_id: 3, weight: 0.6, edge_id: 11 }],
-        // fetch node info for 2, 3
+        // Stage 2: activateGraph — bulk SELECT kg_nodes
         [
-          { id: 2, label: 'cloudflare', node_type: 'tool' },
-          { id: 3, label: 'd1', node_type: 'tool' },
+          { id: 1, label: 'aegis', node_type: 'project', activation: 0.5 },
+          { id: 2, label: 'cloudflare', node_type: 'tool', activation: 0.3 },
+          { id: 3, label: 'd1', node_type: 'tool', activation: 0.3 },
         ],
-        // fetchNodeMemoryIds: query for labels
+        // Stage 2: activateGraph — bulk SELECT kg_edges
+        [
+          { source_id: 1, target_id: 2, weight: 0.8 },
+          { source_id: 2, target_id: 3, weight: 0.6 },
+        ],
+        // fetchNodeMemoryIds
         [
           { label: 'aegis', memory_ids: '["frag-1"]' },
           { label: 'cloudflare', memory_ids: '["frag-2"]' },
@@ -203,11 +203,12 @@ describe('recall-pipeline: recallForQuery', () => {
       allResults: [
         // Stage 1: getAllBlocks (empty)
         [],
-        // Stage 2: activateGraph
-        [{ id: 1, label: 'stripe', node_type: 'tool' }],
-        // hop 0
+        // Stage 2: activateGraph — bulk nodes
+        [{ id: 1, label: 'stripe', node_type: 'tool', activation: 0.5 }],
+        // Stage 2: activateGraph — bulk edges
         [],
-        // no missing nodes to fetch
+        // fetchNodeMemoryIds (called since stripe activated)
+        [],
       ],
     });
 
@@ -226,11 +227,13 @@ describe('recall-pipeline: recallForQuery', () => {
       allResults: [
         // blocks: empty
         [],
-        // activateGraph: "pricing" seed → "unified_credits" neighbor
-        [{ id: 1, label: 'pricing', node_type: 'concept' }],
-        [{ neighbor_id: 2, weight: 0.9, edge_id: 1 }],
-        [], // hop 1: no more neighbors
-        [{ id: 2, label: 'unified_credits', node_type: 'concept' }],
+        // activateGraph — bulk nodes: pricing + unified_credits
+        [
+          { id: 1, label: 'pricing', node_type: 'concept', activation: 0.5 },
+          { id: 2, label: 'unified_credits', node_type: 'concept', activation: 0.3 },
+        ],
+        // activateGraph — bulk edges: pricing → unified_credits
+        [{ source_id: 1, target_id: 2, weight: 0.9 }],
         // fetchNodeMemoryIds
         [{ label: 'unified_credits', memory_ids: '[]' }],
       ],
@@ -242,8 +245,6 @@ describe('recall-pipeline: recallForQuery', () => {
 
     const result = await recallForQuery('pricing', { db, memoryBinding: mem });
 
-    // "unified_credits" should appear in graph expansions — semantic search for
-    // just "pricing" might not find it, but graph activation does
     expect(result.graphExpansions).toContain('unified_credits');
   });
 
@@ -252,9 +253,10 @@ describe('recall-pipeline: recallForQuery', () => {
       allResults: [
         // blocks
         [],
-        // activateGraph
-        [{ id: 1, label: 'oauth', node_type: 'concept' }],
-        [], // no neighbors
+        // activateGraph — bulk nodes
+        [{ id: 1, label: 'oauth', node_type: 'concept', activation: 0.5 }],
+        // activateGraph — bulk edges (none)
+        [],
         // fetchNodeMemoryIds: oauth links to frag-1
         [{ label: 'oauth', memory_ids: '["frag-1"]' }],
       ],
@@ -267,14 +269,11 @@ describe('recall-pipeline: recallForQuery', () => {
 
     const result = await recallForQuery('oauth', { db, memoryBinding: mem });
 
-    // frag-1 has both semantic + graph signal, frag-2 has only semantic
     const bothFact = result.facts.find(f => f.id === 'frag-1');
     const semanticOnly = result.facts.find(f => f.id === 'frag-2');
 
     expect(bothFact).toBeDefined();
     expect(semanticOnly).toBeDefined();
-
-    // The "both" fact should rank higher (higher fused score)
     expect(bothFact!.score).toBeGreaterThan(semanticOnly!.score);
     expect(bothFact!.source).toBe('both');
     expect(semanticOnly!.source).toBe('memory_worker');
@@ -282,7 +281,7 @@ describe('recall-pipeline: recallForQuery', () => {
 
   it('timing object is populated', async () => {
     const db = createMockDb({
-      allResults: [[], []],
+      allResults: [[], [], []],
     });
 
     const result = await recallForQuery('test', { db });
@@ -302,30 +301,29 @@ describe('recall-pipeline: recallForQuery', () => {
       allResults: [
         // blocks
         [],
-        // activateGraph
-        [{ id: 1, label: 'aegis', node_type: 'project' }],
-        [], // no neighbors
-        // fetchNodeMemoryIds: aegis links to frag-1 (same as semantic result)
+        // activateGraph — bulk nodes
+        [{ id: 1, label: 'aegis', node_type: 'project', activation: 0.5 }],
+        // activateGraph — bulk edges
+        [],
+        // fetchNodeMemoryIds
         [{ label: 'aegis', memory_ids: '["frag-1"]' }],
       ],
     });
 
-    // Memory Worker returns frag-1 — same as the graph-linked one
     const mem = createMockMemory([
       makeFragment('frag-1', 'AEGIS is the core agent', 'system', 0.9),
-      makeFragment('frag-1', 'AEGIS is the core agent', 'system', 0.9), // duplicate
+      makeFragment('frag-1', 'AEGIS is the core agent', 'system', 0.9),
     ]);
 
     const result = await recallForQuery('aegis', { db, memoryBinding: mem });
 
-    // Should only appear once despite being in both semantic and graph results
     const aegisFacts = result.facts.filter(f => f.id === 'frag-1');
     expect(aegisFacts.length).toBe(1);
   });
 
   it('respects maxResults option', async () => {
     const db = createMockDb({
-      allResults: [[], []],
+      allResults: [[], [], []],
     });
 
     const fragments = Array.from({ length: 20 }, (_, i) =>
@@ -342,16 +340,17 @@ describe('recall-pipeline: recallForQuery', () => {
       allResults: [
         // blocks
         [],
-        // activateGraph
-        [{ id: 1, label: 'aegis', node_type: 'project' }],
-        [], // no neighbors
+        // activateGraph — bulk nodes
+        [{ id: 1, label: 'aegis', node_type: 'project', activation: 0.5 }],
+        // activateGraph — bulk edges
+        [],
+        // fetchNodeMemoryIds (no memory binding so still called but result unused for fusion)
       ],
     });
 
-    // No memory binding
     const result = await recallForQuery('aegis', { db });
 
-    expect(result.facts).toEqual([]); // no memory worker = no facts
+    expect(result.facts).toEqual([]);
     expect(result.graphExpansions.length).toBeGreaterThan(0);
     expect(result.graphExpansions).toContain('aegis');
   });
@@ -359,7 +358,7 @@ describe('recall-pipeline: recallForQuery', () => {
   it('includeGraph=false skips graph activation', async () => {
     const db = createMockDb({
       allResults: [
-        // blocks only
+        // blocks only — graph skipped
         [],
       ],
     });
@@ -381,13 +380,13 @@ describe('recall-pipeline: recallForQuery', () => {
 
 describe('recall-pipeline: superset of baseline', () => {
   it('pipeline includes all memory worker results that baseline would return', async () => {
-    // Baseline: Memory Worker returns frag-1, frag-2
-    // Pipeline should include at least these same fragments
     const db = createMockDb({
       allResults: [
         // blocks
         [],
-        // activateGraph: no seeds found
+        // activateGraph — bulk nodes (none matching query)
+        [],
+        // activateGraph — bulk edges
         [],
       ],
     });
@@ -400,7 +399,6 @@ describe('recall-pipeline: superset of baseline', () => {
 
     const result = await recallForQuery('LLC formation status', { db, memoryBinding: mem });
 
-    // Pipeline result should contain all fragments from the baseline
     const resultIds = new Set(result.facts.map(f => f.id));
     for (const frag of fragments) {
       expect(resultIds.has(frag.id)).toBe(true);
@@ -408,16 +406,17 @@ describe('recall-pipeline: superset of baseline', () => {
   });
 
   it('pipeline adds graph-enriched results beyond what baseline provides', async () => {
-    // Baseline would just search for "billing" — pipeline also gets graph expansions
     const db = createMockDb({
       allResults: [
         // blocks
         [],
-        // activateGraph: "billing" → "stripe" neighbor
-        [{ id: 1, label: 'billing', node_type: 'concept' }],
-        [{ neighbor_id: 2, weight: 0.9, edge_id: 1 }],
-        [], // hop 1
-        [{ id: 2, label: 'stripe', node_type: 'tool' }],
+        // activateGraph — bulk nodes: billing + stripe
+        [
+          { id: 1, label: 'billing', node_type: 'concept', activation: 0.5 },
+          { id: 2, label: 'stripe', node_type: 'tool', activation: 0.3 },
+        ],
+        // activateGraph — bulk edges: billing → stripe
+        [{ source_id: 1, target_id: 2, weight: 0.9 }],
         // fetchNodeMemoryIds
         [{ label: 'stripe', memory_ids: '["frag-stripe"]' }],
       ],
@@ -430,8 +429,6 @@ describe('recall-pipeline: superset of baseline', () => {
 
     const result = await recallForQuery('billing', { db, memoryBinding: mem });
 
-    // Pipeline should find "stripe" via graph expansion even though baseline
-    // search for "billing" might not return it
     expect(result.graphExpansions).toContain('stripe');
     expect(result.facts.some(f => f.id === 'frag-stripe')).toBe(true);
   });
