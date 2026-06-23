@@ -21,7 +21,7 @@ AEGIS is a framework for building **personal AI agents** that remember everythin
 
 **Two ways to use AEGIS:**
 - **Standalone** — Clone, configure, deploy. Full agent in minutes.
-- **As a dependency** — `npm install @stackbilt/aegis-core` and extend with your own routes, scheduled tasks, executors, and MCP tools via `createAegisApp()`.
+- **As a dependency** — `pnpm add @stackbilt/aegis-core` and extend with your own routes, scheduled tasks, executors, and MCP tools via `createAegisApp()`.
 
 The reference deployment runs the same scheduled-task framework and is designed for $0/month hosting on the Cloudflare Workers free tier, with Workers AI as the base inference path.
 
@@ -46,7 +46,7 @@ Built on Cloudflare Workers for edge-native deployment. Zero cold starts. Global
 ```bash
 git clone https://github.com/Stackbilt-dev/aegis-oss.git
 cd aegis-oss/web
-npm install
+pnpm install
 
 # Configure
 cp wrangler.toml.example wrangler.toml          # Fill in account_id, database_id
@@ -60,7 +60,7 @@ npx wrangler d1 execute my-agent --file=schema.sql
 npx wrangler secret put AEGIS_TOKEN            # Random bearer token for auth
 
 # Deploy
-npm run deploy
+pnpm deploy
 ```
 
 Visit `https://your-worker.workers.dev` and authenticate with your AEGIS_TOKEN. The embedded console uses Workers AI for the base chat and voice path; Claude and Groq keys are optional executor upgrades.
@@ -78,7 +78,7 @@ Release proof: [AEGIS 0.8.0 Proof of Work](docs/proof-of-work-0.8.0.md). Demo pa
 Install `@stackbilt/aegis-core` and compose your own agent:
 
 ```bash
-npm install @stackbilt/aegis-core
+pnpm add @stackbilt/aegis-core
 ```
 
 ```ts

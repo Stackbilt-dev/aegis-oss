@@ -17,23 +17,26 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-          package-manager-cache: false
 
       - name: Install dependencies
         working-directory: web
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         working-directory: web
-        run: npm run typecheck
+        run: pnpm typecheck
 
       - name: Test
         working-directory: web
-        run: npm test
+        run: pnpm test
 
       - name: Publish
         working-directory: web
@@ -42,8 +45,8 @@ jobs:
         run: |
           if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
             echo "Publishing with NPM_TOKEN fallback and provenance."
-            npm publish --provenance --access public
+            pnpm publish --provenance --access public --no-git-checks
           else
             echo "Publishing with npm trusted publishing (OIDC)."
-            npm publish --access public
+            pnpm publish --access public --no-git-checks
           fi

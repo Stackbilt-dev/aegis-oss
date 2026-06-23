@@ -80,8 +80,8 @@
     "./kernel/patterns": "./src/kernel/patterns.ts"
   },
   "scripts": {
-    "dev": "npm run build:ui && wrangler dev",
-    "deploy": "npm run build:ui && wrangler deploy",
+    "dev": "pnpm build:ui && wrangler dev",
+    "deploy": "pnpm build:ui && wrangler deploy",
     "build:ui": "vite build --config vite.ui.config.ts",
     "d1:create": "wrangler d1 create aegis-web",
     "d1:migrate": "wrangler d1 execute aegis-web --file=schema.sql",
@@ -120,6 +120,9 @@
     "public/**/*",
     "schema.sql"
   ],
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp", "workerd"]
+  },
   "keywords": [
     "cloudflare-workers",
     "ai-agent",
