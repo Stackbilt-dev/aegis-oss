@@ -3,9 +3,13 @@
 // Phase 2 of the cognitive layer. Populates kg_nodes/kg_edges tables using
 // zero-cost regex/heuristic NER (no LLM calls). Provides spreading activation
 // for context-aware retrieval.
+//
+// activateGraph() wires to @stackbilt/wasm-core WasmGraph: 2 bulk D1 SELECTs
+// replace the previous O(2N) sequential edge queries (aegis-oss#68).
 
 // ─── Node Type Classification ────────────────────────────────────────────────
 
+import { WasmGraph } from '@stackbilt/wasm-core';
 import type { NodeType, SourceSystem } from '../../schema-enums.js';
 export type { SourceSystem } from '../../schema-enums.js';
 
@@ -199,92 +203,24 @@ export async function activateGraph(
 ): Promise<ActivatedNode[]> {
   if (!query || query.trim().length < 2) return [];
 
-  // Find seed nodes by keyword matching against labels
-  const keywords = query.toLowerCase().split(/[\s,;:()\[\]]+/).filter(w => w.length >= 3);
-  if (keywords.length === 0) return [];
+  // Bulk-load full graph snapshot: 2 queries total regardless of graph size.
+  // WasmGraph runs the BFS in WASM linear memory — zero additional D1 round trips.
+  const [nodesResult, edgesResult] = await Promise.all([
+    db.prepare(
+      'SELECT id, label, node_type, activation FROM kg_nodes'
+    ).all<{ id: number; label: string; node_type: string; activation: number }>(),
+    db.prepare(
+      'SELECT source_id, target_id, weight FROM kg_edges'
+    ).all<{ source_id: number; target_id: number; weight: number }>(),
+  ]);
 
-  // Build LIKE conditions for seed node matching
-  const conditions = keywords.map(() => 'LOWER(label) LIKE ?').join(' OR ');
-  const binds = keywords.map(k => `%${k}%`);
+  if (nodesResult.results.length === 0) return [];
 
-  const seedResult = await db.prepare(
-    `SELECT id, label, node_type FROM kg_nodes WHERE ${conditions} LIMIT 20`
-  ).bind(...binds).all<{ id: number; label: string; node_type: string }>();
-
-  if (seedResult.results.length === 0) return [];
-
-  // Activation map: nodeId -> activation score
-  const activations = new Map<number, number>();
-  const nodeInfo = new Map<number, { label: string; type: string }>();
-
-  // Seed nodes get activation 1.0
-  for (const seed of seedResult.results) {
-    activations.set(seed.id, 1.0);
-    nodeInfo.set(seed.id, { label: seed.label, type: seed.node_type });
+  const graph = WasmGraph.fromSnapshotArrays(nodesResult.results, edgesResult.results);
+  try {
+    const raw = graph.spreadActivation(query, hops, 10);
+    return raw as ActivatedNode[];
+  } finally {
+    graph.free();
   }
-
-  // Spread activation through edges
-  const DECAY = 0.7;
-  let frontier = [...seedResult.results.map(s => s.id)];
-
-  for (let hop = 0; hop < hops && frontier.length > 0; hop++) {
-    const nextFrontier: number[] = [];
-
-    for (const nodeId of frontier) {
-      const sourceActivation = activations.get(nodeId) ?? 0;
-      if (sourceActivation < 0.05) continue; // Prune weak activations
-
-      // Find neighbors via edges (both directions)
-      const neighbors = await db.prepare(
-        `SELECT
-          CASE WHEN source_id = ? THEN target_id ELSE source_id END as neighbor_id,
-          weight,
-          e.id as edge_id
-        FROM kg_edges e
-        WHERE source_id = ? OR target_id = ?
-        LIMIT 20`
-      ).bind(nodeId, nodeId, nodeId).all<{ neighbor_id: number; weight: number; edge_id: number }>();
-
-      for (const neighbor of neighbors.results) {
-        const spreadActivation = sourceActivation * neighbor.weight * DECAY;
-        const current = activations.get(neighbor.neighbor_id) ?? 0;
-
-        if (spreadActivation > current) {
-          activations.set(neighbor.neighbor_id, spreadActivation);
-          nextFrontier.push(neighbor.neighbor_id);
-        }
-      }
-    }
-
-    frontier = nextFrontier;
-  }
-
-  // Fetch info for any activated nodes we don't have info for yet
-  const missingIds = [...activations.keys()].filter(id => !nodeInfo.has(id));
-  if (missingIds.length > 0) {
-    // Batch fetch in chunks to avoid overly long queries
-    for (let i = 0; i < missingIds.length; i += 20) {
-      const chunk = missingIds.slice(i, i + 20);
-      const placeholders = chunk.map(() => '?').join(',');
-      const infoResult = await db.prepare(
-        `SELECT id, label, node_type FROM kg_nodes WHERE id IN (${placeholders})`
-      ).bind(...chunk).all<{ id: number; label: string; node_type: string }>();
-
-      for (const row of infoResult.results) {
-        nodeInfo.set(row.id, { label: row.label, type: row.node_type });
-      }
-    }
-  }
-
-  // Build result: top 10 by activation score
-  const results: ActivatedNode[] = [];
-  for (const [nodeId, activation] of activations.entries()) {
-    const info = nodeInfo.get(nodeId);
-    if (info) {
-      results.push({ label: info.label, type: info.type, activation });
-    }
-  }
-
-  results.sort((a, b) => b.activation - a.activation);
-  return results.slice(0, 10);
 }

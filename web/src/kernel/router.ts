@@ -99,9 +99,9 @@ const DEFAULT_ROUTES: Record<string, Executor> = {
   request_clarification: 'direct',
   bizops_read: 'gpt_oss',
   bizops_mutate: 'gpt_oss',
-  general_knowledge: 'gpt_oss',
-  memory_recall: 'gpt_oss',
-  greeting: 'gpt_oss',
+  general_knowledge: 'workers_ai',
+  memory_recall: 'gpt_oss',        // equity recall failure 2026-03-04 — keep on gpt_oss
+  greeting: 'workers_ai',
   code_task: 'claude_code',
   code_review: 'gpt_oss',
   self_improvement: 'composite',
@@ -109,8 +109,8 @@ const DEFAULT_ROUTES: Record<string, Executor> = {
   goal_execution: 'composite',
   symbolic_consultation: 'gpt_oss',
   support_triage: 'gpt_oss',
-  tarot_pulse: 'gpt_oss',
-  tarot_trajectory: 'gpt_oss',
+  tarot_pulse: 'workers_ai',
+  tarot_trajectory: 'workers_ai',
   tarot_multi_angle: 'gpt_oss',
   tarot_deep: 'gpt_oss',
   tarot_shadow: 'gpt_oss',
@@ -134,7 +134,7 @@ function selectDefaultExecutor(classification: string, intent: KernelIntent): Ex
 
   // Fixed executors (unchanged regardless of complexity or confidence)
   if (classification === 'heartbeat') return 'direct';
-  if (classification === 'greeting') return 'gpt_oss'; // GPT-OSS 120B — smart enough for re-entry briefing
+  if (classification === 'greeting') return 'workers_ai';
   if (classification === 'code_task') return 'claude_code';
   // TarotScript is a classifier, not a responder — all classifications route to LLM executors
   if (classification === 'symbolic_consultation') return 'gpt_oss';
@@ -169,7 +169,7 @@ function selectDefaultExecutor(classification: string, intent: KernelIntent): Ex
   // preserve thread history and avoid orchestrator intent drift.
   if (confidence < CONFIDENCE_TRUST) {
     if (needsTools) return 'gpt_oss';
-    if (complexity <= 1) return 'gpt_oss'; // workers_ai → gpt_oss
+    if (complexity <= 1) return 'workers_ai';
     return 'claude'; // moderate no-tool → claude
   }
 
@@ -449,7 +449,7 @@ export async function route(
 
   if (procedure) {
     if (procedure.status === 'degraded' || procedure.status === 'broken') {
-      const executor = DEFAULT_ROUTES[classification] ?? 'claude';
+      const executor = DEFAULT_ROUTES[classification] ?? 'workers_ai';
       return {
         plan: {
           executor,
