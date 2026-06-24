@@ -128,14 +128,14 @@ describe('Router', () => {
       expect(mockAskGroq).toHaveBeenCalled();
     });
 
-    it('parses JSON classification and routes greeting to groq', async () => {
+    it('parses JSON classification and routes greeting to workers_ai', async () => {
       mockAskGroq.mockResolvedValue(jsonClass('greeting', 0, false, 0.99));
 
       const intent = makeIntent('hi there');
       const { plan } = await route(intent, mockDb, 'fake-key', 'fake-model');
 
       expect(intent.classified).toBe('greeting');
-      expect(plan.executor).toBe('gpt_oss');
+      expect(plan.executor).toBe('workers_ai');
       expect(intent.complexity).toBe(0);
       expect(intent.needsTools).toBe(false);
     });
@@ -181,9 +181,33 @@ describe('Router', () => {
       expect(plan.executor).toBe('direct');
     });
 
-    it('greeting → gpt_oss', async () => {
+    it('greeting → workers_ai', async () => {
       mockAskGroq.mockResolvedValue(jsonClass('greeting', 0, false, 0.95));
       const { plan } = await route(makeIntent('hi'), mockDb, 'k', 'm');
+      expect(plan.executor).toBe('workers_ai');
+    });
+
+    it('general_knowledge (no tools, trust zone) → workers_ai via DEFAULT_ROUTES', async () => {
+      mockAskGroq.mockResolvedValue(jsonClass('general_knowledge', 1, false, 0.95));
+      const { plan } = await route(makeIntent('what is REST?'), mockDb, 'k', 'm');
+      expect(plan.executor).toBe('workers_ai');
+    });
+
+    it('tarot_pulse → workers_ai', async () => {
+      mockAskGroq.mockResolvedValue(jsonClass('tarot_pulse', 1, false, 0.92));
+      const { plan } = await route(makeIntent('pull a pulse'), mockDb, 'k', 'm');
+      expect(plan.executor).toBe('workers_ai');
+    });
+
+    it('tarot_trajectory → workers_ai', async () => {
+      mockAskGroq.mockResolvedValue(jsonClass('tarot_trajectory', 1, false, 0.90));
+      const { plan } = await route(makeIntent('trajectory reading'), mockDb, 'k', 'm');
+      expect(plan.executor).toBe('workers_ai');
+    });
+
+    it('tarot_deep still → gpt_oss (complex, tool-capable)', async () => {
+      mockAskGroq.mockResolvedValue(jsonClass('tarot_deep', 2, false, 0.88));
+      const { plan } = await route(makeIntent('deep reading'), mockDb, 'k', 'm');
       expect(plan.executor).toBe('gpt_oss');
     });
 
@@ -339,7 +363,7 @@ describe('Router', () => {
       expect(plan.executor).toBe('gpt_oss');
     });
 
-    it('verify zone no-tool low complexity → gpt_oss (bumped from workers_ai)', async () => {
+    it('verify zone no-tool low complexity → workers_ai', async () => {
       mockAskGroq.mockResolvedValue(jsonClass('general_knowledge', 1, false, 0.65));
       mockAskGroqWithLogprobs.mockResolvedValue({
         pattern: 'general_knowledge',
@@ -350,7 +374,7 @@ describe('Router', () => {
       });
 
       const { plan } = await route(makeIntent('simple uncertain'), mockDb, 'k', 'm');
-      expect(plan.executor).toBe('gpt_oss');
+      expect(plan.executor).toBe('workers_ai');
     });
 
     it('verify zone moderate no-tool → claude', async () => {
@@ -493,7 +517,7 @@ describe('Router', () => {
       vi.mocked(getProcedure).mockResolvedValue({
         id: 11,
         task_pattern: 'general_knowledge:mid',
-        executor: 'workers_ai',
+        executor: 'claude',
         executor_config: '{}',
         success_count: 3,
         fail_count: 3,
@@ -506,7 +530,8 @@ describe('Router', () => {
 
       const { plan } = await route(makeIntent('test'), mockDb, 'k', 'm');
       expect(plan.reasoning).toContain('degraded');
-      expect(plan.executor).toBe('gpt_oss');
+      // DEFAULT_ROUTES['general_knowledge'] is now workers_ai
+      expect(plan.executor).toBe('workers_ai');
     });
 
     it('replans broken procedure', async () => {
@@ -527,7 +552,7 @@ describe('Router', () => {
 
       const { plan } = await route(makeIntent('hi'), mockDb, 'k', 'm');
       expect(plan.reasoning).toContain('broken');
-      expect(plan.executor).toBe('gpt_oss'); // DEFAULT_ROUTES['greeting']
+      expect(plan.executor).toBe('workers_ai'); // DEFAULT_ROUTES['greeting']
     });
 
     it('falls to Phase 3 when procedure has insufficient successes', async () => {
@@ -606,7 +631,7 @@ describe('Router', () => {
 
       const { plan } = await route(makeIntent('hello'), mockDb, 'k', 'm', undefined, mockAi);
       expect(mockAi.run).toHaveBeenCalled();
-      expect(plan.executor).toBe('gpt_oss'); // greeting → gpt_oss
+      expect(plan.executor).toBe('workers_ai'); // greeting → workers_ai
       expect(mockAskGroq).not.toHaveBeenCalled();
     });
 
