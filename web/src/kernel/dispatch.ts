@@ -33,6 +33,7 @@ export interface EdgeEnv {
   claudeModel: string;
   opusModel: string;
   gptOssModel: string;
+  workersAiModel?: string;
   groqApiKey: string;
   groqModel: string;
   groqResponseModel: string;

@@ -220,4 +220,16 @@ describe('buildEdgeEnv', () => {
     expect(edge.groqResponseModel.length).toBeGreaterThan(0);
     expect(edge.groqGptOssModel.length).toBeGreaterThan(0);
   });
+
+  it('WORKERS_AI_MODEL is passed through to workersAiModel', () => {
+    const edge = buildEdgeEnv(makeEnv({ WORKERS_AI_MODEL: '@cf/meta/custom-model' }));
+    expect(edge.workersAiModel).toBe('@cf/meta/custom-model');
+  });
+
+  it('workersAiModel is undefined when WORKERS_AI_MODEL is not set', () => {
+    const env = makeEnv();
+    delete (env as any).WORKERS_AI_MODEL;
+    const edge = buildEdgeEnv(env);
+    expect(edge.workersAiModel).toBeUndefined();
+  });
 });

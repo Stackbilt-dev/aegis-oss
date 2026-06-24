@@ -1,5 +1,6 @@
 import type { EdgeEnv } from './dispatch.js';
 import type { Executor } from './types.js';
+import type { ExecutorTier } from './executor-router.contract.js';
 
 // ─── Provider Names ──────────────────────────────────────────
 // 'anthropic' and 'cloudflare' are wired in @stackbilt/llm-providers v1.6.0.
@@ -23,6 +24,12 @@ export type LLMExecutor = Extract<
 
 export interface ExecutorRoute {
   provider: LLMProviderName;
+  // Cost classification: premium > standard > free.
+  // Fallback invariant: fallback.tier ≤ this.tier (never upgrade cost on failure).
+  tier: ExecutorTier;
+  // placeholder=true: executor is forward-declared but not yet wired.
+  // Consumers must skip dispatch for placeholder routes.
+  placeholder?: true;
   // Resolves the concrete model string at dispatch time — called with the live
   // EdgeEnv so per-deployment env-var overrides and AI Gateway config are respected.
   model: (env: EdgeEnv) => string;
@@ -47,11 +54,13 @@ export interface ExecutorRoute {
 export const EXECUTOR_ROUTES: Record<LLMExecutor, ExecutorRoute> = {
   claude: {
     provider: 'anthropic',
+    tier: 'premium',
     model: (env) => env.claudeModel,
     fallback: 'gpt_oss',
   },
   claude_opus: {
     provider: 'anthropic',
+    tier: 'premium',
     model: (env) => env.opusModel,
     // Falls back directly to gpt_oss — mirrors executeWithAnthropicFailover behavior.
     // A two-hop chain (opus → claude → gpt_oss) is a possible future refinement.
@@ -59,30 +68,42 @@ export const EXECUTOR_ROUTES: Record<LLMExecutor, ExecutorRoute> = {
   },
   gpt_oss: {
     provider: 'cloudflare',
+    tier: 'free',
     model: (env) => env.gptOssModel,
-    // Terminal fallback — no further fallback defined.
+    // Terminal — free tier, no further fallback.
   },
   workers_ai: {
     provider: 'cloudflare',
-    // Hardcoded in executeWorkersAi today; no env override.
-    model: () => '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    tier: 'free',
+    isDefault: true,
+    // env.workersAiModel overrides the model at deploy time.
+    // Default: llama-3.3-70b-fp8-fast — COST_EFFECTIVE + TOOL_CALLING in the CF model catalog.
+    model: (env) => env.workersAiModel ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    // Terminal — free tier, no further fallback.
   },
   groq: {
     provider: 'groq',
+    tier: 'standard',
     // groqResponseModel = 8B (llama-3.1-8b-instant) — fast/cheap for greetings.
     // Intentionally NOT groqModel (70B). See executors/groq.ts:12.
     model: (env) => env.groqResponseModel,
+    // Falls back to CF Workers AI (free tier) on Groq API failure.
+    fallback: 'workers_ai',
   },
   cerebras_mid: {
+    provider: 'cerebras',
+    tier: 'standard',
+    placeholder: true,
     // TODO: EdgeEnv has no cerebras fields yet. Add cerebrasApiKey + cerebrasModel
     // when executors/cerebras.ts lands. Model name below is a placeholder.
-    provider: 'cerebras',
     model: () => 'llama3.1-8b',
   },
   cerebras_reasoning: {
+    provider: 'cerebras',
+    tier: 'standard',
+    placeholder: true,
     // TODO: EdgeEnv has no cerebras fields yet. Add cerebrasApiKey + cerebrasReasoningModel
     // when executors/cerebras.ts lands. Model name below is a placeholder.
-    provider: 'cerebras',
     model: () => 'qwen-3-32b',
   },
 };
