@@ -125,9 +125,13 @@ export async function resolveAgendaItem(
   id: number,
   status: 'done' | 'dismissed',
 ): Promise<void> {
-  await db.prepare(
-    "UPDATE agent_agenda SET status = ?, resolved_at = datetime('now') WHERE id = ?"
+  // Contract: resolve/dismiss are only valid from 'active'. Terminal states have no outgoing transitions.
+  const result = await db.prepare(
+    "UPDATE agent_agenda SET status = ?, resolved_at = datetime('now') WHERE id = ? AND status = 'active'"
   ).bind(status, id).run();
+  if (result.meta.changes === 0) {
+    throw new Error(`Agenda item ${id} is not in 'active' state or does not exist`);
+  }
 }
 
 export const PROPOSED_ACTION_PREFIX = '[PROPOSED ACTION]';
