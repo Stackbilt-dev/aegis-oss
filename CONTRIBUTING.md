@@ -162,6 +162,20 @@ interface Env extends CoreEnv {
 - `.dev.vars`, `.env` — secrets
 - Account IDs, API tokens, or internal URLs
 
+## Contract tests (OTDD)
+
+Domain contracts live in `web/src/contracts/*.contract.ts`. Each contract is the authoritative source of truth for its bounded context — schema, operations, state machine, invariants, and authority rules.
+
+When adding or modifying a contract, also update (or create) the corresponding `web/tests/*-contract.test.ts` file to cover:
+
+- **Schema constraints** — one passing and one failing fixture per field constraint
+- **Operation inputs** — valid and invalid inputs per operation
+- **State machine** — every valid transition, every invalid attempt on terminal states, multi-source transitions
+- **Invariants** — both the happy path and the violation path for each named invariant
+- **Authority** — assert which roles are permitted and excluded per operation
+
+Derive all fixtures directly from the contract — no mocks, no D1. Import the contract object and call `.schema.parse()`, `.operations.*.input.parse()`, `.states.transitions`, and `.invariants[].check()` directly.
+
 ## Pull Requests
 
 1. Fork the repo and create a feature branch from `main`

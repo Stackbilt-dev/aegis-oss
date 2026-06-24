@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- OTDD contract test suites for all five bounded contexts — AgendaItem (48 tests), CCTask (53 tests), Goal (65 tests), ExecutorRouter I1/I2 violation paths (4 tests), and MemoryEntry/CRIX pipeline (33 tests). Tests are derived directly from `.contract.ts` schema, state machine, invariant, and authority declarations with no mocks.
+
+### Fixed
+- `executor-router.ts` — added `isDefault?: true` to `ExecutorRoute` interface to match `ExecutorRouteShapeSchema` in the contract; removes TS2353 on the `workers_ai` route.
+- `workers-ai-chat.ts` — narrowed `Ai.run()` overload cast via explicit function-signature cast to resolve TS2769/TS2352; removes the `as Record<string, unknown>` workaround that leaked the intersection mismatch.
+- `kernel/memory/agenda.ts` — `resolveAgendaItem` now adds `AND status = 'active'` to its UPDATE and throws when 0 rows are affected, enforcing the contract's terminal-state invariant for `done` and `dismissed`.
+
 ## 0.8.0 (2026-06-02)
 
 ### Added
