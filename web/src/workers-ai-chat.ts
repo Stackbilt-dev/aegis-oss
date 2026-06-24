@@ -207,14 +207,10 @@ export async function executeWorkersAiChat(
 
   // Phase 1: Tool execution rounds (0 to TOOL_ROUNDS-1)
   for (let round = 0; round < TOOL_ROUNDS; round++) {
-    const result = await config.ai.run(config.model as Parameters<Ai['run']>[0], {
-      messages,
-      tools,
-      max_tokens: 4096,
-      temperature: 0.2,
-      top_p: 0.9,
-      frequency_penalty: 0.3,
-    } as Record<string, unknown>) as AiChatResponse;
+    const result = await (config.ai.run as (m: Parameters<Ai['run']>[0], i: unknown) => Promise<unknown>)(
+      config.model as Parameters<Ai['run']>[0],
+      { messages, tools, max_tokens: 4096, temperature: 0.2, top_p: 0.9, frequency_penalty: 0.3 },
+    ) as AiChatResponse;
 
     const usage = extractUsage(result);
     if (usage) {
@@ -300,13 +296,10 @@ export async function executeWorkersAiChat(
 
   let summaryText: string | undefined;
   try {
-    const summaryResult = await config.ai.run(config.model as Parameters<Ai['run']>[0], {
-      messages: condensed,
-      max_tokens: 4096,
-      temperature: 0.2,
-      top_p: 0.9,
-      frequency_penalty: 0.3,
-    } as Record<string, unknown>) as AiChatResponse;
+    const summaryResult = await (config.ai.run as (m: Parameters<Ai['run']>[0], i: unknown) => Promise<unknown>)(
+      config.model as Parameters<Ai['run']>[0],
+      { messages: condensed, max_tokens: 4096, temperature: 0.2, top_p: 0.9, frequency_penalty: 0.3 },
+    ) as AiChatResponse;
 
     const summaryUsage = extractUsage(summaryResult);
     if (summaryUsage) {
