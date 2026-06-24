@@ -78,7 +78,7 @@ export const EXECUTOR_ROUTES: Record<LLMExecutor, ExecutorRoute> = {
     isDefault: true,
     // env.workersAiModel overrides the model at deploy time.
     // Default: llama-3.3-70b-fp8-fast — COST_EFFECTIVE + TOOL_CALLING in the CF model catalog.
-    model: (env) => (env as any).workersAiModel ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    model: (env) => env.workersAiModel ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     // Terminal — free tier, no further fallback.
   },
   groq: {

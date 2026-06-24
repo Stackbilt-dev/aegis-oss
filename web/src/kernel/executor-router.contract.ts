@@ -83,7 +83,7 @@ export function validateFallbackTier(
   }
 }
 
-// I6: Exactly one route must be marked isDefault.
+// I5: Exactly one route must be marked isDefault.
 export function validateSingleDefault(routes: Record<string, { isDefault?: boolean }>): void {
   const defaults = Object.entries(routes).filter(([, r]) => r.isDefault);
   if (defaults.length !== 1) {
@@ -93,7 +93,7 @@ export function validateSingleDefault(routes: Record<string, { isDefault?: boole
   }
 }
 
-// I5: Fallback DAG must be acyclic (depth-limited DFS).
+// I6: Fallback DAG must be acyclic (depth-limited DFS).
 export function detectFallbackCycle(
   routes: Record<string, { fallback?: string }>,
 ): string | null {
