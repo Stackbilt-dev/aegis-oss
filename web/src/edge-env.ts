@@ -21,6 +21,7 @@ export function buildEdgeEnv(env: Env, ctx?: ExecutionContext): EdgeEnv {
     claudeModel: env.CLAUDE_MODEL || 'claude-sonnet-4-6',
     opusModel: env.CLAUDE_OPUS_MODEL || 'claude-opus-4-6',
     gptOssModel: env.GPT_OSS_MODEL || '@cf/openai/gpt-oss-120b',
+    workersAiModel: env.WORKERS_AI_MODEL || undefined,
     groqApiKey: env.GROQ_API_KEY,
     groqModel: env.GROQ_MODEL || 'llama-3.3-70b-versatile',
     groqResponseModel: env.GROQ_RESPONSE_MODEL || 'llama-3.1-8b-instant',

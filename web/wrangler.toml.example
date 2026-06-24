@@ -48,6 +48,14 @@ new_sqlite_classes = ["ChatSession"]
 tag = "v2-aegis-voice-adapter"
 new_sqlite_classes = ["AegisVoiceAdapter"]
 
+# ─── Model Configuration ─────────────────────────────────────
+# Override default models at deploy time via vars.
+# Secrets (ANTHROPIC_API_KEY, GROQ_API_KEY, etc.) are set via wrangler secret put.
+[vars]
+# Primary CF Workers AI model — used by the workers_ai executor.
+# Must be an active model in the @stackbilt/llm-providers cloudflare catalog.
+WORKERS_AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+
 # Triggers — hourly cron for scheduled tasks
 [triggers]
 crons = ["0 * * * *"]

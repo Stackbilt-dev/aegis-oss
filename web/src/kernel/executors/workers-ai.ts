@@ -16,9 +16,10 @@ export async function executeWorkersAi(
 ): Promise<{ text: string; cost: number }> {
   if (!env.ai) throw new Error('Workers AI binding not available');
   const factory = buildLLMProviderFactory(env);
+  const model = env.workersAiModel ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
   const result = await factory.generateResponse({
     messages: [{ role: 'user', content: intent.raw }],
-    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    model,
     systemPrompt: buildGroqSystemPrompt(),
   });
   return { text: result.message || '(no response)', cost: result.usage.cost };

@@ -21,6 +21,9 @@ export interface Env {
   // GPT-OSS (standard executor — tool-capable, cheap)
   GPT_OSS_MODEL: string;
 
+  // Workers AI (primary default executor — set to override the built-in default model)
+  WORKERS_AI_MODEL?: string;
+
   // Groq (classification + greeting executor + composite orchestration)
   GROQ_API_KEY: string;
   GROQ_MODEL: string;
