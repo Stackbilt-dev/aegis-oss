@@ -27,6 +27,9 @@ export interface ExecutorRoute {
   // Cost classification: premium > standard > free.
   // Fallback invariant: fallback.tier ≤ this.tier (never upgrade cost on failure).
   tier: ExecutorTier;
+  // isDefault=true: the nominal default executor for the dispatch layer.
+  // Exactly one route may carry this flag (enforced by I5 in the contract).
+  isDefault?: true;
   // placeholder=true: executor is forward-declared but not yet wired.
   // Consumers must skip dispatch for placeholder routes.
   placeholder?: true;
