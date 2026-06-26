@@ -160,6 +160,15 @@ export function toOpenAiTools(anthropicTools: unknown[]): OpenAiFunctionTool[] {
 
 const GPT_OSS_RATES = { input: 0.35, output: 0.75 }; // $/MTok
 
+// Ai.run() overloads can't be unified when the model string is dynamic.
+// Cast to a loose signature once here; callers re-assert the return as AiChatResponse.
+function callAiRun(ai: Ai, model: string, input: unknown): Promise<unknown> {
+  return (ai.run as (m: Parameters<Ai['run']>[0], i: unknown) => Promise<unknown>)(
+    model as Parameters<Ai['run']>[0],
+    input,
+  );
+}
+
 // ─── Main executor ──────────────────────────────────────────
 
 const MAX_TOOL_ROUNDS = 10;
@@ -207,8 +216,8 @@ export async function executeWorkersAiChat(
 
   // Phase 1: Tool execution rounds (0 to TOOL_ROUNDS-1)
   for (let round = 0; round < TOOL_ROUNDS; round++) {
-    const result = await (config.ai.run as (m: Parameters<Ai['run']>[0], i: unknown) => Promise<unknown>)(
-      config.model as Parameters<Ai['run']>[0],
+    const result = await callAiRun(
+      config.ai, config.model,
       { messages, tools, max_tokens: 4096, temperature: 0.2, top_p: 0.9, frequency_penalty: 0.3 },
     ) as AiChatResponse;
 
@@ -296,8 +305,8 @@ export async function executeWorkersAiChat(
 
   let summaryText: string | undefined;
   try {
-    const summaryResult = await (config.ai.run as (m: Parameters<Ai['run']>[0], i: unknown) => Promise<unknown>)(
-      config.model as Parameters<Ai['run']>[0],
+    const summaryResult = await callAiRun(
+      config.ai, config.model,
       { messages: condensed, max_tokens: 4096, temperature: 0.2, top_p: 0.9, frequency_penalty: 0.3 },
     ) as AiChatResponse;
 

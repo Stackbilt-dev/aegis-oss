@@ -25,6 +25,7 @@ import {
   buildMcpRegistry,
   EXECUTOR_FNS,
 } from './executors/index.js';
+import { getExecutorRoute, type LLMExecutor } from './executor-router.js';
 // ─── Edge Environment ────────────────────────────────────────
 
 export interface EdgeEnv {
@@ -367,6 +368,8 @@ async function probeAndExecute(
           result = await executeTarotScript(intent, env);
           break;
         default: {
+          const route = getExecutorRoute(plan.executor as LLMExecutor);
+          if (route?.placeholder) throw new Error(`Executor '${plan.executor}' is a placeholder and cannot be dispatched`);
           const fn = EXECUTOR_FNS[plan.executor as Executor];
           if (!fn) throw new Error(`Unknown executor: ${plan.executor}`);
           result = await fn(intent, env);

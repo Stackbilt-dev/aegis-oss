@@ -90,8 +90,8 @@ export const EXECUTOR_ROUTES: Record<LLMExecutor, ExecutorRoute> = {
     // groqResponseModel = 8B (llama-3.1-8b-instant) — fast/cheap for greetings.
     // Intentionally NOT groqModel (70B). See executors/groq.ts:12.
     model: (env) => env.groqResponseModel,
-    // Falls back to CF Workers AI (free tier) on Groq API failure.
-    fallback: 'workers_ai',
+    // No fallback declared: dispatch does not yet read route.fallback at runtime.
+    // Wiring groq → workers_ai fallback is tracked in aegis-oss#75.
   },
   cerebras_mid: {
     provider: 'cerebras',

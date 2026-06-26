@@ -92,7 +92,14 @@ export async function triageAgendaToIssues(env: EdgeEnv): Promise<number> {
         `${item.body ?? ''}\n\n---\n_Promoted from AEGIS agenda item #${item.id} by dreaming triage._`,
         labels,
       );
-      await resolveAgendaItem(env.db, item.id, 'done');
+
+      // Resolve separately so a DB hiccup after a successful createIssue doesn't
+      // leave the item active (and cause a duplicate issue on the next cycle).
+      try {
+        await resolveAgendaItem(env.db, item.id, 'done');
+      } catch (resolveErr) {
+        console.warn(`[dreaming:triage] Issue created but failed to resolve agenda #${item.id}:`, resolveErr instanceof Error ? resolveErr.message : String(resolveErr));
+      }
 
       const projectIdRow = await env.db.prepare(
         "SELECT received_at FROM web_events WHERE event_id = 'board_project_id'"

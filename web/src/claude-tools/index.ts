@@ -278,7 +278,11 @@ export async function handleInProcessTool(
   }
   if (name === 'resolve_agenda_item') {
     const i = input as { id: number; status: 'done' | 'dismissed' };
-    await resolveAgendaItem(db, i.id, i.status);
+    try {
+      await resolveAgendaItem(db, i.id, i.status);
+    } catch (err) {
+      return `Error: ${err instanceof Error ? err.message : String(err)}`;
+    }
     return `Resolved agenda item #${i.id} as ${i.status}`;
   }
   if (name === 'lookup_cc_session') {
