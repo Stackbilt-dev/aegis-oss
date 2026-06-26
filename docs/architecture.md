@@ -134,6 +134,29 @@ AEGIS exposes its capabilities via the [Model Context Protocol](https://modelcon
 - **MCP Server** — Other AI tools can call AEGIS tools (memory, agenda, goals, chat)
 - **MCP Client** — AEGIS can call external MCP services (configured via service bindings)
 
+## Contract ontology
+
+AEGIS uses a formal domain ontology defined in `web/src/contracts/`. Each `.contract.ts` file is the authoritative source of truth for a bounded context — its schema, operations, state machine, invariants, and authority rules. Tests are derived directly from these contracts (OTDD — Ontology-Driven Test Development).
+
+| Contract | Domain | Key invariants |
+|---|---|---|
+| `agenda-item.contract.ts` | AgendaItem | `resolved_has_timestamp` — done items require `resolvedAt` |
+| `cc-task.contract.ts` | CCTask | `proposed_task_needs_approval`, `completed_has_timestamp` |
+| `goal.contract.ts` | Goal | `completed_has_timestamp` — completed goals require `completedAt` |
+| `memory-entry.contract.ts` | MemoryEntry (CRIX) | `refuted_entry_not_canonical`, `high_confidence_for_canonical` (≥0.9) |
+| `executor-router.contract.ts` | ExecutorRouter | I1–I6: fallback coverage, tier ordering, single default, acyclic DAG |
+| `issue-68.contract.ts` | WasmGraph (blueprint) | Snapshot invariants for BFS spreading activation — impl pending |
+
+Contracts define:
+- **Schema** — Zod shapes for the entity and all operation inputs
+- **Operations** — named mutations with input schema, output, and emitted events
+- **State machine** — field, initial state, and allowed transitions per state
+- **Invariants** — named `check()` predicates scoped to specific operations via `appliesTo`
+- **Authority** — which roles may invoke each operation
+- **Surfaces** — API route shapes and D1 table/index declarations
+
+> **Note**: Contract invariant `check()` functions are currently specification-only. Runtime enforcement wiring (calling invariants before D1 writes) is tracked in aegis-oss#75.
+
 ## Key design decisions
 
 **Edge-native**: Everything runs in V8 isolates on Cloudflare's edge. No containers, no servers, no cold starts beyond single-digit milliseconds.

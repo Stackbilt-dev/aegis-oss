@@ -27,6 +27,9 @@ export interface ExecutorRoute {
   // Cost classification: premium > standard > free.
   // Fallback invariant: fallback.tier ≤ this.tier (never upgrade cost on failure).
   tier: ExecutorTier;
+  // isDefault=true: the nominal default executor for the dispatch layer.
+  // Exactly one route may carry this flag (enforced by I5 in the contract).
+  isDefault?: true;
   // placeholder=true: executor is forward-declared but not yet wired.
   // Consumers must skip dispatch for placeholder routes.
   placeholder?: true;
@@ -87,8 +90,8 @@ export const EXECUTOR_ROUTES: Record<LLMExecutor, ExecutorRoute> = {
     // groqResponseModel = 8B (llama-3.1-8b-instant) — fast/cheap for greetings.
     // Intentionally NOT groqModel (70B). See executors/groq.ts:12.
     model: (env) => env.groqResponseModel,
-    // Falls back to CF Workers AI (free tier) on Groq API failure.
-    fallback: 'workers_ai',
+    // No fallback declared: dispatch does not yet read route.fallback at runtime.
+    // Wiring groq → workers_ai fallback is tracked in aegis-oss#75.
   },
   cerebras_mid: {
     provider: 'cerebras',

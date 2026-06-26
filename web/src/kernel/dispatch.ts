@@ -25,6 +25,7 @@ import {
   buildMcpRegistry,
   EXECUTOR_FNS,
 } from './executors/index.js';
+import { getExecutorRoute, type LLMExecutor } from './executor-router.js';
 // ─── Edge Environment ────────────────────────────────────────
 
 export interface EdgeEnv {
@@ -346,6 +347,9 @@ async function probeAndExecute(
       }
     } else {
       // Non-streaming or non-Claude executors
+      // Placeholder guard runs before the switch so named cases can't bypass it.
+      const route = getExecutorRoute(plan.executor as LLMExecutor);
+      if (route?.placeholder) throw new Error(`Executor '${plan.executor}' is a placeholder and cannot be dispatched`);
       switch (plan.executor) {
         case 'claude':
         case 'claude_opus': {

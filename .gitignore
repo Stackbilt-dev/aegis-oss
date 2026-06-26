@@ -12,3 +12,4 @@ C:*
 node_modules/
 .pnpm-store/
 __pycache__/
+.agent-memory/

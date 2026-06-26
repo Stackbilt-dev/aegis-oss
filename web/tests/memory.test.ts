@@ -1777,10 +1777,23 @@ describe('agenda.ts', () => {
       expect(db._queries[0].bindings[1]).toBe(42);
     });
 
+    it('guards against terminal-state transitions via AND status = active', async () => {
+      const db = createMockDb({ runMeta: [{ changes: 1 }] });
+      await resolveAgendaItem(db, 42, 'done');
+      expect(db._queries[0].sql).toContain("AND status = 'active'");
+    });
+
     it('accepts dismissed status', async () => {
       const db = createMockDb({ runMeta: [{ changes: 1 }] });
       await resolveAgendaItem(db, 42, 'dismissed');
       expect(db._queries[0].bindings[0]).toBe('dismissed');
+    });
+
+    it('throws when item is not active or does not exist (changes === 0)', async () => {
+      const db = createMockDb({ runMeta: [{ changes: 0 }] });
+      await expect(resolveAgendaItem(db, 42, 'done')).rejects.toThrow(
+        "Agenda item 42 is not in 'active' state or does not exist",
+      );
     });
   });
 
