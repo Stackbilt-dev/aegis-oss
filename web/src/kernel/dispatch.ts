@@ -347,6 +347,9 @@ async function probeAndExecute(
       }
     } else {
       // Non-streaming or non-Claude executors
+      // Placeholder guard runs before the switch so named cases can't bypass it.
+      const route = getExecutorRoute(plan.executor as LLMExecutor);
+      if (route?.placeholder) throw new Error(`Executor '${plan.executor}' is a placeholder and cannot be dispatched`);
       switch (plan.executor) {
         case 'claude':
         case 'claude_opus': {
@@ -368,8 +371,6 @@ async function probeAndExecute(
           result = await executeTarotScript(intent, env);
           break;
         default: {
-          const route = getExecutorRoute(plan.executor as LLMExecutor);
-          if (route?.placeholder) throw new Error(`Executor '${plan.executor}' is a placeholder and cannot be dispatched`);
           const fn = EXECUTOR_FNS[plan.executor as Executor];
           if (!fn) throw new Error(`Unknown executor: ${plan.executor}`);
           result = await fn(intent, env);

@@ -98,7 +98,12 @@ export async function triageAgendaToIssues(env: EdgeEnv): Promise<number> {
       try {
         await resolveAgendaItem(env.db, item.id, 'done');
       } catch (resolveErr) {
-        console.warn(`[dreaming:triage] Issue created but failed to resolve agenda #${item.id}:`, resolveErr instanceof Error ? resolveErr.message : String(resolveErr));
+        console.error(`[dreaming:triage] Issue #${number} created but resolve failed for agenda #${item.id}; attempting dismiss to prevent duplicate:`, resolveErr instanceof Error ? resolveErr.message : String(resolveErr));
+        try {
+          await resolveAgendaItem(env.db, item.id, 'dismissed');
+        } catch {
+          console.error(`[dreaming:triage] Agenda #${item.id} could not be resolved or dismissed after issue creation — item will remain active and may generate a duplicate next cycle`);
+        }
       }
 
       const projectIdRow = await env.db.prepare(
