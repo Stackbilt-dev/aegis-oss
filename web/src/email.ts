@@ -280,7 +280,47 @@ export async function sendDailyDigest(
     return `<span style="display:inline-block;background:${colors[s] ?? '#555'};color:#0a0a0f;font-size:9px;font-weight:700;padding:1px 4px;border-radius:2px;margin-right:4px">${s.toUpperCase()}</span>`;
   };
 
-  // ── Section 1: WORK SHIPPED ──
+  // ── LEAD SIGNAL ──
+  // Single highest-priority banner. Only fires when truly actionable.
+  let leadSignal: { label: string; text: string; color: string } | null = null;
+
+  const critAlerts = sections.serviceAlerts.filter(a => a.severity === 'critical');
+  const highAlerts = sections.serviceAlerts.filter(a => a.severity === 'high');
+  const hasFailedPayment = sections.eventNotifications.some(e =>
+    e.event_type.includes('payment') && e.event_type.includes('fail'),
+  );
+  const revenueEvents = sections.eventNotifications.filter(e =>
+    e.event_type.includes('invoice.paid') || e.event_type.includes('checkout.session.completed'),
+  );
+  const deadlineAgenda = sections.agendaItems.filter(a => /^upcoming_deadlines:/i.test(a.item));
+  const failRate = sections.failedTasks.length / Math.max(1, sections.completedTasks.length + sections.failedTasks.length);
+  const critHealthChecks = sections.healthChecks.filter(h => h.severity === 'critical');
+
+  if (critAlerts.length > 0) {
+    leadSignal = { label: 'CRITICAL', text: critAlerts[0].summary, color: '#ef4444' };
+  } else if (critHealthChecks.length > 0) {
+    leadSignal = { label: 'CRITICAL', text: `System health: ${critHealthChecks[0].checks.find(c => c.status !== 'ok')?.name ?? 'check failed'}`, color: '#ef4444' };
+  } else if (hasFailedPayment) {
+    leadSignal = { label: 'PAYMENT FAILURE', text: 'Failed payment detected — check Stripe', color: '#ef4444' };
+  } else if (highAlerts.length > 0) {
+    leadSignal = { label: 'ALERT', text: highAlerts[0].summary, color: '#f5a623' };
+  } else if (failRate > 0.5 && sections.failedTasks.length >= 2) {
+    leadSignal = { label: 'FAIL RATE', text: `${Math.round(failRate * 100)}% task failure — review before queuing more`, color: '#f5a623' };
+  } else if (deadlineAgenda.length > 0) {
+    const text = deadlineAgenda[0].item.replace(/^upcoming_deadlines:\s*/i, '');
+    leadSignal = { label: 'DEADLINE', text, color: '#f5a623' };
+  } else if (revenueEvents.length > 0) {
+    leadSignal = { label: 'REVENUE', text: `${revenueEvents.length} payment${revenueEvents.length !== 1 ? 's' : ''} received`, color: '#2dd4a0' };
+  }
+
+  const leadHtml = leadSignal
+    ? `<div style="background:#1a1a1a;border:1px solid #333;border-left:4px solid ${leadSignal.color};border-radius:4px;padding:10px 14px;margin-bottom:20px">
+        <span style="font-size:10px;font-weight:700;color:${leadSignal.color};text-transform:uppercase;letter-spacing:1px">${leadSignal.label}</span>
+        <p style="margin:4px 0 0;font-size:13px;color:#e0e0e0">${leadSignal.text}</p>
+      </div>`
+    : '';
+
+  // ── WORK SHIPPED ──
   let workShippedHtml = '';
   if (sections.failedTasks.length > 0 || sections.completedTasks.length > 0) {
     const taskRow = (t: DigestTask) => {
@@ -303,122 +343,72 @@ export async function sendDailyDigest(
     </div>`;
   }
 
-  // ── Section 2: OPERATOR'S LOG ──
-  let operatorLogHtml = '';
-  if (sections.operatorLog) {
-    const contentHtml = sections.operatorLog
-      .split('\n\n')
-      .filter(p => p.trim())
-      .map(p => {
-        if (p.startsWith('## ')) return `<h2 style="margin:16px 0 6px;font-size:15px;font-weight:600;color:#8b8bff">${p.slice(3)}</h2>`;
-        if (p.startsWith('### ')) return `<h3 style="margin:12px 0 4px;font-size:13px;font-weight:600;color:#3dd6c8">${p.slice(4)}</h3>`;
-        const formatted = p.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#e0e0e0">$1</strong>');
-        return `<p style="margin:0 0 10px;font-size:13px;line-height:1.65;color:#b0b0c0">${formatted}</p>`;
-      })
-      .join('');
-
-    operatorLogHtml = `
-    <div style="margin-bottom:24px">
-      <p style="margin:0 0 10px;font-size:11px;color:#3dd6c8;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">Operator's Log</p>
-      <div style="background:#111;border:1px solid #222;border-radius:6px;padding:16px 20px">
-        ${contentHtml}
-      </div>
-    </div>`;
-  }
-
-  // ── Section 3: SYSTEM HEALTH ──
-  let healthHtml = '';
-  if (sections.healthChecks.length > 0) {
-    const allChecks = sections.healthChecks.flatMap(h => h.checks.map(c => ({ ...c, severity: h.severity })));
-    const checksRows = allChecks.map(c => {
-      const color = c.status === 'alert' ? '#ff6b6b' : '#ffd93d';
-      return `
+  // ── SERVICE ALERTS (high/critical only) ──
+  let serviceAlertsHtml = '';
+  const actionableAlerts = sections.serviceAlerts.filter(a =>
+    a.severity === 'critical' || a.severity === 'high',
+  );
+  if (actionableAlerts.length > 0) {
+    const sevColor = (s: string) => s === 'critical' ? '#ef4444' : '#f5a623';
+    const alertRows = actionableAlerts.map(a => `
       <tr>
-        <td style="padding:6px 12px;border-bottom:1px solid #222;font-family:monospace;color:${color}">${c.name}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #222;color:#ccc">${c.detail}</td>
-      </tr>`;
-    }).join('');
+        <td style="padding:6px 12px;border-bottom:1px solid #222;font-size:12px;color:${sevColor(a.severity)};font-weight:600">${a.severity.toUpperCase()}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #222;font-size:11px;color:#888;font-family:monospace">${a.source}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #222;font-size:12px;color:#ccc">${a.summary}</td>
+      </tr>`).join('');
 
-    healthHtml = `
+    serviceAlertsHtml = `
     <div style="margin-bottom:24px">
-      <p style="margin:0 0 10px;font-size:11px;color:#ffd93d;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">System Health</p>
+      <p style="margin:0 0 10px;font-size:11px;color:#f5a623;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">Alerts (${actionableAlerts.length})</p>
       <table style="width:100%;border-collapse:collapse;background:#111;border:1px solid #222;border-radius:4px;overflow:hidden">
         <thead>
           <tr style="background:#1a1a2e">
-            <th style="padding:8px 12px;text-align:left;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px">Check</th>
-            <th style="padding:8px 12px;text-align:left;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px">Detail</th>
-          </tr>
-        </thead>
-        <tbody>${checksRows}</tbody>
-      </table>
-    </div>`;
-  }
-
-  // ── Section 3b: ARGUS EVENTS ──
-  let eventsHtml = '';
-  if (sections.eventNotifications.length > 0) {
-    const eventRows = sections.eventNotifications.map(e => {
-      const color = e.priority === 'high' ? '#f5a623' : '#888';
-      return `
-      <tr>
-        <td style="padding:6px 12px;border-bottom:1px solid #222;font-size:11px;color:#666">${e.source}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #222;font-family:monospace;color:${color};font-size:12px">${e.event_type}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #222;color:#ccc;font-size:12px">${e.summary}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #222;font-size:11px;color:#555">${e.ts.slice(0, 16)}</td>
-      </tr>`;
-    }).join('');
-
-    eventsHtml = `
-    <div style="margin-bottom:24px">
-      <p style="margin:0 0 10px;font-size:11px;color:#7b7bdf;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">ARGUS Events (${sections.eventNotifications.length})</p>
-      <table style="width:100%;border-collapse:collapse;background:#111;border:1px solid #222;border-radius:4px;overflow:hidden">
-        <thead>
-          <tr style="background:#1a1a2e">
+            <th style="padding:8px 12px;text-align:left;font-size:10px;color:#666;text-transform:uppercase">Sev</th>
             <th style="padding:8px 12px;text-align:left;font-size:10px;color:#666;text-transform:uppercase">Source</th>
-            <th style="padding:8px 12px;text-align:left;font-size:10px;color:#666;text-transform:uppercase">Event</th>
             <th style="padding:8px 12px;text-align:left;font-size:10px;color:#666;text-transform:uppercase">Summary</th>
-            <th style="padding:8px 12px;text-align:left;font-size:10px;color:#666;text-transform:uppercase">Time</th>
           </tr>
         </thead>
-        <tbody>${eventRows}</tbody>
+        <tbody>${alertRows}</tbody>
       </table>
     </div>`;
   }
 
-  // ── Section 3c: COGNITIVE SCORECARD ──
-  let metricsHtml = '';
-  if (sections.cognitiveMetrics) {
-    const m = sections.cognitiveMetrics;
-    const arrow = m.score_delta > 0 ? '&#9650;' : m.score_delta < 0 ? '&#9660;' : '&#9644;';
-    const arrowColor = m.score_delta > 0 ? '#2dd4a0' : m.score_delta < 0 ? '#ef4444' : '#888';
-    const scoreColor = m.cognitive_score >= 75 ? '#2dd4a0' : m.cognitive_score >= 50 ? '#f5a623' : '#ef4444';
-    const costDelta = m.avg_cost_prior_7d > 0
-      ? ((m.avg_cost_7d - m.avg_cost_prior_7d) / m.avg_cost_prior_7d * 100).toFixed(0)
-      : '0';
-    const costArrow = Number(costDelta) <= 0 ? '#2dd4a0' : '#ef4444';
+  // ── SYSTEM HEALTH (critical/high only) ──
+  let healthHtml = '';
+  const actionableHealthChecks = sections.healthChecks.filter(h =>
+    h.severity === 'critical' || h.severity === 'high',
+  );
+  if (actionableHealthChecks.length > 0) {
+    const nonOkChecks = actionableHealthChecks.flatMap(h =>
+      h.checks.filter(c => c.status !== 'ok').map(c => ({ ...c, severity: h.severity })),
+    );
+    if (nonOkChecks.length > 0) {
+      const checksRows = nonOkChecks.map(c => {
+        const color = c.status === 'alert' ? '#ff6b6b' : '#ffd93d';
+        return `
+        <tr>
+          <td style="padding:6px 12px;border-bottom:1px solid #222;font-family:monospace;color:${color}">${c.name}</td>
+          <td style="padding:6px 12px;border-bottom:1px solid #222;color:#ccc">${c.detail}</td>
+        </tr>`;
+      }).join('');
 
-    metricsHtml = `
-    <div style="margin-bottom:24px">
-      <p style="margin:0 0 10px;font-size:11px;color:#f5a623;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">Cognitive Scorecard</p>
-      <div style="background:#111;border:1px solid #222;border-radius:6px;padding:16px 20px">
-        <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
-          <span style="font-size:36px;font-weight:700;color:${scoreColor};line-height:1">${m.cognitive_score}</span>
-          <span style="font-size:14px;color:${arrowColor}">${arrow} ${Math.abs(m.score_delta)}</span>
-          <span style="font-size:12px;color:#666">/100</span>
-        </div>
-        <table style="width:100%;border-collapse:collapse">
-          <tr><td style="padding:3px 0;font-size:11px;color:#888">Dispatch success</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${Math.round(m.dispatch_success_rate_7d * 100)}%</td></tr>
-          <tr><td style="padding:3px 0;font-size:11px;color:#888">Procedures learned</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${Math.round(m.procedure_convergence_rate * 100)}%</td></tr>
-          <tr><td style="padding:3px 0;font-size:11px;color:#888">Tasks shipped (7d)</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${m.tasks_completed_7d} / ${m.tasks_completed_7d + m.tasks_failed_7d}</td></tr>
-          <tr><td style="padding:3px 0;font-size:11px;color:#888">Avg cost/dispatch</td><td style="padding:3px 0;font-size:12px;color:${costArrow};text-align:right">$${m.avg_cost_7d.toFixed(4)} (${Number(costDelta) <= 0 ? '' : '+'}${costDelta}%)</td></tr>
-          <tr><td style="padding:3px 0;font-size:11px;color:#888">Memory entries</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${m.memory_count}</td></tr>
-          ${m.top_failure_kind ? `<tr><td style="padding:3px 0;font-size:11px;color:#888">Top failure mode</td><td style="padding:3px 0;font-size:12px;color:#ef4444;text-align:right">${m.top_failure_kind}</td></tr>` : ''}
+      healthHtml = `
+      <div style="margin-bottom:24px">
+        <p style="margin:0 0 10px;font-size:11px;color:#ffd93d;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">System Health</p>
+        <table style="width:100%;border-collapse:collapse;background:#111;border:1px solid #222;border-radius:4px;overflow:hidden">
+          <thead>
+            <tr style="background:#1a1a2e">
+              <th style="padding:8px 12px;text-align:left;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px">Check</th>
+              <th style="padding:8px 12px;text-align:left;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px">Detail</th>
+            </tr>
+          </thead>
+          <tbody>${checksRows}</tbody>
         </table>
-      </div>
-    </div>`;
+      </div>`;
+    }
   }
 
-  // ── Section 3c2: ANALYTICS ──
+  // ── TRAFFIC (GA4) — numbers + tables, no auto-commentary ──
   let analyticsHtml = '';
   if (sections.analytics && sections.analytics.sessions_7d > 0) {
     const a = sections.analytics;
@@ -442,12 +432,6 @@ export async function sendDailyDigest(
         <td style="padding:4px 12px;font-size:12px;color:#ccc;border-bottom:1px solid #222;text-align:right">${s.sessions}</td>
       </tr>`).join('');
 
-    const insightsHtml = a.insights.length > 0
-      ? `<div style="margin-top:12px;background:#0b1a1a;border:1px solid rgba(61,214,200,0.15);border-radius:4px;padding:10px 14px">
-          <ul style="margin:0;padding-left:16px">${a.insights.map(i => `<li style="margin-bottom:4px;font-size:12px;color:#ccc">${i}</li>`).join('')}</ul>
-        </div>`
-      : '';
-
     analyticsHtml = `
     <div style="margin-bottom:24px">
       <p style="margin:0 0 10px;font-size:11px;color:#8b8bff;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">Traffic (GA4)</p>
@@ -469,242 +453,118 @@ export async function sendDailyDigest(
             <th style="padding:4px 12px;font-size:10px;color:#666;text-align:left;text-transform:uppercase">Medium</th>
             <th style="padding:4px 12px;font-size:10px;color:#666;text-align:right;text-transform:uppercase">Sessions</th>
           </tr></thead><tbody>${sourcesRows}</tbody></table>` : ''}
-        ${insightsHtml}
       </div>
     </div>`;
   }
 
-  // ── Section 3c3: DEVELOPER ACTIVITY ──
-  let devActivityHtml = '';
-  if (sections.devActivity) {
-    const d = sections.devActivity;
-    const tierBadges = d.tier_breakdown.map(t => {
-      const colors: Record<string, string> = { free: '#888', hobby: '#3dd6c8', pro: '#8b8bff', enterprise: '#f5a623' };
-      return `<span style="display:inline-block;background:${colors[t.tier] ?? '#555'};color:#0a0a0f;font-size:10px;font-weight:700;padding:2px 6px;border-radius:2px;margin-right:4px">${t.tier} ${t.count}</span>`;
-    }).join('');
-
-    const signupRows = d.recent_signups.slice(0, 10).map(s => `
-      <tr>
-        <td style="padding:4px 12px;font-size:12px;color:#ccc;border-bottom:1px solid #222">${s.name || '(no name)'}</td>
-        <td style="padding:4px 12px;font-size:12px;color:#888;border-bottom:1px solid #222">${s.email}</td>
-        <td style="padding:4px 12px;font-size:12px;color:#ccc;border-bottom:1px solid #222">${s.tier}</td>
-        <td style="padding:4px 12px;font-size:11px;color:#666;border-bottom:1px solid #222">${s.created_at.slice(0, 10)}</td>
-      </tr>`).join('');
-
-    devActivityHtml = `
-    <div style="margin-bottom:24px">
-      <p style="margin:0 0 10px;font-size:11px;color:#2dd4bf;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">Developer Activity</p>
-      <div style="background:#111;border:1px solid #222;border-radius:6px;padding:16px 20px">
-        <div style="display:flex;gap:24px;margin-bottom:12px">
-          <div><span style="font-size:24px;font-weight:700;color:#ccc">${d.total_users}</span><span style="font-size:12px;color:#666"> users</span></div>
-          <div><span style="font-size:24px;font-weight:700;color:#ccc">${d.total_tenants}</span><span style="font-size:12px;color:#666"> tenants</span></div>
-          <div><span style="font-size:24px;font-weight:700;color:${d.keys_active_24h > 0 ? '#2dd4a0' : '#888'}">${d.keys_active_24h}</span><span style="font-size:12px;color:#666"> active (24h)</span></div>
-        </div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:12px">
-          <tr><td style="padding:3px 0;font-size:11px;color:#888">Keys created (24h)</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${d.keys_created_24h}</td></tr>
-          <tr><td style="padding:3px 0;font-size:11px;color:#888">Keys created (7d)</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${d.keys_created_7d}</td></tr>
-          <tr><td style="padding:3px 0;font-size:11px;color:#888">Keys created (all-time)</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${d.keys_created_all_time}</td></tr>
-          <tr><td style="padding:3px 0;font-size:11px;color:#888">Active keys (7d)</td><td style="padding:3px 0;font-size:12px;color:#ccc;text-align:right">${d.keys_active_7d}</td></tr>
-        </table>
-        <div style="margin-bottom:12px">${tierBadges || '<span style="font-size:11px;color:#555">No active keys</span>'}</div>
-        ${signupRows ? `<p style="margin:12px 0 6px;font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px">Recent Signups (7d)</p>
-        <table style="width:100%;border-collapse:collapse">
-          <thead><tr>
-            <th style="padding:4px 12px;font-size:10px;color:#666;text-align:left;text-transform:uppercase">Name</th>
-            <th style="padding:4px 12px;font-size:10px;color:#666;text-align:left;text-transform:uppercase">Email</th>
-            <th style="padding:4px 12px;font-size:10px;color:#666;text-align:left;text-transform:uppercase">Tier</th>
-            <th style="padding:4px 12px;font-size:10px;color:#666;text-align:left;text-transform:uppercase">Joined</th>
-          </tr></thead><tbody>${signupRows}</tbody></table>` : ''}
-      </div>
-    </div>`;
-  }
-
-  // ── Section 3b2: SERVICE ALERTS ──
-  let serviceAlertsHtml = '';
-  if (sections.serviceAlerts.length > 0) {
-    const sevColor = (s: string) => s === 'critical' ? '#ef4444' : s === 'high' ? '#f5a623' : s === 'medium' ? '#ffd93d' : '#888';
-    const alertRows = sections.serviceAlerts.map(a => `
-      <tr>
-        <td style="padding:6px 12px;border-bottom:1px solid #222;font-size:12px;color:${sevColor(a.severity)};font-weight:600">${a.severity.toUpperCase()}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #222;font-size:11px;color:#888;font-family:monospace">${a.source}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #222;font-size:12px;color:#ccc">${a.summary}${a.findingsCount > 0 ? ` <span style="color:#888">(${a.findingsCount} findings)</span>` : ''}</td>
-      </tr>`).join('');
-
-    serviceAlertsHtml = `
-    <div style="margin-bottom:24px">
-      <p style="margin:0 0 10px;font-size:11px;color:#f5a623;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">Service Alerts (${sections.serviceAlerts.length})</p>
-      <table style="width:100%;border-collapse:collapse;background:#111;border:1px solid #222;border-radius:4px;overflow:hidden">
-        <thead>
-          <tr style="background:#1a1a2e">
-            <th style="padding:8px 12px;text-align:left;font-size:10px;color:#666;text-transform:uppercase">Severity</th>
-            <th style="padding:8px 12px;text-align:left;font-size:10px;color:#666;text-transform:uppercase">Source</th>
-            <th style="padding:8px 12px;text-align:left;font-size:10px;color:#666;text-transform:uppercase">Summary</th>
-          </tr>
-        </thead>
-        <tbody>${alertRows}</tbody>
-      </table>
-    </div>`;
-  }
-
-  // ── Section 3d: CO-FOUNDER'S TAKE ──
-  // Opinionated synthesis: what matters, what's off track, what nobody's working on
-  let cofounderHtml = '';
-  {
-    const takes: string[] = [];
-
-    // Revenue signal
-    const hasRevenue = sections.eventNotifications.some(e => e.event_type.includes('payment') || e.event_type.includes('checkout') || e.event_type.includes('invoice.paid'));
-    const hasFailedPayment = sections.eventNotifications.some(e => e.event_type.includes('failed'));
-    if (hasRevenue && !hasFailedPayment) {
-      takes.push('Revenue is flowing. Keep shipping.');
-    } else if (hasFailedPayment) {
-      takes.push('Payment failures detected. Check Stripe dashboard before anything else today.');
-    }
-
-    // Task health
-    const failRate = sections.failedTasks.length / Math.max(1, sections.completedTasks.length + sections.failedTasks.length);
-    if (failRate > 0.4 && sections.failedTasks.length >= 3) {
-      takes.push(`Task failure rate is ${Math.round(failRate * 100)}% — the taskrunner is burning cycles. Review failed tasks before queuing more.`);
-    }
-
-    // Stale proposals
-    const staleProposals = sections.agendaItems.filter(a => {
-      if (!a.item.startsWith('[PROPOSED ACTION]') || !a.created_at) return false;
-      const ageDays = (Date.now() - new Date(a.created_at).getTime()) / 86_400_000;
-      return ageDays > 4;
-    });
-    if (staleProposals.length > 0) {
-      takes.push(`${staleProposals.length} proposed action${staleProposals.length > 1 ? 's' : ''} aging out. Approve or dismiss — stale proposals mean I'm doing work you're not reviewing.`);
-    }
-
-    // High-priority agenda items piling up
-    const highItems = sections.agendaItems.filter(a => a.priority === 'high' && !a.item.startsWith('[PROPOSED'));
-    if (highItems.length >= 4) {
-      takes.push(`${highItems.length} high-priority agenda items. That's too many "high" items — either some aren't really high, or we need a focused triage session.`);
-    }
-
-    // Nothing shipped
-    if (sections.completedTasks.length === 0 && sections.failedTasks.length === 0) {
-      takes.push('No tasks ran in the last 24h. Is the taskrunner down, or is this intentional?');
-    }
-
-    // Health checks surfacing
-    if (sections.healthChecks.length > 0) {
-      const critChecks = sections.healthChecks.filter(h => h.severity === 'critical');
-      if (critChecks.length > 0) {
-        takes.push('Critical health checks in the system. This takes priority over feature work.');
-      }
-    }
-
-    // Service alerts
-    const critAlerts = sections.serviceAlerts.filter(a => a.severity === 'critical');
-    if (critAlerts.length > 0) {
-      takes.push(`${critAlerts.length} critical service alert${critAlerts.length > 1 ? 's' : ''} from ${[...new Set(critAlerts.map(a => a.source))].join(', ')}. Review immediately.`);
-    }
-
-    // Developer activity signals
-    if (sections.devActivity) {
-      if (sections.devActivity.recent_signups.length > 0) {
-        takes.push(`${sections.devActivity.recent_signups.length} new signup${sections.devActivity.recent_signups.length !== 1 ? 's' : ''} this week. People are finding us.`);
-      }
-      if (sections.devActivity.keys_active_24h === 0 && sections.devActivity.keys_created_all_time > 0) {
-        takes.push('No active API keys in the last 24h. Users signed up but aren\'t hitting endpoints — check onboarding friction.');
-      }
-    }
-
-    // Memory reflection available
-    if (sections.memoryReflection) {
-      takes.push('Weekly reflection attached below — worth a 2-minute read to see what I\'m learning.');
-    }
-
-    if (takes.length > 0) {
-      const takesHtml = takes.map(t => `<li style="margin-bottom:6px;font-size:13px;line-height:1.5;color:#ccc">${t}</li>`).join('');
-      cofounderHtml = `
-    <div style="margin-bottom:24px">
-      <p style="margin:0 0 10px;font-size:11px;color:#3dd6c8;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">Co-Founder's Take</p>
-      <div style="background:#0b1a1a;border:1px solid rgba(61,214,200,0.15);border-left:3px solid #3dd6c8;border-radius:4px;padding:12px 16px">
-        <ul style="margin:0;padding-left:18px">${takesHtml}</ul>
-      </div>
-    </div>`;
-    }
-  }
-
-  // ── Section 3d: MEMORY REFLECTION ──
-  let reflectionHtml = '';
-  if (sections.memoryReflection) {
-    const formatted = sections.memoryReflection
-      .split('\n\n')
-      .filter(p => p.trim())
-      .map(p => `<p style="margin:0 0 8px;font-size:12px;line-height:1.6;color:#b0b0c0">${p.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#e0e0e0">$1</strong>')}</p>`)
-      .join('');
-    reflectionHtml = `
-    <div style="margin-bottom:24px">
-      <p style="margin:0 0 10px;font-size:11px;color:#a855f7;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">Weekly Reflection</p>
-      <div style="background:#111;border:1px solid #222;border-radius:6px;padding:16px 20px">${formatted}</div>
-    </div>`;
-  }
-
-  // ── Section 4: AWAITING ACTION ──
+  // ── AWAITING ACTION — capped, grouped ──
   let awaitingHtml = '';
-  // Split agenda into proposed actions vs regular high-priority items
-  const proposedAgenda = sections.agendaItems.filter(a => a.item.startsWith('[PROPOSED ACTION]'));
-  const highAgenda = sections.agendaItems.filter(a => a.priority === 'high' && !a.item.startsWith('[PROPOSED ACTION]'));
-  if (sections.proposedTasks.length > 0 || proposedAgenda.length > 0 || highAgenda.length > 0) {
-    const proposedTaskRows = sections.proposedTasks.map(t => `
+  {
+    const isSkillEvo = (t: DigestTask) =>
+      /\[skill-evolution\]|prism synthesis|promote mindspring/i.test(t.title);
+    const skillEvoTasks = sections.proposedTasks.filter(isSkillEvo);
+    const otherProposedTasks = sections.proposedTasks.filter(t => !isSkillEvo(t)).slice(0, 3);
+
+    const isSentinel = (a: DigestAgendaItem) => /^\[SENTINEL/i.test(a.item);
+    const isDeadline = (a: DigestAgendaItem) => /^upcoming_deadlines:/i.test(a.item);
+    const isProposedAction = (a: DigestAgendaItem) => a.item.startsWith('[PROPOSED ACTION]');
+
+    const sentinelItems = sections.agendaItems.filter(isSentinel);
+    const proposedActionItems = sections.agendaItems.filter(isProposedAction).slice(0, 2);
+    const regularHigh = sections.agendaItems
+      .filter(a => a.priority === 'high' && !isSentinel(a) && !isDeadline(a) && !isProposedAction(a))
+      .slice(0, 3);
+
+    const hasContent =
+      otherProposedTasks.length > 0 || skillEvoTasks.length > 0 ||
+      sentinelItems.length > 0 || deadlineAgenda.length > 0 ||
+      proposedActionItems.length > 0 || regularHigh.length > 0;
+
+    if (hasContent) {
+      // Deadlines first — time-sensitive
+      const deadlineRows = deadlineAgenda.map(a => {
+        const text = a.item.replace(/^upcoming_deadlines:\s*/i, '');
+        return `
+        <div style="background:#1a0f00;border:1px solid #333;border-left:3px solid #f5a623;border-radius:4px;padding:8px 12px;margin-bottom:6px">
+          <span style="font-size:10px;font-weight:700;color:#f5a623;text-transform:uppercase;letter-spacing:1px">DEADLINE</span>
+          <p style="margin:4px 0 0;font-size:13px;color:#ccc">${text}</p>
+        </div>`;
+      }).join('');
+
+      // Non-skill-evo proposed tasks (capped at 3)
+      const proposedTaskRows = otherProposedTasks.map(t => `
       <div style="background:#111;border:1px solid #222;border-left:3px solid #a855f7;border-radius:4px;padding:8px 12px;margin-bottom:6px">
         <div>${statusBadge('pending')}<span style="font-size:11px;color:#888;font-family:monospace">${t.repo} · ${t.category}</span></div>
         <p style="margin:4px 0 0;font-size:13px;color:#ccc">${t.title}</p>
         <p style="margin:4px 0 0;font-size:11px;color:#a855f7">Awaiting approval · ID: ${t.id.slice(0, 8)}</p>
       </div>`).join('');
 
-    // Proposed action agenda items with expiry countdown (auto-expire at 7d)
-    const proposedAgendaRows = proposedAgenda.map(a => {
-      const ageDays = Math.floor((Date.now() - new Date(a.created_at ?? Date.now()).getTime()) / 86_400_000);
-      const daysLeft = Math.max(0, 7 - ageDays);
-      const expiryNote = daysLeft <= 2 ? `<span style="color:#ff6b6b"> expires in ${daysLeft}d</span>` : `<span style="color:#888"> ${daysLeft}d until auto-expire</span>`;
-      return `
-      <div style="background:#111;border:1px solid #222;border-left:3px solid #a855f7;border-radius:4px;padding:8px 12px;margin-bottom:6px">
-        <span style="font-size:11px;color:#888;font-family:monospace">#${a.id} · proposed${expiryNote}</span>
-        <p style="margin:4px 0 0;font-size:13px;color:#ccc">${a.item.replace('[PROPOSED ACTION] ', '')}</p>
-      </div>`;
-    }).join('');
+      // Skill-evolution collapsed to one row
+      const skillEvoRow = skillEvoTasks.length > 0
+        ? `<div style="background:#111;border:1px solid #222;border-left:3px solid #555;border-radius:4px;padding:8px 12px;margin-bottom:6px">
+            <div>${statusBadge('pending')}<span style="font-size:11px;color:#666;font-family:monospace">skill-evolution · batch</span></div>
+            <p style="margin:4px 0 0;font-size:13px;color:#888">${skillEvoTasks.length} skill-evolution proposal${skillEvoTasks.length !== 1 ? 's' : ''} pending — use aegis_batch_approve to review</p>
+          </div>`
+        : '';
 
-    const agendaRows = highAgenda.map(a => `
+      // Proposed action agenda items (capped at 2)
+      const proposedActionRows = proposedActionItems.map(a => {
+        const ageDays = Math.floor((Date.now() - new Date(a.created_at ?? Date.now()).getTime()) / 86_400_000);
+        const daysLeft = Math.max(0, 7 - ageDays);
+        const expiryNote = daysLeft <= 2
+          ? `<span style="color:#ff6b6b"> expires in ${daysLeft}d</span>`
+          : `<span style="color:#888"> ${daysLeft}d left</span>`;
+        return `
+        <div style="background:#111;border:1px solid #222;border-left:3px solid #a855f7;border-radius:4px;padding:8px 12px;margin-bottom:6px">
+          <span style="font-size:11px;color:#888;font-family:monospace">#${a.id} · proposed${expiryNote}</span>
+          <p style="margin:4px 0 0;font-size:13px;color:#ccc">${a.item.replace('[PROPOSED ACTION] ', '')}</p>
+        </div>`;
+      }).join('');
+
+      // Regular high-priority items (capped at 3)
+      const regularRows = regularHigh.map(a => `
       <div style="background:#111;border:1px solid #222;border-left:3px solid #ff6b6b;border-radius:4px;padding:8px 12px;margin-bottom:6px">
-        <span style="font-size:11px;color:#888;font-family:monospace">#${a.id} · ${a.priority}</span>
+        <span style="font-size:11px;color:#888;font-family:monospace">#${a.id} · high</span>
         <p style="margin:4px 0 0;font-size:13px;color:#ccc">${a.item}</p>
       </div>`).join('');
 
-    // Review prompt only when proposals exist
-    const reviewPrompt = proposedAgenda.length > 0
-      ? `<p style="margin:8px 0 0;font-size:11px;color:#a855f7">${proposedAgenda.length} proposed action${proposedAgenda.length !== 1 ? 's' : ''} awaiting review. Unapproved proposals auto-expire after 7 days.</p>`
-      : '';
+      // Sentinel items — shown as chronic, not daily action items
+      const sentinelRows = sentinelItems.length > 0
+        ? `<div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1a1a">
+            <p style="margin:0 0 6px;font-size:10px;color:#444;text-transform:uppercase;letter-spacing:1px">Chronic (${sentinelItems.length})</p>
+            ${sentinelItems.map(a => {
+              const ageDays = Math.floor((Date.now() - new Date(a.created_at ?? Date.now()).getTime()) / 86_400_000);
+              const label = a.item.replace(/^\[SENTINEL[^\]]*\]\s*/i, '').slice(0, 80);
+              return `<p style="margin:0 0 3px;font-size:11px;color:#444;font-family:monospace">#${a.id} · day ${ageDays} · ${label}</p>`;
+            }).join('')}
+          </div>`
+        : '';
 
-    awaitingHtml = `
-    <div style="margin-bottom:24px">
-      <p style="margin:0 0 10px;font-size:11px;color:#a855f7;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">Awaiting Action</p>
-      ${proposedTaskRows}
-      ${proposedAgendaRows}
-      ${agendaRows}
-      ${reviewPrompt}
-    </div>`;
+      awaitingHtml = `
+      <div style="margin-bottom:24px">
+        <p style="margin:0 0 10px;font-size:11px;color:#a855f7;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px">Awaiting Action</p>
+        ${deadlineRows}
+        ${proposedTaskRows}
+        ${skillEvoRow}
+        ${proposedActionRows}
+        ${regularRows}
+        ${sentinelRows}
+      </div>`;
+    }
   }
 
-  // ── Section 5: STATS BAR ──
+  // ── STATS BAR ──
   const stats = [
     `${sections.completedTasks.length + sections.failedTasks.length} tasks`,
     `${sections.proposedTasks.length} proposed`,
     `${sections.agendaItems.length} agenda`,
-    `${sections.healthChecks.length} health checks`,
   ];
-  if (sections.eventNotifications.length > 0) stats.push(`${sections.eventNotifications.length} events`);
   if (sections.serviceAlerts.length > 0) stats.push(`${sections.serviceAlerts.length} alerts`);
   if (sections.devActivity) stats.push(`${sections.devActivity.total_users} users`);
-  if (sections.bizopsInteractions !== null) stats.push(`${sections.bizopsInteractions} interactions`);
 
   const statsHtml = `<p style="margin:0;padding:12px 0;font-size:11px;color:#555;border-top:1px solid #222;text-align:center">${stats.join(' · ')}</p>`;
 
-  const hasContent = metricsHtml || cofounderHtml || workShippedHtml || operatorLogHtml || healthHtml || eventsHtml || serviceAlertsHtml || analyticsHtml || devActivityHtml || reflectionHtml || awaitingHtml;
+  const hasContent = leadHtml || workShippedHtml || serviceAlertsHtml || healthHtml || analyticsHtml || awaitingHtml;
 
   const html = `<!DOCTYPE html>
 <html>
@@ -715,7 +575,7 @@ export async function sendDailyDigest(
       <p style="margin:0 0 2px;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px">AEGIS — Co-Founder Brief</p>
       <p style="margin:0;font-size:18px;font-weight:600;color:#fff">${date}</p>
     </div>
-    ${hasContent ? `${metricsHtml}${cofounderHtml}${workShippedHtml}${operatorLogHtml}${healthHtml}${eventsHtml}${serviceAlertsHtml}${analyticsHtml}${devActivityHtml}${reflectionHtml}${awaitingHtml}` : '<p style="font-size:13px;color:#888;margin-bottom:20px">No significant activity in the last 24 hours.</p>'}
+    ${hasContent ? `${leadHtml}${workShippedHtml}${serviceAlertsHtml}${healthHtml}${analyticsHtml}${awaitingHtml}` : '<p style="font-size:13px;color:#888;margin-bottom:20px">No significant activity in the last 24 hours.</p>'}
     ${statsHtml}
     <p style="margin:12px 0 0;font-size:11px;color:#444">aegis-web · daily digest · ${new Date().toISOString()}</p>
   </div>
