@@ -1174,8 +1174,11 @@ describe('insights.ts', () => {
 // consolidation.ts
 // ════════════════════════════════════════════════════════════════
 
-// consolidateEpisodicToSemantic depends on askGroq, so we test
-// the guards and parsing logic by controlling the DB mock returns.
+// consolidateEpisodicToSemantic depends on askGroq + writeDreamFact (wiki),
+// so we test the guards and parsing logic by controlling the DB mock
+// returns and mocking the dream-write module. Redesigned for the #457
+// wiki unification (aegis-oss#78) — writes route through scope:dreams
+// wiki pages instead of the memory-worker fragment store.
 
 import { consolidateEpisodicToSemantic } from '../src/kernel/memory/consolidation.js';
 
@@ -1187,12 +1190,29 @@ vi.mock('../src/groq.js', () => ({
 import { askGroq } from '../src/groq.js';
 const mockAskGroq = vi.mocked(askGroq);
 
+vi.mock('../src/kernel/memory/dream-write.js', () => ({
+  writeDreamFact: vi.fn(),
+}));
+
+import { writeDreamFact } from '../src/kernel/memory/dream-write.js';
+const mockWriteDreamFact = vi.mocked(writeDreamFact);
+
+const testWikiEnv = { wikiBinding: {} as any, wikiToken: 'test-token' };
+
 describe('consolidation.ts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   describe('consolidateEpisodicToSemantic', () => {
+    it('skips when no wiki env is configured', async () => {
+      const db = createMockDb({});
+
+      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3');
+
+      expect(mockAskGroq).not.toHaveBeenCalled();
+    });
+
     it('skips when fewer than 3 episodes since last run', async () => {
       const db = createMockDb({
         // last consolidation watermark
@@ -1203,7 +1223,7 @@ describe('consolidation.ts', () => {
         ]],
       });
 
-      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3');
+      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3', undefined, testWikiEnv);
 
       expect(mockAskGroq).not.toHaveBeenCalled();
     });
@@ -1218,59 +1238,20 @@ describe('consolidation.ts', () => {
 
       const db = createMockDb({
         firstResults: [null], // no watermark
-        allResults: [
-          episodes,           // episodes query
-          [],                 // existing memory
-        ],
+        allResults: [episodes], // episodes query
         runMeta: [{ changes: 1 }], // watermark update
       });
 
-      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3');
+      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3', undefined, testWikiEnv);
 
       expect(mockAskGroq).toHaveBeenCalledOnce();
     });
 
-    it('processes ADD operations from Groq response', async () => {
-      const addOps = JSON.stringify([
-        { operation: 'ADD', topic: 'aegis', fact: 'Version 1.30.1 deployed successfully on 2026-03-10', confidence: 0.85 },
+    it('writes a dream page for genuine facts from Groq response', async () => {
+      const facts = JSON.stringify([
+        { topic: 'aegis', fact: 'Version 1.30.1 deployed successfully on 2026-03-10', confidence: 0.85 },
       ]);
-      mockAskGroq.mockResolvedValue(addOps);
-
-      const episodes = Array.from({ length: 5 }, (_, i) => ({
-        id: i + 1, intent_class: 'chat', channel: 'web',
-        summary: `Episode ${i}`, outcome: 'success', cost: 0.01,
-      }));
-
-      const db = createMockDb({
-        firstResults: [
-          null, // watermark
-        ],
-        allResults: [
-          episodes,  // episodes query
-        ],
-        runMeta: [
-          { changes: 1 }, // watermark update
-        ],
-      });
-
-      // ADD operations require memoryBinding (source uses memoryBinding.store)
-      const mockStore = vi.fn().mockResolvedValue(undefined);
-      const mockRecallFn = vi.fn().mockResolvedValue([]);
-      const memBinding = { store: mockStore, recall: mockRecallFn, forget: vi.fn(), health: vi.fn() };
-
-      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3', undefined, memBinding as any);
-
-      // Should have stored via memoryBinding
-      expect(mockStore).toHaveBeenCalledWith('aegis', expect.arrayContaining([
-        expect.objectContaining({ content: expect.stringContaining('Version 1.30.1'), topic: 'aegis' }),
-      ]));
-    });
-
-    it('processes DELETE operations from Groq response', async () => {
-      const deleteOps = JSON.stringify([
-        { operation: 'DELETE', target_id: 42, reason: 'obsolete' },
-      ]);
-      mockAskGroq.mockResolvedValue(deleteOps);
+      mockAskGroq.mockResolvedValue(facts);
 
       const episodes = Array.from({ length: 5 }, (_, i) => ({
         id: i + 1, intent_class: 'chat', channel: 'web',
@@ -1279,27 +1260,23 @@ describe('consolidation.ts', () => {
 
       const db = createMockDb({
         firstResults: [null], // watermark
-        allResults: [
-          episodes,
-          [], // existing memory
-        ],
-        runMeta: [
-          { changes: 1 }, // soft delete
-          { changes: 1 }, // watermark
-        ],
+        allResults: [episodes], // episodes query
+        runMeta: [{ changes: 1 }], // watermark update
       });
 
-      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3');
+      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3', undefined, testWikiEnv);
 
-      const deleteQuery = db._queries.find(q => q.sql.includes('valid_until') && q.sql.includes('UPDATE'));
-      expect(deleteQuery).toBeDefined();
+      expect(mockWriteDreamFact).toHaveBeenCalledWith(testWikiEnv, expect.objectContaining({
+        fact: expect.stringContaining('Version 1.30.1'),
+        source: 'episodic_consolidation',
+      }));
     });
 
-    it('skips ADD operations with short facts (< 30 chars)', async () => {
-      const ops = JSON.stringify([
-        { operation: 'ADD', topic: 'aegis', fact: 'Too short', confidence: 0.8 },
+    it('skips facts with short text (< 30 chars)', async () => {
+      const facts = JSON.stringify([
+        { topic: 'aegis', fact: 'Too short', confidence: 0.8 },
       ]);
-      mockAskGroq.mockResolvedValue(ops);
+      mockAskGroq.mockResolvedValue(facts);
 
       const episodes = Array.from({ length: 5 }, (_, i) => ({
         id: i + 1, intent_class: 'chat', channel: 'web',
@@ -1308,15 +1285,13 @@ describe('consolidation.ts', () => {
 
       const db = createMockDb({
         firstResults: [null],
-        allResults: [episodes, []],
-        runMeta: [{ changes: 1 }], // only watermark
+        allResults: [episodes],
+        runMeta: [{ changes: 1 }], // watermark only
       });
 
-      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3');
+      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3', undefined, testWikiEnv);
 
-      // Should NOT have inserted any memory (short fact filtered)
-      const insertQuery = db._queries.find(q => q.sql.includes('INSERT INTO memory_entries'));
-      expect(insertQuery).toBeUndefined();
+      expect(mockWriteDreamFact).not.toHaveBeenCalled();
     });
 
     it('handles malformed Groq response gracefully', async () => {
@@ -1329,55 +1304,40 @@ describe('consolidation.ts', () => {
 
       const db = createMockDb({
         firstResults: [null],
-        allResults: [episodes, []],
+        allResults: [episodes],
       });
 
       // Should not throw
       await expect(
-        consolidateEpisodicToSemantic(db, 'fake-key', 'llama3')
+        consolidateEpisodicToSemantic(db, 'fake-key', 'llama3', undefined, testWikiEnv)
       ).resolves.not.toThrow();
+
+      expect(mockWriteDreamFact).not.toHaveBeenCalled();
     });
 
-    it('caps operations at 3 per run', async () => {
-      const ops = JSON.stringify([
-        { operation: 'ADD', topic: 'a', fact: 'Fact about system A with version 1.0 deployed', confidence: 0.8 },
-        { operation: 'ADD', topic: 'b', fact: 'Fact about system B with version 2.0 deployed', confidence: 0.8 },
-        { operation: 'ADD', topic: 'c', fact: 'Fact about system C with version 3.0 deployed', confidence: 0.8 },
-        { operation: 'ADD', topic: 'd', fact: 'Fact about system D with version 4.0 should be skipped', confidence: 0.8 },
+    it('caps facts at 3 per run', async () => {
+      const facts = JSON.stringify([
+        { topic: 'a', fact: 'Fact about system A with version 1.0 deployed', confidence: 0.8 },
+        { topic: 'b', fact: 'Fact about system B with version 2.0 deployed', confidence: 0.8 },
+        { topic: 'c', fact: 'Fact about system C with version 3.0 deployed', confidence: 0.8 },
+        { topic: 'd', fact: 'Fact about system D with version 4.0 should be skipped', confidence: 0.8 },
       ]);
-      mockAskGroq.mockResolvedValue(ops);
+      mockAskGroq.mockResolvedValue(facts);
 
       const episodes = Array.from({ length: 5 }, (_, i) => ({
         id: i + 1, intent_class: 'chat', channel: 'web',
         summary: `Episode ${i}`, outcome: 'success', cost: 0.01,
       }));
 
-      // We need enough mock results for 3 recordMemory calls
       const db = createMockDb({
-        firstResults: [
-          null, // watermark
-          null, null, null, // 3x recordMemory phase 1 (no hash dup)
-        ],
-        allResults: [
-          episodes,
-          [], // existing memory
-          [], [], [], // 3x recordMemory phase 2
-        ],
-        runMeta: [
-          { changes: 1, last_row_id: 50 },
-          { changes: 1, last_row_id: 51 },
-          { changes: 1, last_row_id: 52 },
-          { changes: 1 }, // watermark
-        ],
+        firstResults: [null], // watermark
+        allResults: [episodes],
+        runMeta: [{ changes: 1 }], // watermark update
       });
 
-      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3');
+      await consolidateEpisodicToSemantic(db, 'fake-key', 'llama3', undefined, testWikiEnv);
 
-      // Count INSERT queries for memory_entries (not watermark)
-      const inserts = db._queries.filter(q =>
-        q.sql.includes('INSERT INTO memory_entries')
-      );
-      expect(inserts.length).toBeLessThanOrEqual(3);
+      expect(mockWriteDreamFact).toHaveBeenCalledTimes(3);
     });
   });
 });

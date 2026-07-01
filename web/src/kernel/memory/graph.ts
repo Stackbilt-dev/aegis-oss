@@ -9,7 +9,18 @@
 
 // ─── Node Type Classification ────────────────────────────────────────────────
 
-import { WasmGraph } from '@stackbilt/wasm-core';
+// Lazy import: @stackbilt/wasm-core calls wasm.__wbindgen_start() at module
+// init time, which fails CF Workers validation (wasm is a Module, not an
+// instantiated Instance, during the validation pass). Dynamic import defers
+// initialization until the function body runs under the actual CF runtime.
+let _WasmGraph: typeof import('@stackbilt/wasm-core').WasmGraph | null = null;
+async function getWasmGraph(): Promise<typeof import('@stackbilt/wasm-core').WasmGraph> {
+  if (!_WasmGraph) {
+    const mod = await import('@stackbilt/wasm-core');
+    _WasmGraph = mod.WasmGraph;
+  }
+  return _WasmGraph;
+}
 import type { NodeType, SourceSystem } from '../../schema-enums.js';
 export type { SourceSystem } from '../../schema-enums.js';
 
@@ -216,6 +227,7 @@ export async function activateGraph(
 
   if (nodesResult.results.length === 0) return [];
 
+  const WasmGraph = await getWasmGraph();
   const graph = WasmGraph.fromSnapshotArrays(nodesResult.results, edgesResult.results);
   try {
     const raw = graph.spreadActivation(query, hops, 10);

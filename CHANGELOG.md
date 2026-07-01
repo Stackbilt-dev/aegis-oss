@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+- **Memory unification follow-up (aegis-oss#78)**: `consolidateEpisodicToSemantic` (`kernel/memory/consolidation.ts`) redesigned to write through `writeDreamFact()` (new `kernel/memory/dream-write.ts`) into the wiki's `dreams` scope, instead of writing raw fragments straight into the memory-worker fragment store — this was the deferred piece of the #457 wiki unification the original decision doc flagged as needing design work. Consolidation is now purely additive (extract 0-3 genuine facts per cycle, write each as its own dream page); the old ADD/UPDATE/DELETE-by-fragment-id model doesn't map cleanly onto wiki pages, so update/delete semantics are dropped in favor of the dreams lifecycle (promote on corroboration, archive if stale) already used by PRISM's cross-domain synthesis.
+- Removed `publishInsightsFromMemory()` from `kernel/scheduled/consolidation.ts` — this CRIX insight-publishing step called `publishInsight()`/`validateInsight()` against a D1 table literally named `memory`, which is never created by any migration in this repo or in aegis-daemon. Every invocation was silently failing (caught and logged as a warning) on every consolidation cycle. `insights.ts`'s public API (`publishInsight`, `validateInsight`, `promoteInsight`, `listInsights`, etc.) is left intact as OSS surface for downstream consumers — only the internal, broken call site was removed.
+
 ### Added
 - OTDD contract test suites for all five bounded contexts — AgendaItem (48 tests), CCTask (53 tests), Goal (65 tests), ExecutorRouter I1/I2 violation paths (4 tests), and MemoryEntry/CRIX pipeline (33 tests). Tests are derived directly from `.contract.ts` schema, state machine, invariant, and authority declarations with no mocks.
 
