@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.4 (2026-09-24)
+
+### Added
+- `npm run setup` sets up a deployment in one command. It checks the wrangler login, creates (or reuses) the D1 database, writes `wrangler.toml` from the example, applies `schema.sql`, deploys, sets a generated `AEGIS_TOKEN` after the deploy, checks `/health`, and prints the URL and token. `--dry-run` prints every command and changes nothing, `--name` skips the prompt, and it refuses to overwrite an existing `wrangler.toml` without `--force`. The pure helpers (config rendering, D1 id lookup, name validation) are tested against the committed `wrangler.toml.example`.
+
+### Changed
+- The `dev` and `deploy` scripts call `npm run build:ui` instead of `pnpm build:ui`, so they work whichever package manager installed the project. The getting-started guide has always said `npm install`.
+
 ## 0.9.3 (2026-09-24)
 
 ### Changed

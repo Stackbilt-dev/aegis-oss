@@ -9,6 +9,26 @@ Deploy your own AEGIS agent on Cloudflare Workers in under 10 minutes.
 - Workers AI enabled in your Cloudflare account
 - Optional: external model keys for Claude or Groq if you want those executors
 
+## Fast path: one command
+
+```bash
+git clone https://github.com/Stackbilt-dev/aegis-oss.git
+cd aegis-oss/web
+npm install
+npx wrangler login      # once per machine
+npm run setup
+```
+
+`npm run setup` performs steps 2–8 below:
+- creates (or reuses) the D1 database and writes `wrangler.toml`;
+- applies the schema;
+- deploys, and sets a generated `AEGIS_TOKEN`;
+- checks `/health`.
+
+It prints your URL and token at the end; save the token. Pass `--name <name>` to skip the prompt, or `--dry-run` to see every command without running any. It refuses to overwrite an existing `wrangler.toml` unless you pass `--force`.
+
+The rest of this page is the same setup done by hand.
+
 ## 1. Clone and install
 
 ```bash

@@ -1,6 +1,6 @@
 {
   "name": "@stackbilt/aegis-core",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "Persistent AI agent framework for Cloudflare Workers. Multi-tier memory, autonomous goals, dreaming cycles, MCP native.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -82,15 +82,16 @@
     "./factory/executor": "./src/factory/executor.ts"
   },
   "scripts": {
-    "dev": "pnpm build:ui && wrangler dev",
-    "deploy": "pnpm build:ui && wrangler deploy",
+    "dev": "npm run build:ui && wrangler dev",
+    "deploy": "npm run build:ui && wrangler deploy",
     "build:ui": "vite build --config vite.ui.config.ts",
     "d1:create": "wrangler d1 create aegis-web",
     "d1:migrate": "wrangler d1 execute aegis-web --file=schema.sql",
     "d1:migrate:local": "wrangler d1 execute aegis-web --file=schema.sql --local",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "setup": "node scripts/setup.mjs"
   },
   "dependencies": {
     "@cloudflare/sandbox": "0.12.1",
@@ -127,7 +128,9 @@
     "public/**/*",
     "schema.sql",
     "migrations/*.sql",
-    "Dockerfile.sandbox"
+    "Dockerfile.sandbox",
+    "scripts/setup.mjs",
+    "scripts/setup-lib.mjs"
   ],
   "pnpm": {
     "onlyBuiltDependencies": [
