@@ -5,8 +5,12 @@
 ### Added
 - `npm run setup` sets up a deployment in one command. It checks the wrangler login, creates (or reuses) the D1 database, writes `wrangler.toml` from the example, applies `schema.sql`, deploys, sets a generated `AEGIS_TOKEN` after the deploy, checks `/health`, and prints the URL and token. `--dry-run` prints every command and changes nothing, `--name` skips the prompt, and it refuses to overwrite an existing `wrangler.toml` without `--force`. The pure helpers (config rendering, D1 id lookup, name validation) are tested against the committed `wrangler.toml.example`.
 
+- Setup confirms the new token signs in, polling an authenticated route. A new secret takes about 10 seconds to reach the Worker, and the live test saw a 401 right after setting it.
+
 ### Changed
-- The `dev` and `deploy` scripts call `npm run build:ui` instead of `pnpm build:ui`, so they work whichever package manager installed the project. The getting-started guide has always said `npm install`.
+- The install step is `pnpm install`, and the docs now say so. A clean `npm install` fails on this dependency tree: npm 11's peer resolver crashes. The guide had said `npm install`. `ai` is now a direct dependency (`^6.0.208`, the version the lockfile already used) because `agents` requires `ai@^6`.
+- The `dev` and `deploy` scripts call `npm run build:ui` instead of `pnpm build:ui`, so they don't depend on which tool runs them.
+- Verified live: from a clean clone, `pnpm install --frozen-lockfile` then `pnpm run setup --name aegis-setup-canary` created the database, applied the schema (30 tables), deployed, set the token, and passed `/health`, on a real Cloudflare account. The canary was deleted afterwards.
 
 ## 0.9.3 (2026-09-24)
 

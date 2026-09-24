@@ -14,16 +14,19 @@ Deploy your own AEGIS agent on Cloudflare Workers in under 10 minutes.
 ```bash
 git clone https://github.com/Stackbilt-dev/aegis-oss.git
 cd aegis-oss/web
-npm install
+corepack enable         # once per machine; provides pnpm
+pnpm install
 npx wrangler login      # once per machine
-npm run setup
+pnpm run setup          # not `pnpm setup`, which is a built-in pnpm command
 ```
 
-`npm run setup` performs steps 2–8 below:
+Use pnpm: the repository ships a pnpm lockfile, and a plain `npm install` fails to resolve this dependency tree.
+
+`pnpm run setup` performs steps 2–8 below:
 - creates (or reuses) the D1 database and writes `wrangler.toml`;
 - applies the schema;
 - deploys, and sets a generated `AEGIS_TOKEN`;
-- checks `/health`.
+- checks `/health` and confirms the new token signs in.
 
 It prints your URL and token at the end; save the token. Pass `--name <name>` to skip the prompt, or `--dry-run` to see every command without running any. It refuses to overwrite an existing `wrangler.toml` unless you pass `--force`.
 
@@ -34,7 +37,8 @@ The rest of this page is the same setup done by hand.
 ```bash
 git clone https://github.com/Stackbilt-dev/aegis-oss.git
 cd aegis-oss/web
-npm install
+corepack enable   # provides pnpm
+pnpm install
 ```
 
 ## 2. Configure Wrangler

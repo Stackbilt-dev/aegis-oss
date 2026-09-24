@@ -66,8 +66,9 @@ You need Node 22+, a Cloudflare account (the free tier works) and `npx wrangler 
 ```bash
 git clone https://github.com/Stackbilt-dev/aegis-oss.git
 cd aegis-oss/web
-npm install
-npm run setup
+corepack enable        # once per machine; provides pnpm
+pnpm install
+pnpm run setup         # "run" matters: `pnpm setup` is a different, built-in command
 ```
 
 `setup` does the following:
@@ -76,9 +77,9 @@ npm run setup
 - applies the schema;
 - deploys;
 - sets a generated `AEGIS_TOKEN`;
-- checks `/health`, then prints your URL and token.
+- checks `/health` and confirms the token signs in, then prints your URL and token.
 
-`npm run setup -- --dry-run` prints every command without changing anything. The manual steps are in [docs/getting-started.md](docs/getting-started.md).
+`pnpm run setup --dry-run` prints every command without changing anything. The manual steps are in [docs/getting-started.md](docs/getting-started.md).
 
 Visit your Worker URL and sign in with the `AEGIS_TOKEN` setup printed. The embedded console uses Workers AI for the base chat and voice path; Claude and Groq keys are optional executor upgrades.
 
