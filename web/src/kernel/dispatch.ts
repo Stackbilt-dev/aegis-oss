@@ -44,6 +44,8 @@ export interface EdgeEnv {
   resendApiKey: string;
   resendApiKeyPersonal: string;
   githubToken: string;
+  /** Sandbox task executor namespace, when the Worker binds one. */
+  taskExecutor?: DurableObjectNamespace;
   githubRepo: string;
   braveApiKey: string;
   notifyEmail: string;

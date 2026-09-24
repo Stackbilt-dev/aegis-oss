@@ -29,6 +29,7 @@ Built on Cloudflare Workers for edge-native deployment. Zero cold starts. Global
 
 ### Core Capabilities
 
+- **Sandbox Task Executor** *(optional, new in 0.9.0)* — Runs a coding task in a Cloudflare Sandbox container and opens a pull request only if the task's acceptance contract passes: the diff, file contents, and a fresh vitest run the executor starts itself. Fork mode delivers PRs to repositories you don't own. See [docs/sandbox-executor.md](docs/sandbox-executor.md).
 - **Cognitive Kernel** — Workers AI-first dispatch with optional Claude and Groq executors, plus procedural memory routing. The right model for the right task, automatically.
 - **Multi-Tier Memory** — Episodic (what happened), semantic (what matters), procedural (what works), narrative (the story arc). Memory consolidates, decays, and strengthens over time.
 - **Autonomous Goals** — Set goals with standing orders and let AEGIS pursue them on a schedule. Progress tracked, blockers surfaced, results reported.
@@ -216,6 +217,7 @@ AEGIS runs 26 tasks on an hourly cron, split into heartbeat (always-run) and tim
 | Resend | `RESEND_API_KEY` | Email notifications and daily digest |
 | Memory Worker | Service Binding | Persistent semantic memory with vector search |
 | TarotScript | Service Binding | Deterministic symbolic reasoning |
+| Sandbox task executor | `GITHUB_TOKEN` + Containers (Workers Paid) | Acceptance-gated pull requests from sandboxed coding tasks ([guide](docs/sandbox-executor.md)) |
 
 ## Tech Stack
 
@@ -237,6 +239,7 @@ The production AEGIS instance is live at **[aegis.stackbilt.dev/health](https://
 AEGIS pairs with other Stackbilt open-source tools:
 
 - **[cc-taskrunner](https://github.com/Stackbilt-dev/cc-taskrunner)** — Autonomous task queue for Claude Code. Safety hooks, branch isolation, PR creation.
+- **[agent-acceptance](https://github.com/Stackbilt-dev/agent-acceptance)** — The same acceptance contract as a GitHub Action: check any agent's PR against the issue it closes.
 - **[Charter](https://github.com/Stackbilt-dev/charter)** — AI agent governance CLI. Modular .ai/ files replace monolithic CLAUDE.md configs.
 - **[MindSpring](https://github.com/Stackbilt-dev/mindspring)** — Semantic search over ChatGPT/Claude conversation exports.
 - **[Social Sentinel](https://github.com/Stackbilt-dev/social-sentinel)** — Privacy-first social media sentiment monitoring.
@@ -250,6 +253,7 @@ AEGIS pairs with other Stackbilt open-source tools:
 - [Connecting MCP Clients](docs/connecting-mcp-clients.md) — OpenClaw, Claude Desktop, Claude Code, Cursor, and any MCP client
 - [AEGIS 0.8.0 Demo Script](docs/demo-script-0.8.0.md) — Browser console plus CLI proof path
 - [AEGIS 0.8.0 Proof of Work](docs/proof-of-work-0.8.0.md) — Release evidence and validation notes
+- [Sandbox Task Executor](docs/sandbox-executor.md) — Acceptance-gated pull requests from sandboxed coding tasks, including fork mode
 - [Publishing](docs/publishing.md) — Release workflow, npm trusted publishing, and token fallback
 
 ## Contributing

@@ -6,7 +6,8 @@ import { generateDecisionDoc } from '../decision-docs.js';
 import { createDynamicTool, getDynamicTool, listDynamicTools, executeDynamicTool, invalidateToolCache } from '../kernel/dynamic-tools.js';
 import { buildEdgeEnv } from '../edge-env.js';
 import type { MessageMetadata } from '../types.js';
-import { TASK_CATEGORIES, TASK_AUTHORITIES, validateEnum } from '../schema-enums.js';
+import { TASK_CATEGORIES, TASK_AUTHORITIES, TASK_EXECUTORS, validateEnum } from '../schema-enums.js';
+import { acceptanceAdmissionError, parseAcceptanceSpec } from '../factory/acceptance.js';
 
 // ─── Tool Handler Types ──────────────────────────────────────
 
@@ -310,16 +311,25 @@ export async function toolAegisCreateCcTask(args: Record<string, unknown>, env: 
 
   const category = validateEnum(TASK_CATEGORIES, args.category, 'feature');
   const authority = validateEnum(TASK_AUTHORITIES, args.authority, 'operator');
+  const executor = validateEnum(TASK_EXECUTORS, args.executor, 'claude_code');
   const businessUnit = (typeof args.business_unit === 'string' && args.business_unit.trim())
     ? args.business_unit.trim()
     : 'stackbilt';
 
-  await env.db.prepare(`
-    INSERT INTO cc_tasks (id, title, repo, prompt, completion_signal, priority, depends_on, blocked_by, max_turns, created_by, authority, category, business_unit)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'aegis', ?, ?, ?)
-  `).bind(id, title.trim(), repo.trim(), prompt.trim(), completionSignal, priority, dependsOn, blockedBy ? JSON.stringify(blockedBy) : null, maxTurns, authority, category, businessUnit).run();
+  // Sandbox tasks: a malformed acceptance block is always rejected, and
+  // unattended (auto_safe) tasks must declare one. The executor re-checks this,
+  // and its repository policy, when it claims the task.
+  if (executor === 'do_sandbox') {
+    const admission = acceptanceAdmissionError(parseAcceptanceSpec(prompt), authority);
+    if (admission) return { content: [{ type: 'text', text: `Error: ${admission}` }], isError: true };
+  }
 
-  return { content: [{ type: 'text', text: `Queued task "${title}" → ${repo} (ID: ${id}, priority: ${priority}, authority: ${authority}, category: ${category}, business_unit: ${businessUnit})` }] };
+  await env.db.prepare(`
+    INSERT INTO cc_tasks (id, title, repo, prompt, completion_signal, priority, depends_on, blocked_by, max_turns, created_by, authority, category, business_unit, executor)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'aegis', ?, ?, ?, ?)
+  `).bind(id, title.trim(), repo.trim(), prompt.trim(), completionSignal, priority, dependsOn, blockedBy ? JSON.stringify(blockedBy) : null, maxTurns, authority, category, businessUnit, executor).run();
+
+  return { content: [{ type: 'text', text: `Queued task "${title}" → ${repo} (ID: ${id}, priority: ${priority}, authority: ${authority}, category: ${category}, executor: ${executor}, business_unit: ${businessUnit})` }] };
 }
 
 export async function toolAegisListCcTasks(args: Record<string, unknown>, env: EdgeEnv): Promise<ToolResult> {

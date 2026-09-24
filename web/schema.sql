@@ -332,10 +332,13 @@ CREATE TABLE IF NOT EXISTS cc_tasks (
   utility_json TEXT,                              -- PR utility scoring: {impact, novelty, signals[]}
   github_issue_repo TEXT,                        -- source issue repo (e.g. 'my-org/aegis')
   github_issue_number INTEGER,                   -- source issue number (repo-scoped)
-  business_unit TEXT NOT NULL DEFAULT 'stackbilt' -- partition key for multi-BU operators
+  business_unit TEXT NOT NULL DEFAULT 'stackbilt', -- partition key for multi-BU operators
+  executor TEXT NOT NULL DEFAULT 'claude_code'   -- where it runs: claude_code (local runner) or do_sandbox (sandbox executor)
+    CHECK (executor IN ('claude_code', 'do_sandbox'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_cc_tasks_status ON cc_tasks(status, priority);
+CREATE INDEX IF NOT EXISTS idx_cc_tasks_executor ON cc_tasks(executor, status, priority);
 CREATE INDEX IF NOT EXISTS idx_cc_tasks_depends ON cc_tasks(depends_on);
 CREATE INDEX IF NOT EXISTS idx_cc_tasks_created ON cc_tasks(created_at);
 CREATE INDEX IF NOT EXISTS idx_cc_tasks_bu ON cc_tasks(business_unit, status);
