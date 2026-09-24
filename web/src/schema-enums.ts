@@ -71,6 +71,10 @@ export type TaskStatus = EnumValues<typeof TASK_STATUSES>;
 export const TASK_AUTHORITIES = ['proposed', 'auto_safe', 'operator'] as const;
 export type TaskAuthority = EnumValues<typeof TASK_AUTHORITIES>;
 
+/** Where a cc_task runs: a local `claude -p` task runner, or the sandbox task executor. */
+export const TASK_EXECUTORS = ['claude_code', 'do_sandbox'] as const;
+export type TaskExecutor = EnumValues<typeof TASK_EXECUTORS>;
+
 export const TASK_CATEGORIES = ['docs', 'tests', 'research', 'bugfix', 'feature', 'refactor', 'deploy'] as const;
 export type TaskCategory = EnumValues<typeof TASK_CATEGORIES>;
 

@@ -73,3 +73,30 @@ crons = ["0 * * * *"]
 # [[services]]
 # binding = "TAROTSCRIPT"
 # service = "tarotscript-worker"
+
+# ─── Optional: Sandbox task executor ─────────────────────────
+# Runs coding tasks in a Cloudflare Sandbox container and opens a pull request
+# only after the task's acceptance contract passes. Needs a Workers Paid plan
+# (Containers), a Docker-capable build (or deploy from CI), and GITHUB_TOKEN.
+# Your Worker must also export the classes:
+#   export { Sandbox } from '@stackbilt/aegis-core/factory';
+#   export const TaskExecutorDO = createTaskExecutorDO({ homeOrg: 'your-org', gitIdentity: { ... } });
+# Guide: docs/sandbox-executor.md. Uncomment all of the following to enable.
+#
+# [[containers]]
+# class_name = "Sandbox"
+# image = "./Dockerfile.sandbox"
+# instance_type = "basic"
+# max_instances = 2
+#
+# [[durable_objects.bindings]]
+# name = "TASK_SANDBOX"
+# class_name = "Sandbox"
+#
+# [[durable_objects.bindings]]
+# name = "TASK_EXECUTOR"
+# class_name = "TaskExecutorDO"
+#
+# [[migrations]]
+# tag = "v3-task-executor"
+# new_sqlite_classes = ["Sandbox", "TaskExecutorDO"]

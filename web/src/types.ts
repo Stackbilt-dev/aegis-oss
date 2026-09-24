@@ -6,6 +6,8 @@ export interface Env {
   AEGIS_TOKEN: string;
   ASSETS?: Fetcher;
   CHAT_SESSION?: DurableObjectNamespace;
+  /** Optional sandbox task executor (see `@stackbilt/aegis-core/factory`). */
+  TASK_EXECUTOR?: DurableObjectNamespace;
   AegisVoiceAdapter?: DurableObjectNamespace;
 
   // OAuth 2.1 (injected by OAuthProvider wrapper at runtime)

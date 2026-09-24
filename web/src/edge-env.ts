@@ -31,6 +31,7 @@ export function buildEdgeEnv(env: Env, ctx?: ExecutionContext): EdgeEnv {
     resendApiKey: env.RESEND_API_KEY,
     resendApiKeyPersonal: env.RESEND_API_KEY_PERSONAL,
     githubToken: env.GITHUB_TOKEN,
+    taskExecutor: env.TASK_EXECUTOR,
     githubRepo: env.GITHUB_REPO,
     braveApiKey: env.BRAVE_API_KEY,
     notifyEmail: env.AEGIS_NOTIFY_EMAIL,

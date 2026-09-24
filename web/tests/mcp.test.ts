@@ -834,6 +834,43 @@ describe('MCP Tool Handlers', () => {
       );
       expect(result.content[0].text).toContain('feature');
     });
+
+    it('defaults to the claude_code executor', async () => {
+      const env = makeEnv();
+      const result = await handlers.toolAegisCreateCcTask({ title: 'T', repo: 'r', prompt: 'p' }, env as any);
+      expect(result.content[0].text).toContain('executor: claude_code');
+    });
+
+    it('queues a do_sandbox task that carries a valid acceptance block', async () => {
+      const env = makeEnv();
+      const prompt = 'Fix it.\n\n```acceptance\n{"max_added_lines": 10}\n```';
+      const result = await handlers.toolAegisCreateCcTask(
+        { title: 'T', repo: 'r', prompt, executor: 'do_sandbox', authority: 'auto_safe' },
+        env as any,
+      );
+      expect(result.isError).toBeUndefined();
+      expect(result.content[0].text).toContain('executor: do_sandbox');
+    });
+
+    it('rejects an auto_safe do_sandbox task without an acceptance block', async () => {
+      const env = makeEnv();
+      const result = await handlers.toolAegisCreateCcTask(
+        { title: 'T', repo: 'r', prompt: 'Fix it.', executor: 'do_sandbox', authority: 'auto_safe' },
+        env as any,
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('must declare an ```acceptance block');
+    });
+
+    it('rejects a malformed acceptance block for any authority', async () => {
+      const env = makeEnv();
+      const result = await handlers.toolAegisCreateCcTask(
+        { title: 'T', repo: 'r', prompt: '```acceptance\n{"nope": 1}\n```', executor: 'do_sandbox' },
+        env as any,
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('unsupported acceptance keys');
+    });
   });
 
   // ─── aegis_list_cc_tasks ─────────────────────────────────

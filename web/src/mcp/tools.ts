@@ -185,6 +185,7 @@ export const TOOLS = [
         max_turns: { type: 'number', description: 'Max agentic turns for safety (default: 25)' },
         category: { type: 'string', enum: ['docs', 'tests', 'research', 'bugfix', 'feature', 'refactor', 'deploy'], description: 'Task category for governance routing (default: feature)' },
         authority: { type: 'string', enum: ['proposed', 'auto_safe', 'operator'], description: 'Authority level: operator=run immediately, auto_safe=safe auto-execute, proposed=needs approval (default: operator)' },
+        executor: { type: 'string', enum: ['claude_code', 'do_sandbox'], description: 'Where the task runs: claude_code (local task runner, default) or do_sandbox (the sandbox task executor, if the Worker binds one). do_sandbox prompts may carry one fenced ```acceptance JSON block, checked before any PR is opened; it is required for auto_safe tasks.' },
         business_unit: { type: 'string', description: 'Business unit this task belongs to (e.g. "stackbilt", "foodfiles"). Default: "stackbilt".' },
       },
       required: ['title', 'repo', 'prompt'],

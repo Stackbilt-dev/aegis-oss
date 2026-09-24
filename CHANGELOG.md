@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.0 (2026-09-24)
+
+### Added
+- **Sandbox task executor** (`@stackbilt/aegis-core/factory`), ported from the Stackbilt reference deployment, where it has delivered acceptance-gated PRs including one to a repository outside its org.
+  - It runs a `do_sandbox` cc_task in a Cloudflare Sandbox container with a bounded Workers AI tool loop.
+  - It checks the result against the task's ` ```acceptance ` contract using facts the executor gathers itself (staged diff, file contents, a vitest re-run with a JSON report).
+  - It publishes a PR only when every check passes. Branches are named after the diff, so an identical re-run attaches to the open PR instead of duplicating it.
+  - Fork mode handles `owner/name` repositories outside `homeOrg`.
+  - Configured through `createTaskExecutorDO({ homeOrg, gitIdentity, model?, bootstrap?, verificationCwd?, externalRepoPolicy? })`.
+  - Opt-in through `taskExecutorDispatchPlugin` (heartbeat dispatch) and `taskExecutorRoutes` (`/api/task-executor/{run,status,artifacts}`).
+  - The container config ships commented out in `wrangler.toml.example`, with `Dockerfile.sandbox`, so the default deploy is unchanged: free tier, no Docker. Guide: `docs/sandbox-executor.md`.
+- `cc_tasks.executor` (`claude_code` | `do_sandbox`, default `claude_code`). Existing databases apply `migrations/0001_cc_tasks_executor.sql`, the first numbered migration; existing rows keep `claude_code`.
+- `aegis_create_cc_task` accepts `executor`. For `do_sandbox` it rejects a malformed acceptance block, and it rejects `auto_safe` tasks that lack one.
+- Optional `TASK_EXECUTOR` binding on `Env`, mapped to `EdgeEnv.taskExecutor`.
+
+### Changed
+- `@stackbilt/llm-providers` `^1.6.4` → `^1.21.0` (tool calling for the executor). New dependencies: `@cloudflare/sandbox` `0.12.1`, pinned to match the container image tag, and `@cloudflare/shell` `^0.4.0`.
+- `src/version.ts` said 0.8.6 through the 0.8.7 and 0.8.8 releases. It now tracks `package.json`.
+
 ## 0.8.8 (2026-09-24)
 
 ### Fixed

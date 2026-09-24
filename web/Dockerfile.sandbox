@@ -1,0 +1,17 @@
+# Container image for the sandbox task executor (see docs/sandbox-executor.md).
+# The base image provides the Sandbox SDK runtime; add the toolchain your
+# repositories need to install and test.
+# Keep this tag equal to the @cloudflare/sandbox version in package.json: a
+# mismatched SDK and image break the RPC transport.
+FROM docker.io/cloudflare/sandbox:0.12.1
+
+RUN apt-get update && apt-get install -y \
+  git \
+  curl \
+  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+  && apt-get install -y nodejs \
+  && corepack enable \
+  && corepack prepare pnpm@10 --activate \
+  && rm -rf /var/lib/apt/lists/*
+
+EXPOSE 8080
