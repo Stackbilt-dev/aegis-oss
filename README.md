@@ -61,27 +61,27 @@ Underneath is a persistent agent that keeps identity, memory and state across ev
 
 ## Quick Start
 
+You need Node 22+, a Cloudflare account (the free tier works) and `npx wrangler login`. Then:
+
 ```bash
 git clone https://github.com/Stackbilt-dev/aegis-oss.git
 cd aegis-oss/web
+corepack enable        # once per machine; provides pnpm
 pnpm install
-
-# Configure
-cp wrangler.toml.example wrangler.toml          # Fill in account_id, database_id
-cp src/operator/config.example.ts src/operator/config.ts  # Customize identity
-
-# Set up D1 database
-npx wrangler d1 create my-agent
-npx wrangler d1 execute my-agent --file=schema.sql
-
-# Set secrets
-npx wrangler secret put AEGIS_TOKEN            # Random bearer token for auth
-
-# Deploy
-pnpm deploy
+pnpm run setup         # "run" matters: `pnpm setup` is a different, built-in command
 ```
 
-Visit `https://your-worker.workers.dev` and authenticate with your AEGIS_TOKEN. The embedded console uses Workers AI for the base chat and voice path; Claude and Groq keys are optional executor upgrades.
+`setup` does the following:
+- asks for a name;
+- creates the D1 database (or reuses one with that name) and writes `wrangler.toml`;
+- applies the schema;
+- deploys;
+- sets a generated `AEGIS_TOKEN`;
+- checks `/health` and confirms the token signs in, then prints your URL and token.
+
+`pnpm run setup --dry-run` prints every command without changing anything. The manual steps are in [docs/getting-started.md](docs/getting-started.md).
+
+Visit your Worker URL and sign in with the `AEGIS_TOKEN` setup printed. The embedded console uses Workers AI for the base chat and voice path; Claude and Groq keys are optional executor upgrades.
 
 Talk to the same deployment from a terminal:
 
