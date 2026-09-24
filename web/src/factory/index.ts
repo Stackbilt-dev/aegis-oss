@@ -18,6 +18,7 @@ export {
 export {
   defaultExternalRepoPolicy,
   externalRepoAdmissionError,
+  issueReference,
   parseTaskRepo,
   type ExternalRepoPolicy,
   type TaskAdmission,

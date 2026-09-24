@@ -862,6 +862,25 @@ describe('MCP Tool Handlers', () => {
       expect(result.content[0].text).toContain('must declare an ```acceptance block');
     });
 
+    it('rejects a half-given issue link', async () => {
+      const env = makeEnv();
+      const result = await handlers.toolAegisCreateCcTask(
+        { title: 'T', repo: 'r', prompt: 'p', github_issue_number: 4 },
+        env as any,
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('must be given together');
+    });
+
+    it('accepts a full issue link', async () => {
+      const env = makeEnv();
+      const result = await handlers.toolAegisCreateCcTask(
+        { title: 'T', repo: 'someone/lib', prompt: 'p', github_issue_repo: 'someone/lib', github_issue_number: 4 },
+        env as any,
+      );
+      expect(result.isError).toBeUndefined();
+    });
+
     it('rejects a malformed acceptance block for any authority', async () => {
       const env = makeEnv();
       const result = await handlers.toolAegisCreateCcTask(
