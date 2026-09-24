@@ -30,8 +30,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Validate only this PR's commits. The default range (HEAD~5..HEAD)
+      # re-checks commits already on main, so one squash commit whose trailer
+      # GitHub moved out of the final paragraph failed every later PR.
       - name: Validate Commits
-        run: npx charter validate --ci --format text
+        run: npx charter validate --ci --format text --range "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
 
       - name: Drift Scan
         run: npx charter drift --ci --format text

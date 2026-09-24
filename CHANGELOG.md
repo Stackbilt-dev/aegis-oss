@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1 (2026-09-24)
+
+### Fixed
+- `@stackbilt/aegis-core/factory` could not be imported outside the Workers runtime. It re-exported the executor Durable Object and `Sandbox`, which load `cloudflare:` modules, so any Node import failed: tests, scripts, and MCP handlers that only needed `parseAcceptanceSpec` or the repository policy. The classes moved to a new entry point, `@stackbilt/aegis-core/factory/executor`. `factory` is now runtime-neutral, and a test imports it under plain Node to keep it that way.
+- **Migration from 0.9.0:** import `createTaskExecutorDO` and `Sandbox` from `@stackbilt/aegis-core/factory/executor` instead of `@stackbilt/aegis-core/factory`. The `TaskExecutorConfig` and `TaskExecutorEnv` types are still available from both.
+
 ## 0.9.0 (2026-09-24)
 
 ### Added
