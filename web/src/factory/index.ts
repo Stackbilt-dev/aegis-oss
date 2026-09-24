@@ -1,8 +1,12 @@
 // @stackbilt/aegis-core/factory — sandboxed coding tasks that publish a pull
 // request only after an acceptance contract passes. See docs/sandbox-executor.md.
+//
+// This entry point is runtime-neutral: it loads under plain Node (tests, MCP
+// handlers, scripts). The Durable Object class and the Sandbox container class
+// need the Workers runtime (`cloudflare:` modules) and live in
+// `@stackbilt/aegis-core/factory/executor`.
 
-export { createTaskExecutorDO, type TaskExecutorConfig, type TaskExecutorEnv } from './executor-do.js';
-export { Sandbox } from '@cloudflare/sandbox';
+export type { TaskExecutorConfig, TaskExecutorEnv } from './executor-do.js';
 export { taskExecutorDispatchPlugin, runTaskExecutorDispatch } from './dispatch.js';
 export { taskExecutorRoutes } from './routes.js';
 export {

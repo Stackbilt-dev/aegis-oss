@@ -79,7 +79,7 @@ crons = ["0 * * * *"]
 # only after the task's acceptance contract passes. Needs a Workers Paid plan
 # (Containers), a Docker-capable build (or deploy from CI), and GITHUB_TOKEN.
 # Your Worker must also export the classes:
-#   export { Sandbox } from '@stackbilt/aegis-core/factory';
+#   export { Sandbox } from '@stackbilt/aegis-core/factory/executor';
 #   export const TaskExecutorDO = createTaskExecutorDO({ homeOrg: 'your-org', gitIdentity: { ... } });
 # Guide: docs/sandbox-executor.md. Uncomment all of the following to enable.
 #

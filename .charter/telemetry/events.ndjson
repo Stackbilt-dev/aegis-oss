@@ -1,3 +1,4 @@
 {"version":1,"timestamp":"2026-03-23T08:16:04.910Z","commandPath":"bootstrap","flags":["--yes","--preset","--ci"],"format":"text","ciMode":true,"durationMs":1913,"exitCode":0,"success":true}
 {"version":1,"timestamp":"2026-03-23T12:30:47.732Z","commandPath":"adf.populate","flags":[],"format":"text","ciMode":false,"durationMs":87,"exitCode":0,"success":true}
 {"version":1,"timestamp":"2026-06-24T20:59:33.766Z","commandPath":"audit","flags":[],"format":"text","ciMode":false,"durationMs":1896,"exitCode":0,"success":true}
+{"version":1,"eventType":"command","timestamp":"2026-09-24T12:21:06.478Z","commandPath":"validate","flags":["--ci","--format","--range"],"format":"text","ciMode":true,"durationMs":285,"exitCode":0,"success":true}

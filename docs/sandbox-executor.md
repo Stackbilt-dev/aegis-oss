@@ -36,13 +36,10 @@ It is optional. A default AEGIS deploy doesn't include it, stays on the Workers 
 
 ```ts
 import { createAegisApp } from '@stackbilt/aegis-core';
-import {
-  createTaskExecutorDO,
-  taskExecutorDispatchPlugin,
-  taskExecutorRoutes,
-} from '@stackbilt/aegis-core/factory';
+import { taskExecutorDispatchPlugin, taskExecutorRoutes } from '@stackbilt/aegis-core/factory';
+import { createTaskExecutorDO } from '@stackbilt/aegis-core/factory/executor';
 
-export { Sandbox } from '@stackbilt/aegis-core/factory';
+export { Sandbox } from '@stackbilt/aegis-core/factory/executor';
 
 export const TaskExecutorDO = createTaskExecutorDO({
   homeOrg: 'your-org',
@@ -60,6 +57,8 @@ const aegis = createAegisApp({
   routes: [taskExecutorRoutes],                   // /api/task-executor/{run,status,artifacts}
 });
 ```
+
+`@stackbilt/aegis-core/factory/executor` holds the two classes and needs the Workers runtime. Everything else, including the acceptance and policy helpers, comes from `@stackbilt/aegis-core/factory`, which also loads under plain Node (tests, scripts, MCP handlers).
 
 ### 2. Enable the bindings
 
