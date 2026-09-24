@@ -324,10 +324,22 @@ export async function toolAegisCreateCcTask(args: Record<string, unknown>, env: 
     if (admission) return { content: [{ type: 'text', text: `Error: ${admission}` }], isError: true };
   }
 
+  // Optional source issue. The sandbox executor writes `Fixes #N` into the PR
+  // when the issue is in the repository it targets.
+  const issueRepo = typeof args.github_issue_repo === 'string' && /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(args.github_issue_repo.trim())
+    ? args.github_issue_repo.trim()
+    : null;
+  const issueNumber = Number.isInteger(args.github_issue_number) && (args.github_issue_number as number) > 0
+    ? args.github_issue_number as number
+    : null;
+  if ((issueRepo === null) !== (issueNumber === null)) {
+    return { content: [{ type: 'text', text: 'Error: github_issue_repo ("owner/name") and github_issue_number must be given together' }], isError: true };
+  }
+
   await env.db.prepare(`
-    INSERT INTO cc_tasks (id, title, repo, prompt, completion_signal, priority, depends_on, blocked_by, max_turns, created_by, authority, category, business_unit, executor)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'aegis', ?, ?, ?, ?)
-  `).bind(id, title.trim(), repo.trim(), prompt.trim(), completionSignal, priority, dependsOn, blockedBy ? JSON.stringify(blockedBy) : null, maxTurns, authority, category, businessUnit, executor).run();
+    INSERT INTO cc_tasks (id, title, repo, prompt, completion_signal, priority, depends_on, blocked_by, max_turns, created_by, authority, category, business_unit, executor, github_issue_repo, github_issue_number)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'aegis', ?, ?, ?, ?, ?, ?)
+  `).bind(id, title.trim(), repo.trim(), prompt.trim(), completionSignal, priority, dependsOn, blockedBy ? JSON.stringify(blockedBy) : null, maxTurns, authority, category, businessUnit, executor, issueRepo, issueNumber).run();
 
   return { content: [{ type: 'text', text: `Queued task "${title}" → ${repo} (ID: ${id}, priority: ${priority}, authority: ${authority}, category: ${category}, executor: ${executor}, business_unit: ${businessUnit})` }] };
 }

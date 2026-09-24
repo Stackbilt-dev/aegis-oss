@@ -54,6 +54,26 @@ export function pullRequestHead(target: TaskRepoTarget, branch: string, homeOrg:
   return target.external ? `${homeOrg}:${branch}` : branch;
 }
 
+/**
+ * The line that ties a published PR to the issue its task came from.
+ *
+ * An issue in the repository the PR targets gets a closing keyword, so GitHub
+ * links and closes it, and PR-side checks such as the agent-acceptance Action
+ * find the contract the maintainer wrote in that issue. An issue elsewhere gets
+ * a non-closing reference. Returns null when the task has no usable link.
+ */
+export function issueReference(
+  target: TaskRepoTarget,
+  issueRepo: string | null | undefined,
+  issueNumber: number | null | undefined,
+): string | null {
+  if (!issueRepo || !Number.isInteger(issueNumber) || (issueNumber as number) < 1) return null;
+  const parts = issueRepo.trim().split('/');
+  if (parts.length !== 2 || parts.some((part) => !SLUG_RE.test(part))) return null;
+  const sameRepo = `${target.owner}/${target.name}`.toLowerCase() === issueRepo.trim().toLowerCase();
+  return sameRepo ? `Fixes #${issueNumber}` : `Refs ${parts[0]}/${parts[1]}#${issueNumber}`;
+}
+
 export interface TaskAdmission {
   repo: string;
   executor: string;

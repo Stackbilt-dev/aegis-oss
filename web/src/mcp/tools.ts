@@ -187,6 +187,8 @@ export const TOOLS = [
         authority: { type: 'string', enum: ['proposed', 'auto_safe', 'operator'], description: 'Authority level: operator=run immediately, auto_safe=safe auto-execute, proposed=needs approval (default: operator)' },
         executor: { type: 'string', enum: ['claude_code', 'do_sandbox'], description: 'Where the task runs: claude_code (local task runner, default) or do_sandbox (the sandbox task executor, if the Worker binds one). do_sandbox prompts may carry one fenced ```acceptance JSON block, checked before any PR is opened; it is required for auto_safe tasks.' },
         business_unit: { type: 'string', description: 'Business unit this task belongs to (e.g. "stackbilt", "foodfiles"). Default: "stackbilt".' },
+        github_issue_repo: { type: 'string', description: 'Source issue repository as "owner/name". Give with github_issue_number. The sandbox executor writes "Fixes #N" into the PR when this is the repository it targets.' },
+        github_issue_number: { type: 'number', description: 'Source issue number in github_issue_repo.' },
       },
       required: ['title', 'repo', 'prompt'],
     },

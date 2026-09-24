@@ -9,6 +9,7 @@ import {
   ensureFork,
   externalRepoAdmissionError,
   forkName,
+  issueReference,
   parseTaskRepo,
   pullRequestHead,
   recipeKey,
@@ -167,5 +168,28 @@ describe('fork-mode publication', () => {
     });
     const push = exec.mock.calls.map((call) => String(call[0])).find((command) => command.includes('git push'));
     expect(push).toContain("push --set-upstream 'fork' ");
+  });
+});
+
+describe('issueReference', () => {
+  const upstream = parseTaskRepo('someone/lib', HOME);
+  const home = parseTaskRepo('app', HOME);
+
+  it('closes an issue in the repository the PR targets', () => {
+    expect(issueReference(upstream, 'someone/lib', 12)).toBe('Fixes #12');
+    expect(issueReference(upstream, 'Someone/Lib', 12)).toBe('Fixes #12');
+    expect(issueReference(home, 'example-org/app', 3)).toBe('Fixes #3');
+  });
+
+  it('only references an issue that lives elsewhere', () => {
+    expect(issueReference(home, 'example-org/tracker', 7)).toBe('Refs example-org/tracker#7');
+  });
+
+  it('ignores missing or malformed links', () => {
+    expect(issueReference(home, null, 3)).toBeNull();
+    expect(issueReference(home, 'example-org/app', null)).toBeNull();
+    expect(issueReference(home, 'example-org/app', 0)).toBeNull();
+    expect(issueReference(home, 'not a repo', 3)).toBeNull();
+    expect(issueReference(home, 'a/b/c', 3)).toBeNull();
   });
 });

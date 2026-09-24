@@ -49,6 +49,7 @@ import {
   ensureFork,
   externalRepoAdmissionError,
   gitHubClient,
+  issueReference,
   parseTaskRepo,
   pullRequestHead,
   recipeKey,
@@ -110,6 +111,8 @@ interface CCTaskRow {
   repo: string;
   category: string;
   authority: string;
+  github_issue_repo: string | null;
+  github_issue_number: number | null;
 }
 
 interface TaskPlan {
@@ -256,7 +259,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
       if (!taskId) return;
 
       const task = await this.env.DB.prepare(
-        'SELECT id, title, prompt, repo, category, authority FROM cc_tasks WHERE id = ?',
+        'SELECT id, title, prompt, repo, category, authority, github_issue_repo, github_issue_number FROM cc_tasks WHERE id = ?',
       )
         .bind(taskId)
         .first<CCTaskRow>();
@@ -335,7 +338,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         // The executor owns branch and publication metadata. Repository discovery,
         // edits, and verification belong to the bounded tool loop below.
         this.setState({ ...this.state, phase: 'planning' });
-        const plan = this.createPlan(task);
+        const plan = this.createPlan(task, target);
         await this.workspace.writeFile(`tasks/${task.id}/plan.json`, JSON.stringify(plan, null, 2));
 
         if (signal.aborted) return;
@@ -519,18 +522,22 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
            ORDER BY priority ASC, created_at ASC
            LIMIT 1
          )
-         RETURNING id, title, prompt, repo, category, authority`,
+         RETURNING id, title, prompt, repo, category, authority, github_issue_repo, github_issue_number`,
       ).first<CCTaskRow>();
     }
 
-    private createPlan(task: CCTaskRow): TaskPlan {
+    private createPlan(task: CCTaskRow, target: TaskRepoTarget): TaskPlan {
       const slug = task.id.slice(0, 8);
+      // First line, so GitHub and PR-side checks (the agent-acceptance Action)
+      // tie the PR to the issue — and the contract — the task came from.
+      const link = issueReference(target, task.github_issue_repo, task.github_issue_number);
+      const intro = `Automated, sandboxed change from task ${task.id}. The executor retained branch and publication authority.`;
       return {
         branch: `auto/do-sandbox/${slug}`,
         executor: 'workers_ai_tool_loop',
         commit_message: `chore: autonomous task ${slug}`,
         pr_title: task.title.slice(0, 70),
-        pr_body: `Automated, sandboxed change from task ${task.id}. The executor retained branch and publication authority.`,
+        pr_body: link ? `${link}\n\n${intro}` : intro,
       };
     }
 

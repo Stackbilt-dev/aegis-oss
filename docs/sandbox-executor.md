@@ -109,6 +109,15 @@ prompt:
 
 The heartbeat dispatches it within the hour. To dispatch now, call `POST /api/task-executor/run` with your AEGIS bearer token. Read artifacts from `GET /api/task-executor/artifacts/<taskId>/acceptance.json`.
 
+## Linking a task to its issue
+
+Pass `github_issue_repo` (`"owner/name"`) and `github_issue_number` to `aegis_create_cc_task` when a task comes from a GitHub issue:
+
+- If the issue is in the repository the PR targets, the PR's first line is `Fixes #N`. GitHub links the PR and closes the issue on merge.
+- For an issue elsewhere, the first line is a non-closing `Refs owner/name#N`.
+
+This also lets the maintainer verify the PR independently. With the [agent-acceptance](https://github.com/Stackbilt-dev/agent-acceptance) Action on the upstream repo, put the same acceptance block in the issue (written by someone the repo trusts) and in the task prompt. The executor checks it before publishing, and the Action re-checks it on the PR from the issue, without trusting the executor.
+
 ## Acceptance rules
 
 - `auto_safe` tasks must carry an acceptance block. `aegis_create_cc_task` rejects a task without one, and the executor rejects it again when claiming it.

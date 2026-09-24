@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.2 (2026-09-24)
+
+### Added
+- The sandbox executor links a published PR to its task's source issue. When a `cc_task` carries `github_issue_repo` and `github_issue_number`, the PR's first line is `Fixes #N` for an issue in the target repository, or `Refs owner/name#N` for one elsewhere. That makes GitHub close the issue on merge, and lets PR-side checks such as the agent-acceptance Action find the maintainer's contract in the issue. The new `issueReference` helper is exported from `@stackbilt/aegis-core/factory`.
+- `aegis_create_cc_task` accepts `github_issue_repo` and `github_issue_number`, which must be given together.
+
 ## 0.9.1 (2026-09-24)
 
 ### Fixed
