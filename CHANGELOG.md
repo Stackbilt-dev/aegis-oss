@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.8.8 (2026-09-24)
+
+### Fixed
+- `runEntropyDetection` inserted a text `id` into `digest_sections`, whose `id` is database-assigned; every other writer omits it. The entropy digest row now lets the database assign its id.
+- `detectLlmTraceAnomalies` selected `json_extract(summary, '$')`, which throws on any episode whose summary isn't JSON (most of them), failing the whole query. The column was never read, so it's removed.
+- Both fixes had been carried downstream as a pnpm patch in the reference deployment; they are upstreamed here so it can drop the patch.
+
+## 0.8.7 (2026-07-01)
 
 ### Changed
 - **Memory unification follow-up (aegis-oss#78)**: `consolidateEpisodicToSemantic` (`kernel/memory/consolidation.ts`) redesigned to write through `writeDreamFact()` (new `kernel/memory/dream-write.ts`) into the wiki's `dreams` scope, instead of writing raw fragments straight into the memory-worker fragment store — this was the deferred piece of the #457 wiki unification the original decision doc flagged as needing design work. Consolidation is now purely additive (extract 0-3 genuine facts per cycle, write each as its own dream page); the old ADD/UPDATE/DELETE-by-fragment-id model doesn't map cleanly onto wiki pages, so update/delete semantics are dropped in favor of the dreams lifecycle (promote on corroboration, archive if stale) already used by PRISM's cross-domain synthesis.
