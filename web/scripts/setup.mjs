@@ -139,6 +139,19 @@ async function main() {
       if (!healthy) await new Promise((resolve) => setTimeout(resolve, 3000));
     }
     console.log(healthy ? `  ${url}/health is up` : `  ${url}/health did not respond yet; it can take a minute after a first deploy.`);
+
+    // A new secret takes a few seconds to reach the Worker; confirm the token
+    // actually signs in before telling the user to use it.
+    step('Checking that the token signs in');
+    let signedIn = false;
+    for (let attempt = 0; attempt < 12 && !signedIn; attempt++) {
+      try {
+        const response = await fetch(`${url}/api/cc-tasks?limit=1`, { headers: { Authorization: `Bearer ${token}` } });
+        signedIn = response.ok;
+      } catch {}
+      if (!signedIn) await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+    console.log(signedIn ? '  Signed in with the new AEGIS_TOKEN' : '  The token was not accepted yet; wait a minute and try it.');
   }
 
   console.log(`
