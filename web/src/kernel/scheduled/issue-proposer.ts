@@ -273,7 +273,6 @@ async function detectArgusCorrelations(db: D1Database): Promise<ProposedIssue[]>
 async function detectLlmTraceAnomalies(db: D1Database): Promise<ProposedIssue[]> {
   const rows = await db.prepare(`
     SELECT
-      json_extract(summary, '$') as raw_summary,
       COUNT(*) as total,
       SUM(CASE WHEN outcome != 'success' THEN 1 ELSE 0 END) as failures
     FROM episodic_memory
@@ -282,7 +281,7 @@ async function detectLlmTraceAnomalies(db: D1Database): Promise<ProposedIssue[]>
     HAVING total >= 5 AND (CAST(failures AS REAL) / total) > 0.4
     ORDER BY failures DESC
     LIMIT 5
-  `).all<{ raw_summary: string; total: number; failures: number }>();
+  `).all<{ total: number; failures: number }>();
 
   // Also check executor-level failures via the summary field pattern [exec:xyz]
   const execRows = await db.prepare(`

@@ -45,10 +45,9 @@ export async function runEntropyDetection(env: EdgeEnv): Promise<void> {
   }
 
   await env.db.prepare(`
-    INSERT INTO digest_sections (id, section, payload, consumed, created_at)
-    VALUES (?, 'entropy', ?, 0, datetime('now'))
+    INSERT INTO digest_sections (section, payload, consumed, created_at)
+    VALUES ('entropy', ?, 0, datetime('now'))
   `).bind(
-    `entropy-${Date.now()}`,
     JSON.stringify({
       source: 'entropy',
       severity,
