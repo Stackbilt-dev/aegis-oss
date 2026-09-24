@@ -145,7 +145,10 @@ function validateSpec(raw: unknown): AcceptanceSpec {
     spec.tests = input.tests.map((entry) => {
       const item = entry as Record<string, unknown> | null;
       if (!item || !isAllowedVerificationCommand(item.command) || !VITEST_RUN.test(item.command.trim())) {
-        throw new Error('tests entries need a `pnpm exec vitest run` command inside the verification allowlist');
+        throw new Error('tests entries need a `pnpm exec vitest run`, `npx vitest run`, or `yarn vitest run` command');
+      }
+      if (/['"\\(){}]/.test(item.command)) {
+        throw new Error('tests commands must not contain quotes, backslashes, or brackets');
       }
       if (/--(?:reporter|outputFile)\b/.test(item.command)) {
         throw new Error('tests commands must not set a reporter or output file; the checker sets them');
@@ -159,7 +162,9 @@ function validateSpec(raw: unknown): AcceptanceSpec {
   return spec;
 }
 
-const VITEST_RUN = /^pnpm\s+exec\s+vitest\s+run(?:\s|$)/;
+// The same runners @stackbilt/agent-acceptance accepts, so one contract can be
+// checked by both the executor and the Action.
+const VITEST_RUN = /^(?:pnpm\s+exec|npx|yarn)\s+vitest\s+run(?:\s|$)/;
 
 /**
  * Counts come from vitest's JSON report at a path chosen at check time, never

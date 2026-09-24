@@ -304,6 +304,7 @@ export function isAllowedVerificationCommand(value: unknown): value is string {
     || /^pnpm\s+test(?:\s|$)/.test(command)
     || /^pnpm\s+run\s+(?:test|typecheck|check|build)(?::[a-z0-9:_-]+)?(?:\s|$)/i.test(command)
     || /^pnpm\s+exec\s+(?:vitest|tsc)(?:\s|$)/.test(command)
+    || /^(?:npx|yarn)\s+(?:vitest|tsc)(?:\s|$)/.test(command)
     || /^npm\s+test(?:\s|$)/.test(command)
     || /^npm\s+run\s+(?:test|typecheck|check|build)(?::[a-z0-9:_-]+)?(?:\s|$)/i.test(command)
     || /^git\s+(?:diff|status)(?:\s|$)/.test(command);
