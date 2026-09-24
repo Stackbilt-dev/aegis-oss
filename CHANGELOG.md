@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.3 (2026-09-24)
+
+### Changed
+- The sandbox executor's acceptance `tests` now accept `npx vitest run` and `yarn vitest run` as well as `pnpm exec vitest run`. That matches `@stackbilt/agent-acceptance`, so one contract can be checked by both the executor and the Action. Before this, a shared contract had to use pnpm, and the maintainer's Action workflow had to install pnpm just for it. Test commands also reject quotes, backslashes and brackets, like the Action's. The model's verification tool accepts `npx`/`yarn` `vitest` and `tsc`.
+- README rewritten around verified work: the sandbox executor, the agent-acceptance Action, and a live example of both checking the same PR (stackbilt-admin/fork-canary#7). The runtime capabilities follow under "The agent runtime", and claims we couldn't verify ("26 scheduled tasks", "AI co-founder") are gone.
+
 ## 0.9.2 (2026-09-24)
 
 ### Added

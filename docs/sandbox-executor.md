@@ -15,7 +15,7 @@ It is optional. A default AEGIS deploy doesn't include it, stays on the Workers 
    - file contents;
    - vitest re-runs, with the pass count read from a JSON report at a path chosen after the agent has finished.
 
-   The contract format is the same as [`@stackbilt/agent-acceptance`](https://github.com/Stackbilt-dev/agent-acceptance), except that test commands here must be `pnpm exec vitest run …`, run from the `verificationCwd` for the repository.
+   The contract format is the same as [`@stackbilt/agent-acceptance`](https://github.com/Stackbilt-dev/agent-acceptance). Test commands may be `pnpm exec vitest run …`, `npx vitest run …` or `yarn vitest run …`, the same runners the Action accepts. They run from the `verificationCwd` for the repository.
 6. **Branch naming.** The branch is named after a hash of the diff. A re-run that produces the same change attaches to the existing PR instead of opening another.
 7. **Publish.** Only a passing change is published:
    - Home-org repos: the branch is pushed to the repo and the PR opens there.

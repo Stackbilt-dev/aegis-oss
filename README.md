@@ -10,37 +10,54 @@
 [![Cloudflare Workers](https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![Discord](https://img.shields.io/discord/1485683351393407006?color=7289da&label=Discord&logo=discord&logoColor=white&style=flat-square)](https://discord.gg/aJmE8wmQDS)
 
-**A persistent AI agent framework for Cloudflare Workers.**
-**Published as `@stackbilt/aegis-core` — use standalone or extend as a dependency.**
+**A persistent AI agent on Cloudflare Workers, and agent work you can check without trusting the agent.**
+Published as `@stackbilt/aegis-core`: deploy it standalone, or extend it as a dependency.
 
-Cognitive kernel with multi-tier memory, autonomous goal pursuit, a dreaming cycle, runtime tool creation, and 26 scheduled tasks. Deploy your own persistent AI co-founder on the edge.
+Coding agents report success they didn't achieve. One of ours said it had added two tests and that the suite passed with 15. The suite had 15 tests before it started. ([The full story](https://blog.stackbilder.com/post/verified-agent-pull-requests-acceptance-gate).) AEGIS is built so that nothing the agent *says* about its work counts as evidence.
 
-## What is AEGIS?
+## Verified work
 
-AEGIS is a framework for building **personal AI agents** that remember everything, pursue goals autonomously, create their own tools, and improve themselves while you sleep. Unlike chat-based AI tools that forget between sessions, AEGIS maintains persistent identity, memory, and state across every interaction.
+**The sandbox task executor** runs a coding task in a disposable [Cloudflare Sandbox](https://developers.cloudflare.com/sandbox/) container. It opens a pull request only if the task's **acceptance contract** passes, and it checks the contract against facts it gathers itself:
 
-**Two ways to use AEGIS:**
-- **Standalone** — Clone, configure, deploy. Full agent in minutes.
-- **As a dependency** — `pnpm add @stackbilt/aegis-core` and extend with your own routes, scheduled tasks, executors, and MCP tools via `createAegisApp()`.
+- **Scope:** the staged diff. Only the files the contract allows, within its line limits.
+- **Content:** required and forbidden strings in the changed files.
+- **Tests:** a fresh vitest run the executor starts after the agent stops, with the pass count read from vitest's JSON report at a path the agent never saw.
 
-The reference deployment runs the same scheduled-task framework and is designed for $0/month hosting on the Cloudflare Workers free tier, with Workers AI as the base inference path.
+```acceptance
+{
+  "changed_files_only": ["src/slugify.ts", "tests/slugify.test.ts"],
+  "max_added_lines": 15,
+  "tests": [{ "command": "npx vitest run tests/slugify.test.ts", "passed": 4 }]
+}
+```
 
-Built on Cloudflare Workers for edge-native deployment. Zero cold starts. Global distribution. Pay-per-request economics.
+A failing change opens nothing. A passing one opens a PR with the check report attached. **Fork mode** does this for repositories you don't own: it forks the repository and opens the PR on the upstream, as any outside contributor would.
 
-### Core Capabilities
+**The maintainer doesn't have to trust us either.** The same contract format runs as a GitHub Action, [agent-acceptance](https://github.com/Stackbilt-dev/agent-acceptance), which checks any agent's PR against the contract in the issue it closes.
 
-- **Sandbox Task Executor** *(optional, new in 0.9.0)* — Runs a coding task in a Cloudflare Sandbox container and opens a pull request only if the task's acceptance contract passes: the diff, file contents, and a fresh vitest run the executor starts itself. Fork mode delivers PRs to repositories you don't own. See [docs/sandbox-executor.md](docs/sandbox-executor.md).
-- **Cognitive Kernel** — Workers AI-first dispatch with optional Claude and Groq executors, plus procedural memory routing. The right model for the right task, automatically.
-- **Multi-Tier Memory** — Episodic (what happened), semantic (what matters), procedural (what works), narrative (the story arc). Memory consolidates, decays, and strengthens over time.
-- **Autonomous Goals** — Set goals with standing orders and let AEGIS pursue them on a schedule. Progress tracked, blockers surfaced, results reported.
-- **Dreaming Cycle** — Nightly self-reflection over conversation history. Discovers patterns, proposes improvements, proposes new tools, consolidates knowledge. PRISM synthesis finds cross-domain connections.
-- **Runtime Dynamic Tools** — Create reusable prompt-template tools at runtime during conversations or autonomously via self-improvement. Tools are stored in D1, executed via LLM, with lifecycle management (TTL, GC, auto-promotion at 20 uses).
-- **Entropy Detection** — Monitors for ghost tasks (>7d stale), dormant goals (>14d), and stale agenda items. Calculates system entropy score and surfaces findings in the daily digest.
-- **Social Engagement** — Autonomous Bluesky interaction: likes replies, follows back real accounts, generates on-brand replies via Workers AI. Spam filtering and rate limiting built in.
-- **Content Pipeline** — Scheduled content generation and social media drip posting via AT Protocol. Queue posts, schedule delivery, track engagement.
-- **Declarative Governance** — ADF (Agent Definition Format) files control behavior, constraints, and architectural rules. Version-controlled agent configuration.
-- **Operator Identity** — Fully configurable persona, traits, and integration preferences. Your agent, your personality.
-- **MCP Native** — Full Model Context Protocol server (20+ tools) and client. Connect any MCP-compatible tool.
+Live example: [fork-canary#7](https://github.com/stackbilt-admin/fork-canary/pull/7).
+- The repository owner wrote the contract in issue #6.
+- The executor ran the task and passed the contract 6/6 before publishing.
+- The PR, opened from a fork in another organization, says `Fixes #6`.
+- The Action re-ran the tests from the issue's contract and passed it 6/6 on its own.
+
+The two checks agree, and neither relies on the other.
+
+What it doesn't do: judge whether the tests are *good* tests. It proves scope, content and test counts, so a reviewer starts from verified facts instead of the agent's summary. Setup and limits: [docs/sandbox-executor.md](docs/sandbox-executor.md).
+
+## The agent runtime
+
+Underneath is a persistent agent that keeps identity, memory and state across every interaction. It runs on Workers AI by default, with Claude and Groq as optional executors, and the base deployment fits the Workers free tier. The sandbox executor is opt-in and needs Workers Paid (Containers).
+
+- **Cognitive Kernel:** Workers AI-first dispatch with optional Claude and Groq executors, plus procedural memory routing.
+- **Multi-Tier Memory:** episodic (what happened), semantic (what matters), procedural (what works) and narrative. Memory consolidates, decays and strengthens over time.
+- **Autonomous Goals:** goals with standing orders, pursued on a schedule, with progress and blockers reported.
+- **Dreaming Cycle:** nightly reflection over conversation history that proposes improvements and tools and consolidates knowledge.
+- **Runtime Dynamic Tools:** prompt-template tools created at runtime, stored in D1, with TTL, garbage collection and auto-promotion.
+- **Entropy Detection:** flags stale tasks, dormant goals and stale agenda items in the daily digest.
+- **Content and Social:** scheduled content generation, plus Bluesky posting and engagement with rate limits.
+- **Declarative Governance:** ADF files hold behavior, constraints and architectural rules as version-controlled configuration.
+- **MCP Native:** a Model Context Protocol server (20+ tools) and client.
 
 ## Quick Start
 
