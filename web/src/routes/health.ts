@@ -119,19 +119,14 @@ health.get('/health', async (c) => {
   }
 
   // Gather extra stats for the HTML dashboard (non-sensitive counts only)
-  const [memoryRow, agendaRow, goalRow, uptimeRow] = await Promise.all([
+  const [memoryRow, agendaRow, goalRow] = await Promise.all([
     // Memory count from Memory Worker (sole knowledge store)
     c.env.MEMORY
       ? c.env.MEMORY.health().then(h => ({ c: h.active_fragments })).catch(() => ({ c: 0 }))
       : Promise.resolve({ c: 0 }),
     c.env.DB.prepare("SELECT COUNT(*) as c FROM agent_agenda WHERE status = 'active'").first<{ c: number }>().catch(() => ({ c: 0 })),
     c.env.DB.prepare("SELECT COUNT(*) as c FROM agent_goals WHERE status = 'active'").first<{ c: number }>().catch(() => ({ c: 0 })),
-    c.env.DB.prepare("SELECT MIN(created_at) as first_run FROM task_runs").first<{ first_run: string | null }>().catch(() => ({ first_run: null })),
   ]);
-
-  const uptimeHours = uptimeRow?.first_run
-    ? Math.round((Date.now() - new Date(uptimeRow.first_run + 'Z').getTime()) / 3_600_000)
-    : 0;
 
   const healthData: HealthData = {
     version: appVersion ?? VERSION,
@@ -140,7 +135,6 @@ health.get('/health', async (c) => {
     memoryCount: memoryRow?.c ?? 0,
     agendaCount: agendaRow?.c ?? 0,
     goalCount: goalRow?.c ?? 0,
-    uptimeHours,
     docsSyncStatus,
   };
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- `schema.sql` adds `idx_task_runs_created` on `task_runs(created_at, task_name, status)`. Existing databases apply `migrations/0002_task_runs_created_index.sql`, then run `PRAGMA optimize` once. Every "last 24h" `task_runs` query was reading the whole table. In Stackbilt's deployment that was about 196k rows on each `/health` request, 1.72B rows read in 30 days. The `GROUP BY task_name` queries need the table statistics that `PRAGMA optimize` collects before they stop scanning.
+
+### Removed
+- The `/health` HTML route no longer runs `SELECT MIN(created_at) FROM task_runs`, and `HealthData.uptimeHours` is gone. The page never displayed the value, and the query read the whole table on every request.
+
 ## 0.9.4 (2026-09-24)
 
 ### Added
