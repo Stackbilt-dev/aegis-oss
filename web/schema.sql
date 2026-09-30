@@ -237,6 +237,7 @@ CREATE TABLE IF NOT EXISTS task_runs (
 
 CREATE INDEX IF NOT EXISTS idx_task_runs_name ON task_runs(task_name, created_at);
 CREATE INDEX IF NOT EXISTS idx_task_runs_status ON task_runs(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_task_runs_created ON task_runs(created_at, task_name, status);
 
 -- ─── Shadow Mode: Dual-Write Tracking ───────────────────────
 

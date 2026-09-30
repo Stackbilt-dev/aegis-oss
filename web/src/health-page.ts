@@ -11,7 +11,6 @@ export interface HealthData {
   memoryCount: number;
   agendaCount: number;
   goalCount: number;
-  uptimeHours: number;
   docsSyncStatus?: { lastSyncAge: number | null; status: 'ok' | 'warn' | 'alert' };
 }
 

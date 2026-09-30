@@ -186,7 +186,6 @@ describe('health routes', () => {
           null,      // lastDocSync
           { c: 3 },  // agendaRow
           { c: 2 },  // goalRow
-          { first_run: null }, // uptimeRow
         ],
       });
       const app = createApp(db);
@@ -209,7 +208,6 @@ describe('health routes', () => {
           null,               // lastDocSync
           { c: 5 },           // agendaRow
           { c: 1 },           // goalRow
-          { first_run: null }, // uptimeRow
         ],
       });
       const app = createApp(db);
