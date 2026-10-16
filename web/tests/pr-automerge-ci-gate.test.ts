@@ -6,11 +6,11 @@
 // protection, the operator config names the checks each repo must pass.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ciVerdict, runPrAutomerge } from '../src/kernel/scheduled/pr-automerge.js';
+import { ciVerdict, filesOutsideCategory, runPrAutomerge } from '../src/kernel/scheduled/pr-automerge.js';
 import { operatorConfig, setOperatorConfig } from '../src/operator/index.js';
 
 const noStatuses = { total: 0, statuses: [] };
-const run = (name: string, status: string, conclusion: string | null) => ({ name, status, conclusion });
+const run = (name: string, status: string, conclusion: string | null, app: string | null = 'github-actions') => ({ name, status, conclusion, app });
 const REQ = ['typecheck'];
 
 describe('ciVerdict', () => {
@@ -49,8 +49,9 @@ describe('ciVerdict', () => {
       .toEqual({ ok: false, reason: 'too many commit statuses to verify (31)' });
   });
 
-  it('accepts a required check reported as a commit status', () => {
-    expect(ciVerdict({ total: 1, statuses: [{ context: 'typecheck', state: 'success' }] }, { total: 0, runs: [] }, REQ)).toEqual({ ok: true });
+  it('only a GitHub Actions check run satisfies a required check, not a status or another app', () => {
+    expect(ciVerdict({ total: 1, statuses: [{ context: 'typecheck', state: 'success' }] }, { total: 0, runs: [] }, REQ).ok).toBe(false);
+    expect(ciVerdict(noStatuses, { total: 1, runs: [run('typecheck', 'completed', 'success', 'some-other-app')] }, REQ).ok).toBe(false);
   });
 
   it('passes when every required check succeeded and the rest passed (skipped extras allowed)', () => {
@@ -62,6 +63,39 @@ describe('ciVerdict', () => {
   });
 });
 
+describe('filesOutsideCategory', () => {
+  const f = (filename: string, status = 'modified', previousFilename?: string) => ({ filename, status, ...(previousFilename ? { previousFilename } : {}) });
+
+  it('docs may touch Markdown and docs/ assets only', () => {
+    expect(filesOutsideCategory('docs', [f('README.md'), f('docs/guide.md'), f('docs/img/a.png', 'added')])).toBeNull();
+    expect(filesOutsideCategory('docs', [f('docs/build.config.js')])).toMatch(/outside what docs tasks may change/);
+    expect(filesOutsideCategory('docs', [f('src/index.ts')])).not.toBeNull();
+  });
+
+  it('no category may touch .github/ or dotfiles, even as Markdown', () => {
+    expect(filesOutsideCategory('docs', [f('.github/workflows/ci.yml')])).not.toBeNull();
+    expect(filesOutsideCategory('docs', [f('.github/PULL_REQUEST_TEMPLATE.md')])).not.toBeNull();
+    expect(filesOutsideCategory('research', [f('.ai/notes.md')])).not.toBeNull();
+  });
+
+  it('tests may only add new test files, never edit or delete existing ones or config', () => {
+    expect(filesOutsideCategory('tests', [f('tests/new.test.ts', 'added'), f('src/__tests__/x.spec.ts', 'added')])).toBeNull();
+    expect(filesOutsideCategory('tests', [f('tests/gate.test.ts', 'modified')])).not.toBeNull();
+    expect(filesOutsideCategory('tests', [f('tests/gate.test.ts', 'removed')])).not.toBeNull();
+    expect(filesOutsideCategory('tests', [f('vitest.config.ts', 'modified')])).not.toBeNull();
+    expect(filesOutsideCategory('tests', [f('tests/helpers.ts', 'added')])).not.toBeNull();
+  });
+
+  it('a rename is judged by both paths', () => {
+    expect(filesOutsideCategory('docs', [f('docs/notes.md', 'renamed', 'wrangler.toml')])).toMatch(/renamed from wrangler\.toml/);
+  });
+
+  it('research may touch research/ and Markdown', () => {
+    expect(filesOutsideCategory('research', [f('research/2026-10-16-x.md', 'added'), f('research/data.json', 'added')])).toBeNull();
+    expect(filesOutsideCategory('research', [f('src/x.ts')])).not.toBeNull();
+  });
+});
+
 describe('runPrAutomerge end to end (mocked GitHub)', () => {
   const HEAD_SHA = 'abc123def456';
   const original = operatorConfig;
@@ -69,6 +103,8 @@ describe('runPrAutomerge end to end (mocked GitHub)', () => {
   let checkRuns: unknown;
   let mergeable: boolean | null;
   let logs: string[];
+  let files: unknown[];
+  let changedFiles: number;
 
   const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
@@ -102,6 +138,8 @@ describe('runPrAutomerge end to end (mocked GitHub)', () => {
     merges = [];
     logs = [];
     mergeable = true;
+    files = [{ filename: 'docs/readme.md', status: 'modified' }];
+    changedFiles = 1;
     checkRuns = { total_count: 1, check_runs: [run('typecheck', 'completed', 'success')] };
     requireChecks({ 'ExampleOrg/demo': ['typecheck'] });
     vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { logs.push(a.join(' ')); });
@@ -109,11 +147,15 @@ describe('runPrAutomerge end to end (mocked GitHub)', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       const u = String(url);
       if (u.endsWith('/pulls/7')) {
-        return json({ number: 7, state: 'open', mergeable, additions: 3, deletions: 1, changed_files: 1, head: { ref: 'auto/task1234', sha: HEAD_SHA }, base: { ref: 'main' } });
+        return json({ number: 7, state: 'open', mergeable, additions: 3, deletions: 1, changed_files: changedFiles, head: { ref: 'auto/task1234', sha: HEAD_SHA }, base: { ref: 'main' } });
       }
-      if (u.includes('/pulls/7/files')) return json([{ filename: 'docs/readme.md' }]);
+      if (u.includes('/pulls/7/files')) return json(files);
       if (u.includes(`/commits/${HEAD_SHA}/status?per_page=100`)) return json({ state: 'pending', total_count: 0, statuses: [] });
-      if (u.includes(`/commits/${HEAD_SHA}/check-runs`)) return json(checkRuns);
+      if (u.includes(`/commits/${HEAD_SHA}/check-runs`)) {
+        // The API reports the producing app as { slug }.
+        const cr = checkRuns as { total_count: number; check_runs: Array<{ app: string | null }> };
+        return json({ ...cr, check_runs: cr.check_runs.map((r) => ({ ...r, app: r.app ? { slug: r.app } : null })) });
+      }
       if (u.endsWith('/pulls/7/merge') && init?.method === 'PUT') {
         merges.push(JSON.parse(String(init.body)));
         return json({ sha: 'merged-sha', merged: true, message: 'Pull Request successfully merged' });
@@ -162,6 +204,23 @@ describe('runPrAutomerge end to end (mocked GitHub)', () => {
     await runPrAutomerge(e);
     expect(merges).toEqual([]);
     expect(skipped('mergeability not computed yet')).toBe(true);
+  });
+
+  it('does not merge a docs PR that edits a workflow, even with a green required check', async () => {
+    files = [{ filename: 'docs/readme.md', status: 'modified' }, { filename: '.github/workflows/ci.yml', status: 'modified' }];
+    changedFiles = 2;
+    const { env: e } = env();
+    await runPrAutomerge(e);
+    expect(merges).toEqual([]);
+    expect(skipped('touches .github/workflows/ci.yml')).toBe(true);
+  });
+
+  it('does not merge when not every changed file could be read', async () => {
+    changedFiles = 101;
+    const { env: e } = env();
+    await runPrAutomerge(e);
+    expect(merges).toEqual([]);
+    expect(skipped('too many changed files to verify (101)')).toBe(true);
   });
 
   it('merges a green PR, pinned to the head commit that was checked', async () => {

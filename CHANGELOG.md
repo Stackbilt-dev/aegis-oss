@@ -1,9 +1,18 @@
 # Changelog
 
-## 0.9.5 (2026-10-16)
+## 0.10.0 (2026-10-16)
+
+### Breaking
+- **PR auto-merge is off until you configure it.** It now merges a repo's task PRs only when the operator config lists that repo's required checks (`integrations.github.automerge.requiredChecks`: `owner/name` → GitHub Actions job names). Existing deployments stop auto-merging until they add the entry. Consumers with their own copy of `OperatorConfig` need the new optional `automerge` field.
 
 ### Fixed
-- **PR auto-merge no longer merges PRs whose GitHub Actions checks failed.** The CI gate read only the legacy combined-status API, which doesn't include Actions check runs and reports `pending` with zero statuses on an Actions-only repo; that was treated as "no CI configured" and passed. The gate now reads the check runs too and fails closed. Without branch protection nothing else knows which checks matter, so the operator config names them per repo (`integrations.github.automerge.requiredChecks`, `owner/name` → check names): each must have succeeded on the head commit (skipped or neutral don't count), every other status and check run there must have passed, and a repo with no entry is never auto-merged. **Existing deployments stop auto-merging until they add this config.** Statuses and check runs are read up to 100 each, and the gate refuses when there are more. It also waits while GitHub reports mergeability as unknown (it only refused `false`), checks CI on the head commit SHA rather than the branch name, and pins the merge to that SHA so a commit pushed after the checks can't be merged unchecked. New `getCheckRuns()` and `PullRequestStats.headSha`; `mergePullRequest()` takes an optional `sha`.
+- **PR auto-merge no longer merges PRs whose CI failed or didn't run.** The gate read only the legacy combined-status API, which doesn't include GitHub Actions check runs and reports `pending` with zero statuses on an Actions-only repo; that was treated as "no CI configured" and passed. Now, on the PR's head commit:
+  - every required check must be a completed GitHub Actions check run (app `github-actions`) concluding `success` — skipped, neutral, a commit status or another app's check run of the same name don't count;
+  - every other commit status must be `success` and every other check run completed with `success`, `neutral` or `skipped`;
+  - statuses, check runs and changed files are each read up to 100, and the gate refuses if there are more;
+  - GitHub must report the PR mergeable (unknown no longer passes), and the merge is pinned to the checked head SHA.
+- **A task PR can't rewrite what judges it.** The sensitive-file list is replaced by a per-category allowlist: docs PRs may touch Markdown and `docs/` text and images; research PRs `research/` and Markdown; tests PRs may only add new test files. Anything else — `.github/`, dotfiles, existing tests, any config — means no auto-merge. Renames are judged by both paths.
+- New `getCheckRuns()`, `getPullRequestFileDetails()`, `PullRequestStats.headSha`; `mergePullRequest()` takes an optional `sha`; `getCombinedStatus()` reads 100 statuses.
 
 ## 0.9.4 (2026-09-24)
 

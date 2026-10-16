@@ -9,7 +9,9 @@
 //      commit, and every other status and check run there passed. A repo with
 //      no required checks is never auto-merged.
 //   3. Diff is under LOC cap
-//   4. No sensitive files touched
+//   4. Every changed file is one the category may touch (docs: Markdown and
+//      docs/; research: research/ and Markdown; tests: new test files only),
+//      so a PR can't edit CI, tests or config that judge it
 //   5. PR is open and GitHub reports it mergeable (unknown is not enough);
 //      the merge is pinned to the head commit that was checked
 //
@@ -20,7 +22,8 @@ import {
   getCombinedStatus,
   getCheckRuns,
   getPullRequestStats,
-  getPullRequestFiles,
+  getPullRequestFileDetails,
+  type PullRequestFile,
   mergePullRequest,
 } from '../../github.js';
 import { operatorConfig } from '../../operator/index.js';
@@ -32,16 +35,42 @@ import { AUTOMERGE_SAFE_CATEGORIES } from '../../schema-enums.js';
 /** Max total LOC changed (additions + deletions) */
 const MAX_LOC = 500;
 
-/** Files that block auto-merge if touched */
-const SENSITIVE_PATTERNS = [
-  /\.env/i,
-  /secret/i,
-  /credential/i,
-  /wrangler\.toml$/,
-  /package\.json$/,
-  /package-lock\.json$/,
-  /pnpm-lock\.yaml$/,
-];
+/**
+ * What each category's PR may touch. The PR controls the workflows, tests and
+ * config that produce its own checks, so anything outside these is refused --
+ * including .github/, existing tests and every config file.
+ */
+const MARKDOWN = /\.(md|mdx)$/i;
+const DOCS_ASSET = /\.(md|mdx|txt|png|jpe?g|gif|svg|webp)$/i;
+const TEST_FILE = /(^|\/)(tests?|__tests__)\/.+\.(test|spec)\.[cm]?[jt]sx?$|\.(test|spec)\.[cm]?[jt]sx?$/;
+
+function fileAllowed(category: string, file: PullRequestFile): boolean {
+  const paths = [file.filename, ...(file.previousFilename ? [file.previousFilename] : [])];
+  if (paths.some((p) => p.startsWith('.github/') || /(^|\/)\./.test(p))) return false;
+  switch (category) {
+    case 'docs':
+      return paths.every((p) => MARKDOWN.test(p) || (p.startsWith('docs/') && DOCS_ASSET.test(p)));
+    case 'research':
+      return paths.every((p) => p.startsWith('research/') || MARKDOWN.test(p));
+    case 'tests':
+      // New test files only: editing or deleting an existing test could weaken
+      // the very checks that are about to judge this PR.
+      return file.status === 'added' && TEST_FILE.test(file.filename);
+    default:
+      return false;
+  }
+}
+
+/** First out-of-scope file for the category, as a skip reason, or null. */
+export function filesOutsideCategory(category: string, files: PullRequestFile[]): string | null {
+  for (const f of files) {
+    if (!fileAllowed(category, f)) {
+      const from = f.previousFilename ? ` (renamed from ${f.previousFilename})` : '';
+      return `${category} PR touches ${f.filename}${from} (${f.status}), outside what ${category} tasks may change`;
+    }
+  }
+  return null;
+}
 
 /** Max PRs to process per run (rate limiting) */
 const MAX_PER_RUN = 3;
@@ -162,7 +191,7 @@ async function evaluateAndMerge(
   const { githubToken } = env;
   if (!githubToken) return { merged: false, reason: 'no token' };
 
-  // Gate 1: PR stats (open, mergeable, LOC)
+  // Gate: PR stats (open, mergeable, LOC)
   const stats = await getPullRequestStats(githubToken, candidate.ghRepo, candidate.prNumber);
 
   if (stats.state !== 'open') {
@@ -178,17 +207,17 @@ async function evaluateAndMerge(
     return { merged: false, reason: `LOC ${totalLoc} > ${MAX_LOC} cap` };
   }
 
-  // Gate 2: Sensitive files
-  const files = await getPullRequestFiles(githubToken, candidate.ghRepo, candidate.prNumber);
-  for (const file of files) {
-    for (const pattern of SENSITIVE_PATTERNS) {
-      if (pattern.test(file)) {
-        return { merged: false, reason: `sensitive file: ${file}` };
-      }
-    }
+  // Gate: every changed file is one the category may touch
+  const files = await getPullRequestFileDetails(githubToken, candidate.ghRepo, candidate.prNumber);
+  if (stats.changed_files > files.length) {
+    return { merged: false, reason: `too many changed files to verify (${stats.changed_files})` };
+  }
+  const outOfScope = filesOutsideCategory(candidate.category, files);
+  if (outOfScope) {
+    return { merged: false, reason: outOfScope };
   }
 
-  // Gate 3: CI on the exact head commit -- legacy statuses and check runs
+  // Gate: CI on the exact head commit -- legacy statuses and check runs
   const [ciStatus, checkRuns] = await Promise.all([
     getCombinedStatus(githubToken, candidate.ghRepo, stats.headSha),
     getCheckRuns(githubToken, candidate.ghRepo, stats.headSha),
@@ -224,13 +253,16 @@ const PASSING_CONCLUSIONS = new Set(['success', 'neutral', 'skipped']);
 /**
  * Fail closed. GitHub Actions report through the Checks API, not commit
  * statuses, and the combined status reads "pending" with zero statuses when
- * a repo only uses Actions -- which used to pass. Now every status must be
- * success, every check run completed with a passing conclusion, and at least
- * one of either must exist.
+ * a repo only uses Actions -- which used to pass. Now: the repo must have
+ * required checks configured; each must be a completed GitHub Actions check
+ * run concluding `success` (skipped or neutral don't count); every other
+ * commit status must be `success` and every other check run completed with
+ * `success`, `neutral` or `skipped`; and everything must have been readable
+ * in one page of 100.
  */
 export function ciVerdict(
   status: { total: number; statuses: { context: string; state: string }[] },
-  checks: { total: number; runs: { name: string; status: string; conclusion: string | null }[] },
+  checks: { total: number; runs: { name: string; status: string; conclusion: string | null; app?: string | null }[] },
   required: string[],
 ): { ok: true } | { ok: false; reason: string } {
   // "Some check is green" is not "CI passed": a job waiting on another job, a
@@ -247,8 +279,10 @@ export function ciVerdict(
     return { ok: false, reason: `too many commit statuses to verify (${status.total})` };
   }
   for (const name of required) {
-    const passed = checks.runs.some((r) => r.name === name && r.status === 'completed' && r.conclusion === 'success')
-      || status.statuses.some((s) => s.context === name && s.state === 'success');
+    // Only a GitHub Actions check run counts: a commit status or another
+    // app's check run can be posted under any name by anything with a token.
+    const passed = checks.runs.some((r) =>
+      r.name === name && r.app === 'github-actions' && r.status === 'completed' && r.conclusion === 'success');
     if (!passed) return { ok: false, reason: `required check ${name} has not passed` };
   }
   for (const s of status.statuses) {

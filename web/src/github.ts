@@ -601,7 +601,7 @@ export async function getCombinedStatus(
 
 export interface CheckRunSummary {
   total: number;
-  runs: { name: string; status: string; conclusion: string | null }[];
+  runs: { name: string; status: string; conclusion: string | null; app: string | null }[];
 }
 
 /**
@@ -616,11 +616,14 @@ export async function getCheckRuns(
   const res = await ghFetch(token, `/repos/${repo}/commits/${encodeURIComponent(ref)}/check-runs?per_page=100`);
   const data = (await res.json()) as {
     total_count: number;
-    check_runs: { name: string; status: string; conclusion: string | null }[];
+    check_runs: { name: string; status: string; conclusion: string | null; app?: { slug?: string } | null }[];
   };
+  // GitHub's default filter=latest keeps only the most recent run per check
+  // name, so a passing re-run replaces a failed attempt. filter=all would make
+  // every re-run failure block forever.
   return {
     total: data.total_count,
-    runs: data.check_runs.map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion })),
+    runs: data.check_runs.map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion, app: r.app?.slug ?? null })),
   };
 }
 
@@ -678,6 +681,27 @@ export async function getPullRequestFiles(
   const res = await ghFetch(token, `/repos/${repo}/pulls/${pullNumber}/files?per_page=100`);
   const data = (await res.json()) as { filename: string }[];
   return data.map(f => f.filename);
+}
+
+export interface PullRequestFile {
+  filename: string;
+  status: string; // added | modified | removed | renamed | copied | changed | unchanged
+  previousFilename?: string;
+}
+
+/** Changed files with their status and, for renames, the old path. Reads up to 100. */
+export async function getPullRequestFileDetails(
+  token: string,
+  repo: string,
+  pullNumber: number,
+): Promise<PullRequestFile[]> {
+  const res = await ghFetch(token, `/repos/${repo}/pulls/${pullNumber}/files?per_page=100`);
+  const data = (await res.json()) as { filename: string; status: string; previous_filename?: string }[];
+  return data.map((f) => ({
+    filename: f.filename,
+    status: f.status,
+    ...(f.previous_filename ? { previousFilename: f.previous_filename } : {}),
+  }));
 }
 
 // ─── PR Merge ────────────────────────────────────────────────
