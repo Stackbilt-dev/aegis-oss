@@ -9,9 +9,10 @@
 - **PR ready flag** (`pr-ready` heartbeat, every 2 h). It labels a completed task's PR `aegis:ready-to-merge` when:
   - it is open, comes from an `auto/` branch in the same repo, and targets the repo's default branch;
   - GitHub reports it mergeable;
+  - it doesn't touch `.github/` (checked case-insensitively, including the old path of a rename), since a PR that edits its own workflows decides which checks run on it;
   - on the head commit, every commit status is `success`, every check run completed and passing, and at least one GitHub Actions check run succeeded.
-  Optional per-repo required checks (`integrations.github.prReady.requiredChecks`: `owner/name` → GitHub Actions job names) must each be successful Actions runs. Statuses and check runs are read up to 100 each; more is refused. Tasks are read newest first, and closed or merged PRs are marked done on the task row (`/closed`), so old PRs no longer starve new ones.
-- `getCheckRuns()`, `PullRequestStats.headSha`, `headRepo` and `baseDefaultBranch`; `mergePullRequest()` takes an optional `sha` to pin the head; `getCombinedStatus()` reads 100 statuses.
+  Optional per-repo required checks (`integrations.github.prReady.requiredChecks`: `owner/name` → GitHub Actions job names) must each be successful Actions runs. Statuses and check runs are read up to 100 each; more is refused. A labelled PR that stops qualifying (for example a new commit fails CI) loses the label. Up to 25 tracked PRs are re-evaluated per run, newest first; closed or merged PRs, and task rows whose `pr_url` isn't a GitHub PR, are marked done (`/closed`) and no longer read.
+- `getCheckRuns()`, `getPullRequestFileDetails()`, `removeLabelFromIssue()`; `PullRequestStats.headSha`, `headRepo`, `baseDefaultBranch` and `labels`; `getCombinedStatus()` reads 100 statuses.
 
 ## 0.9.4 (2026-09-24)
 

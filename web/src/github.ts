@@ -644,6 +644,7 @@ export interface PullRequestStats {
   base: string;
   /** The base repo's default branch. */
   baseDefaultBranch: string;
+  labels: string[];
 }
 
 export async function getPullRequestStats(
@@ -661,6 +662,7 @@ export async function getPullRequestStats(
     changed_files: number;
     head: { ref: string; sha: string; repo: { full_name: string } | null };
     base: { ref: string; repo: { default_branch: string } };
+    labels?: { name: string }[];
   };
   return {
     number: data.number,
@@ -674,6 +676,7 @@ export async function getPullRequestStats(
     headRepo: data.head.repo?.full_name ?? null,
     base: data.base.ref,
     baseDefaultBranch: data.base.repo.default_branch,
+    labels: (data.labels ?? []).map((l) => l.name),
   };
 }
 
@@ -689,6 +692,42 @@ export async function getPullRequestFiles(
   return data.map(f => f.filename);
 }
 
+export interface PullRequestFile {
+  filename: string;
+  status: string;
+  previousFilename?: string;
+}
+
+/** Changed files with status and, for renames, the old path. Reads up to 100. */
+export async function getPullRequestFileDetails(
+  token: string,
+  repo: string,
+  pullNumber: number,
+): Promise<PullRequestFile[]> {
+  const res = await ghFetch(token, `/repos/${repo}/pulls/${pullNumber}/files?per_page=100`);
+  const data = (await res.json()) as { filename: string; status: string; previous_filename?: string }[];
+  return data.map((f) => ({
+    filename: f.filename,
+    status: f.status,
+    ...(f.previous_filename ? { previousFilename: f.previous_filename } : {}),
+  }));
+}
+
+/** Remove one label from an issue or PR; a label that isn't there is not an error. */
+export async function removeLabelFromIssue(
+  token: string,
+  repo: string,
+  issueNumber: number,
+  label: string,
+): Promise<void> {
+  try {
+    await ghFetch(token, `/repos/${repo}/issues/${issueNumber}/labels/${encodeURIComponent(label)}`, { method: 'DELETE' });
+  } catch (err) {
+    if (err instanceof GitHubApiError && err.status === 404) return;
+    throw err;
+  }
+}
+
 // ─── PR Merge ────────────────────────────────────────────────
 
 export async function mergePullRequest(
@@ -697,12 +736,9 @@ export async function mergePullRequest(
   pullNumber: number,
   method: 'merge' | 'squash' | 'rebase' = 'squash',
   commitMessage?: string,
-  /** Merge only if the PR head is still this commit (GitHub answers 409 otherwise). */
-  sha?: string,
 ): Promise<{ sha: string; merged: boolean; message: string }> {
   const body: Record<string, unknown> = { merge_method: method };
   if (commitMessage) body.commit_message = commitMessage;
-  if (sha) body.sha = sha;
   const res = await ghFetch(token, `/repos/${repo}/pulls/${pullNumber}/merge`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

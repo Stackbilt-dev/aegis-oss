@@ -10,23 +10,28 @@
 //   2. it comes from an `auto/` branch in the same repo and targets the
 //      repo's default branch
 //   3. GitHub reports it mergeable (no conflicts)
-//   4. CI on the head commit passed: every commit status is `success`,
+//   4. it doesn't touch .github/ (a PR that edits its own workflows decides
+//      which checks run and pass on it)
+//   5. CI on the head commit passed: every commit status is `success`,
 //      every check run completed and passing, at least one GitHub Actions
 //      check run succeeded, and every check the operator config requires
 //      for the repo (integrations.github.prReady.requiredChecks) is a
 //      successful GitHub Actions run
 //
-// Closed or merged PRs are marked done on the task row so the heartbeat
-// moves on to newer ones.
+// A flagged PR that stops qualifying (say, a new commit fails CI) loses the
+// label. Closed or merged PRs are marked done on the task row so the
+// heartbeat stops reading them.
 //
 // Runs in Phase 1 (free -- GitHub API only, no LLM).
 
 import type { EdgeEnv } from '../dispatch.js';
 import {
   addLabelsToIssue,
+  removeLabelFromIssue,
   getCombinedStatus,
   getCheckRuns,
   getPullRequestStats,
+  getPullRequestFileDetails,
 } from '../../github.js';
 import { operatorConfig } from '../../operator/index.js';
 
@@ -35,8 +40,12 @@ import { operatorConfig } from '../../operator/index.js';
 /** Label added to PRs that are ready for a human merge. */
 export const READY_LABEL = 'aegis:ready-to-merge';
 
-/** Max PRs to evaluate per run (rate limiting) */
-const MAX_PER_RUN = 5;
+/**
+ * Open task PRs evaluated per run, newest first. Every tracked PR is
+ * re-evaluated each run (so a label can be withdrawn), which takes a few
+ * GitHub calls apiece; old PRs that never close drop out of the window.
+ */
+const MAX_PER_RUN = 25;
 
 // --- Types ---
 
@@ -49,7 +58,7 @@ interface Candidate {
 }
 
 type Outcome =
-  | { kind: 'flagged' }
+  | { kind: 'flagged'; already: boolean }
   | { kind: 'closed'; state: string }
   | { kind: 'not_ready'; reason: string };
 
@@ -77,7 +86,11 @@ export async function runPrReadyFlag(env: EdgeEnv): Promise<void> {
 
   for (const row of rows.results) {
     const match = row.pr_url.match(/github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)$/);
-    if (!match) continue;
+    if (!match) {
+      // Not a PR URL this can judge; stop re-reading it.
+      await env.db.prepare(`UPDATE cc_tasks SET pr_url = ? WHERE id = ?`).bind(`${row.pr_url}/closed`, row.id).run();
+      continue;
+    }
     const candidate: Candidate = {
       taskId: row.id,
       title: row.title,
@@ -94,7 +107,7 @@ export async function runPrReadyFlag(env: EdgeEnv): Promise<void> {
           .bind(`${candidate.prUrl}/closed`, candidate.taskId).run();
         console.log(`[pr-ready] ${ref} is ${outcome.state}; no longer tracked`);
       } else if (outcome.kind === 'flagged') {
-        console.log(`[pr-ready] Flagged ${ref} ready to merge -- "${candidate.title}"`);
+        if (!outcome.already) console.log(`[pr-ready] Flagged ${ref} ready to merge -- "${candidate.title}"`);
       } else {
         console.log(`[pr-ready] Not ready ${ref}: ${outcome.reason}`);
       }
@@ -112,19 +125,46 @@ async function evaluate(token: string, candidate: Candidate): Promise<Outcome> {
 
   if (stats.state !== 'open') return { kind: 'closed', state: stats.state };
 
+  const labelled = stats.labels.includes(READY_LABEL);
+  const verdict = await judge(token, candidate, stats);
+  if (verdict) {
+    if (labelled) await removeLabelFromIssue(token, candidate.ghRepo, candidate.prNumber, READY_LABEL);
+    return { kind: 'not_ready', reason: labelled ? `${verdict} (label removed)` : verdict };
+  }
+  if (!labelled) await addLabelsToIssue(token, candidate.ghRepo, candidate.prNumber, [READY_LABEL]);
+  return { kind: 'flagged', already: labelled };
+}
+
+/** Why the PR isn't ready, or null when it is. */
+async function judge(
+  token: string,
+  candidate: Candidate,
+  stats: Awaited<ReturnType<typeof getPullRequestStats>>,
+): Promise<string | null> {
+  const notReady = (reason: string): string => reason;
+
   // Provenance: the task's own branch in this repo, aimed at the default branch.
   if (stats.headRepo !== candidate.ghRepo) {
-    return { kind: 'not_ready', reason: `head is from ${stats.headRepo ?? 'a deleted fork'}, not ${candidate.ghRepo}` };
+    return notReady(`head is from ${stats.headRepo ?? 'a deleted fork'}, not ${candidate.ghRepo}`);
   }
   if (!stats.head.startsWith('auto/')) {
-    return { kind: 'not_ready', reason: `head branch ${stats.head} is not an auto/ task branch` };
+    return notReady(`head branch ${stats.head} is not an auto/ task branch`);
   }
   if (stats.base !== stats.baseDefaultBranch) {
-    return { kind: 'not_ready', reason: `targets ${stats.base}, not ${stats.baseDefaultBranch}` };
+    return notReady(`targets ${stats.base}, not ${stats.baseDefaultBranch}`);
   }
 
   if (stats.mergeable !== true) {
-    return { kind: 'not_ready', reason: stats.mergeable === false ? 'merge conflicts' : 'mergeability not computed yet' };
+    return notReady(stats.mergeable === false ? 'merge conflicts' : 'mergeability not computed yet');
+  }
+
+  const files = await getPullRequestFileDetails(token, candidate.ghRepo, candidate.prNumber);
+  if (stats.changed_files > files.length) {
+    return notReady(`too many changed files to verify (${stats.changed_files})`);
+  }
+  const workflowEdit = files.find((f) => [f.filename, f.previousFilename ?? ''].some((path) => path.toLowerCase().startsWith('.github/')));
+  if (workflowEdit) {
+    return notReady(`touches ${workflowEdit.previousFilename?.toLowerCase().startsWith('.github/') ? workflowEdit.previousFilename : workflowEdit.filename}; a PR that edits .github/ decides its own checks`);
   }
 
   const [status, checks] = await Promise.all([
@@ -133,10 +173,8 @@ async function evaluate(token: string, candidate: Candidate): Promise<Outcome> {
   ]);
   const required = operatorConfig.integrations.github.prReady?.requiredChecks?.[candidate.ghRepo] ?? [];
   const ci = ciVerdict(status, checks, required);
-  if (!ci.ok) return { kind: 'not_ready', reason: ci.reason };
-
-  await addLabelsToIssue(token, candidate.ghRepo, candidate.prNumber, [READY_LABEL]);
-  return { kind: 'flagged' };
+  if (!ci.ok) return notReady(ci.reason);
+  return null;
 }
 
 // --- CI verdict ---

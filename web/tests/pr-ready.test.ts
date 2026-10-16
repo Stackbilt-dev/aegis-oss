@@ -51,6 +51,8 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
   let calls: { url: string; method: string; body?: unknown }[];
   let logs: string[];
   let sqls: string[];
+  let files: unknown[];
+  let rows: Record<string, unknown>[];
 
   const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
@@ -61,7 +63,7 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
         sqls.push(sql);
         return {
           bind: (...args: unknown[]) => ({
-            all: async () => ({ results: [{ id: 'task-1234abcd', title: 'docs: fix typo', pr_url: 'https://github.com/ExampleOrg/demo/pull/7' }] }),
+            all: async () => ({ results: rows }),
             run: async () => { updates.push(args); return { success: true }; },
           }),
         };
@@ -74,10 +76,13 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-16T22:00:00Z'));
     calls = []; logs = []; sqls = [];
+    files = [{ filename: 'docs/readme.md', status: 'modified' }];
+    rows = [{ id: 'task-1234abcd', title: 'docs: fix typo', pr_url: 'https://github.com/ExampleOrg/demo/pull/7' }];
     pr = {
       number: 7, state: 'open', mergeable: true, additions: 3, deletions: 1, changed_files: 1,
       head: { ref: 'auto/task1234', sha: HEAD_SHA, repo: { full_name: 'ExampleOrg/demo' } },
       base: { ref: 'main', repo: { default_branch: 'main' } },
+      labels: [],
     };
     checkRuns = { total_count: 1, check_runs: [green] };
     vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { logs.push(a.join(' ')); });
@@ -91,7 +96,9 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
       if (u.includes(`/commits/${HEAD_SHA}/check-runs`)) {
         return json({ ...checkRuns, check_runs: checkRuns.check_runs.map((r) => ({ ...r, app: r.app ? { slug: r.app } : null })) });
       }
+      if (u.includes('/pulls/7/files')) return json(files);
       if (u.endsWith('/issues/7/labels') && method === 'POST') return json([{ name: READY_LABEL }]);
+      if (u.endsWith(`/issues/7/labels/${encodeURIComponent(READY_LABEL)}`) && method === 'DELETE') return json([]);
       return new Response('not mocked: ' + u, { status: 404 });
     }));
   });
@@ -104,6 +111,7 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
   });
 
   const labelled = () => calls.some((c) => c.url.endsWith('/issues/7/labels') && c.method === 'POST');
+  const unlabelled = () => calls.some((c) => c.url.includes('/issues/7/labels/') && c.method === 'DELETE');
   const merged = () => calls.some((c) => c.url.includes('/merge'));
   const notReady = (reason: string) => logs.some((l) => l.includes('Not ready ExampleOrg/demo#7') && l.includes(reason));
 
@@ -139,6 +147,10 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
     ['conflicts', () => { pr.mergeable = false; }, 'merge conflicts'],
     ['a failed check next to a green one', () => { checkRuns = { total_count: 2, check_runs: [green, run('test', 'completed', 'failure')] }; }, 'check test: failure'],
     ['no CI', () => { checkRuns = { total_count: 0, check_runs: [] }; }, 'no successful GitHub Actions check run'],
+    ['a workflow edit', () => { files = [{ filename: '.github/workflows/ci.yml', status: 'modified' }]; }, 'touches .github/workflows/ci.yml'],
+    ['a workflow renamed away', () => { files = [{ filename: 'old-ci.yml', status: 'renamed', previousFilename: undefined, previous_filename: '.github/workflows/ci.yml' }]; }, 'touches .github/workflows/ci.yml'],
+    ['a workflow edit in a different case', () => { files = [{ filename: '.GitHub/workflows/ci.yml', status: 'added' }]; }, 'touches .GitHub/workflows/ci.yml'],
+    ['too many files to read', () => { pr.changed_files = 101; }, 'too many changed files to verify (101)'],
   ])('does not flag %s', async (_name, setup, reason) => {
     setup();
     const { env: e } = env();
@@ -146,6 +158,31 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
     expect(labelled()).toBe(false);
     expect(merged()).toBe(false);
     expect(notReady(reason)).toBe(true);
+  });
+
+  it('withdraws the label when a flagged PR stops qualifying', async () => {
+    pr.labels = [{ name: READY_LABEL }];
+    checkRuns = { total_count: 2, check_runs: [green, run('test', 'completed', 'failure')] };
+    const { env: e } = env();
+    await runPrReadyFlag(e);
+    expect(unlabelled()).toBe(true);
+    expect(labelled()).toBe(false);
+    expect(notReady('(label removed)')).toBe(true);
+  });
+
+  it('does not re-add the label to a PR that already has it', async () => {
+    pr.labels = [{ name: READY_LABEL }];
+    const { env: e } = env();
+    await runPrReadyFlag(e);
+    expect(labelled()).toBe(false);
+    expect(unlabelled()).toBe(false);
+  });
+
+  it('stops tracking a task whose pr_url is not a PR it can judge', async () => {
+    rows = [{ id: 'task-x', title: 't', pr_url: 'https://example.com/not-a-pr' }];
+    const { env: e, updates } = env();
+    await runPrReadyFlag(e);
+    expect(updates).toEqual([['https://example.com/not-a-pr/closed', 'task-x']]);
   });
 
   it('honours required checks from the operator config', async () => {
