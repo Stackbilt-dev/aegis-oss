@@ -597,6 +597,33 @@ export async function getCombinedStatus(
   };
 }
 
+// ─── Check Runs ──────────────────────────────────────────────
+
+export interface CheckRunSummary {
+  total: number;
+  runs: { name: string; status: string; conclusion: string | null }[];
+}
+
+/**
+ * GitHub Actions (and other Checks API) results for a commit. The legacy
+ * combined-status endpoint above does not include them.
+ */
+export async function getCheckRuns(
+  token: string,
+  repo: string,
+  ref: string,
+): Promise<CheckRunSummary> {
+  const res = await ghFetch(token, `/repos/${repo}/commits/${encodeURIComponent(ref)}/check-runs?per_page=100`);
+  const data = (await res.json()) as {
+    total_count: number;
+    check_runs: { name: string; status: string; conclusion: string | null }[];
+  };
+  return {
+    total: data.total_count,
+    runs: data.check_runs.map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion })),
+  };
+}
+
 // ─── PR Stats ────────────────────────────────────────────────
 
 export interface PullRequestStats {
@@ -607,6 +634,8 @@ export interface PullRequestStats {
   deletions: number;
   changed_files: number;
   head: string;
+  /** Head commit SHA: what CI ran on, and what a merge must pin to. */
+  headSha: string;
   base: string;
 }
 
@@ -623,7 +652,7 @@ export async function getPullRequestStats(
     additions: number;
     deletions: number;
     changed_files: number;
-    head: { ref: string };
+    head: { ref: string; sha: string };
     base: { ref: string };
   };
   return {
@@ -634,6 +663,7 @@ export async function getPullRequestStats(
     deletions: data.deletions,
     changed_files: data.changed_files,
     head: data.head.ref,
+    headSha: data.head.sha,
     base: data.base.ref,
   };
 }
@@ -658,9 +688,12 @@ export async function mergePullRequest(
   pullNumber: number,
   method: 'merge' | 'squash' | 'rebase' = 'squash',
   commitMessage?: string,
+  /** Merge only if the PR head is still this commit (GitHub answers 409 otherwise). */
+  sha?: string,
 ): Promise<{ sha: string; merged: boolean; message: string }> {
   const body: Record<string, unknown> = { merge_method: method };
   if (commitMessage) body.commit_message = commitMessage;
+  if (sha) body.sha = sha;
   const res = await ghFetch(token, `/repos/${repo}/pulls/${pullNumber}/merge`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

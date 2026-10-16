@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.5 (2026-10-16)
+
+### Fixed
+- **PR auto-merge no longer merges PRs whose GitHub Actions checks failed.** The CI gate read only the legacy combined-status API, which doesn't include Actions check runs and reports `pending` with zero statuses on an Actions-only repo; that was treated as "no CI configured" and passed. The gate now reads the check runs too and fails closed: every commit status must be `success`, every check run completed with `success`, `neutral` or `skipped`, and a PR with no CI at all is not auto-merged. It also waits while GitHub reports mergeability as unknown (it only refused `false`), checks CI on the head commit SHA rather than the branch name, and pins the merge to that SHA so a commit pushed after the checks can't be merged unchecked. New `getCheckRuns()` and `PullRequestStats.headSha`; `mergePullRequest()` takes an optional `sha`.
+
 ## 0.9.4 (2026-09-24)
 
 ### Added

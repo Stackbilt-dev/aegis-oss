@@ -4,16 +4,19 @@
 //
 // Gates:
 //   1. Task category is auto_safe (docs, tests, research)
-//   2. CI status is green (or no CI configured)
+//   2. CI is green: every commit status and check run on the head commit
+//      succeeded, and there is at least one (no CI means no auto-merge)
 //   3. Diff is under LOC cap
 //   4. No sensitive files touched
-//   5. PR is open and mergeable
+//   5. PR is open and GitHub reports it mergeable (unknown is not enough);
+//      the merge is pinned to the head commit that was checked
 //
 // Runs in Phase 1 (free -- GitHub API only, no LLM).
 
 import { type EdgeEnv } from '../dispatch.js';
 import {
   getCombinedStatus,
+  getCheckRuns,
   getPullRequestStats,
   getPullRequestFiles,
   mergePullRequest,
@@ -163,8 +166,8 @@ async function evaluateAndMerge(
     return { merged: false, reason: `PR state: ${stats.state}` };
   }
 
-  if (stats.mergeable === false) {
-    return { merged: false, reason: 'not mergeable (conflicts)' };
+  if (stats.mergeable !== true) {
+    return { merged: false, reason: stats.mergeable === false ? 'not mergeable (conflicts)' : 'mergeability not computed yet' };
   }
 
   const totalLoc = stats.additions + stats.deletions;
@@ -182,17 +185,14 @@ async function evaluateAndMerge(
     }
   }
 
-  // Gate 3: CI status
-  const ciStatus = await getCombinedStatus(githubToken, candidate.ghRepo, stats.head);
-
-  if (ciStatus.state === 'failure' || ciStatus.state === 'error') {
-    return { merged: false, reason: `CI ${ciStatus.state}` };
-  }
-
-  // CI pending is OK for repos without CI configured (total=0)
-  // But if there ARE statuses and they're pending, wait
-  if (ciStatus.state === 'pending' && ciStatus.total > 0) {
-    return { merged: false, reason: 'CI pending' };
+  // Gate 3: CI on the exact head commit -- legacy statuses and check runs
+  const [ciStatus, checkRuns] = await Promise.all([
+    getCombinedStatus(githubToken, candidate.ghRepo, stats.headSha),
+    getCheckRuns(githubToken, candidate.ghRepo, stats.headSha),
+  ]);
+  const ci = ciVerdict(ciStatus, checkRuns);
+  if (!ci.ok) {
+    return { merged: false, reason: ci.reason };
   }
 
   // All gates passed -- merge with squash
@@ -203,6 +203,7 @@ async function evaluateAndMerge(
     candidate.prNumber,
     'squash',
     commitMsg,
+    stats.headSha,
   );
 
   if (!mergeResult.merged) {
@@ -210,4 +211,37 @@ async function evaluateAndMerge(
   }
 
   return { merged: true };
+}
+
+// --- CI verdict ---
+
+const PASSING_CONCLUSIONS = new Set(['success', 'neutral', 'skipped']);
+
+/**
+ * Fail closed. GitHub Actions report through the Checks API, not commit
+ * statuses, and the combined status reads "pending" with zero statuses when
+ * a repo only uses Actions -- which used to pass. Now every status must be
+ * success, every check run completed with a passing conclusion, and at least
+ * one of either must exist.
+ */
+export function ciVerdict(
+  status: { total: number; statuses: { context: string; state: string }[] },
+  checks: { total: number; runs: { name: string; status: string; conclusion: string | null }[] },
+): { ok: true } | { ok: false; reason: string } {
+  if (status.total === 0 && checks.total === 0) {
+    return { ok: false, reason: 'no CI statuses or check runs on head commit' };
+  }
+  if (checks.total > checks.runs.length) {
+    return { ok: false, reason: `too many check runs to verify (${checks.total})` };
+  }
+  for (const s of status.statuses) {
+    if (s.state !== 'success') return { ok: false, reason: `status ${s.context}: ${s.state}` };
+  }
+  for (const r of checks.runs) {
+    if (r.status !== 'completed') return { ok: false, reason: `check ${r.name}: ${r.status}` };
+    if (!PASSING_CONCLUSIONS.has(r.conclusion ?? '')) {
+      return { ok: false, reason: `check ${r.name}: ${r.conclusion ?? 'no conclusion'}` };
+    }
+  }
+  return { ok: true };
 }
