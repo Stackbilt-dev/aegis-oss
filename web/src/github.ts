@@ -580,7 +580,7 @@ export async function getCombinedStatus(
   repo: string,
   ref: string,
 ): Promise<CombinedStatus> {
-  const res = await ghFetch(token, `/repos/${repo}/commits/${encodeURIComponent(ref)}/status`);
+  const res = await ghFetch(token, `/repos/${repo}/commits/${encodeURIComponent(ref)}/status?per_page=100`);
   const data = (await res.json()) as {
     state: string;
     total_count: number;

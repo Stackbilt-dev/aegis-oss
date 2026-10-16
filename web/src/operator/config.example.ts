@@ -41,7 +41,11 @@ const config: OperatorConfig = {
       fallbackUrl: 'https://your-bizops.example.com/mcp',
       toolPrefix: 'BizOps Copilot',
     },
-    github: { enabled: true },
+    github: {
+      enabled: true,
+      // PR auto-merge: only repos listed here, and only when every named check passed.
+      // automerge: { requiredChecks: { 'ExampleOrg/my-project': ['typecheck', 'test'] } },
+    },
     brave: { enabled: true },
     email: {
       profiles: {

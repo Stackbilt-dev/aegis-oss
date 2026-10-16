@@ -4,8 +4,10 @@
 //
 // Gates:
 //   1. Task category is auto_safe (docs, tests, research)
-//   2. CI is green: every commit status and check run on the head commit
-//      succeeded, and there is at least one (no CI means no auto-merge)
+//   2. CI is green: every check the operator config requires for the repo
+//      (integrations.github.automerge.requiredChecks) succeeded on the head
+//      commit, and every other status and check run there passed. A repo with
+//      no required checks is never auto-merged.
 //   3. Diff is under LOC cap
 //   4. No sensitive files touched
 //   5. PR is open and GitHub reports it mergeable (unknown is not enough);
@@ -21,6 +23,7 @@ import {
   getPullRequestFiles,
   mergePullRequest,
 } from '../../github.js';
+import { operatorConfig } from '../../operator/index.js';
 
 import { AUTOMERGE_SAFE_CATEGORIES } from '../../schema-enums.js';
 
@@ -190,7 +193,8 @@ async function evaluateAndMerge(
     getCombinedStatus(githubToken, candidate.ghRepo, stats.headSha),
     getCheckRuns(githubToken, candidate.ghRepo, stats.headSha),
   ]);
-  const ci = ciVerdict(ciStatus, checkRuns);
+  const required = operatorConfig.integrations.github.automerge?.requiredChecks?.[candidate.ghRepo] ?? [];
+  const ci = ciVerdict(ciStatus, checkRuns, required);
   if (!ci.ok) {
     return { merged: false, reason: ci.reason };
   }
@@ -227,12 +231,25 @@ const PASSING_CONCLUSIONS = new Set(['success', 'neutral', 'skipped']);
 export function ciVerdict(
   status: { total: number; statuses: { context: string; state: string }[] },
   checks: { total: number; runs: { name: string; status: string; conclusion: string | null }[] },
+  required: string[],
 ): { ok: true } | { ok: false; reason: string } {
-  if (status.total === 0 && checks.total === 0) {
-    return { ok: false, reason: 'no CI statuses or check runs on head commit' };
+  // "Some check is green" is not "CI passed": a job waiting on another job, a
+  // path-filtered workflow or a slow integration may not have reported yet.
+  // Without branch protection nothing else knows which checks matter, so the
+  // operator names them per repo; no names, no auto-merge.
+  if (required.length === 0) {
+    return { ok: false, reason: 'no required checks configured for this repo' };
   }
   if (checks.total > checks.runs.length) {
     return { ok: false, reason: `too many check runs to verify (${checks.total})` };
+  }
+  if (status.total > status.statuses.length) {
+    return { ok: false, reason: `too many commit statuses to verify (${status.total})` };
+  }
+  for (const name of required) {
+    const passed = checks.runs.some((r) => r.name === name && r.status === 'completed' && r.conclusion === 'success')
+      || status.statuses.some((s) => s.context === name && s.state === 'success');
+    if (!passed) return { ok: false, reason: `required check ${name} has not passed` };
   }
   for (const s of status.statuses) {
     if (s.state !== 'success') return { ok: false, reason: `status ${s.context}: ${s.state}` };

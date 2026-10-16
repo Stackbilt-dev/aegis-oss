@@ -28,7 +28,17 @@ export interface OperatorConfig {
   selfModel: SelfModel;
   integrations: {
     bizops: { enabled: boolean; fallbackUrl: string; toolPrefix: string };
-    github: { enabled: boolean };
+    github: {
+      enabled: boolean;
+      /**
+       * PR auto-merge for completed docs/tests/research tasks. A repo merges
+       * only when every check named here passed on the PR's head commit
+       * (plus every other status and check run that exists). A repo with no
+       * entry is never auto-merged. Keys are `owner/name`; names are check
+       * run names (GitHub Actions job names) or commit status contexts.
+       */
+      automerge?: { requiredChecks: Record<string, string[]> };
+    };
     brave: { enabled: boolean };
     email: {
       profiles: Record<string, { from: string; defaultTo: string; keyEnvField: 'resendApiKey' | 'resendApiKeyPersonal' }>;
