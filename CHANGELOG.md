@@ -3,16 +3,15 @@
 ## 0.10.0 (2026-10-16)
 
 ### Breaking
-- **PR auto-merge is off until you configure it.** It now merges a repo's task PRs only when the operator config lists that repo's required checks (`integrations.github.automerge.requiredChecks`: `owner/name` → GitHub Actions job names). Existing deployments stop auto-merging until they add the entry. Consumers with their own copy of `OperatorConfig` need the new optional `automerge` field.
+- **PR auto-merge is removed.** The `pr-automerge` heartbeat merged completed docs/tests/research task PRs, and its CI gate read only the legacy combined-status API, which doesn't include GitHub Actions check runs and reports `pending` with zero statuses on an Actions-only repo. That was treated as "no CI configured", so a PR whose checks all failed could be merged. Four review rounds on a hardened gate showed that no file category is safe to merge by rule without branch protection: docs steer later agents (`CLAUDE.md`, `AGENTS.md`, prompts, skills), Markdown is served as pages on some sites, and a new test file is code that runs in CI next to deploy credentials. A human merge is the control.
 
-### Fixed
-- **PR auto-merge no longer merges PRs whose CI failed or didn't run.** The gate read only the legacy combined-status API, which doesn't include GitHub Actions check runs and reports `pending` with zero statuses on an Actions-only repo; that was treated as "no CI configured" and passed. Now, on the PR's head commit:
-  - every required check must be a completed GitHub Actions check run (app `github-actions`) concluding `success` — skipped, neutral, a commit status or another app's check run of the same name don't count;
-  - every other commit status must be `success` and every other check run completed with `success`, `neutral` or `skipped`;
-  - statuses, check runs and changed files are each read up to 100, and the gate refuses if there are more;
-  - GitHub must report the PR mergeable (unknown no longer passes), and the merge is pinned to the checked head SHA.
-- **A task PR can't rewrite what judges it.** The sensitive-file list is replaced by a per-category allowlist: docs PRs may touch Markdown and `docs/` text and images; research PRs `research/` and Markdown; tests PRs may only add new test files. Anything else — `.github/`, dotfiles, existing tests, any config — means no auto-merge. Renames are judged by both paths.
-- New `getCheckRuns()`, `getPullRequestFileDetails()`, `PullRequestStats.headSha`; `mergePullRequest()` takes an optional `sha`; `getCombinedStatus()` reads 100 statuses.
+### Added
+- **PR ready flag** (`pr-ready` heartbeat, every 2 h). It labels a completed task's PR `aegis:ready-to-merge` when:
+  - it is open, comes from an `auto/` branch in the same repo, and targets the repo's default branch;
+  - GitHub reports it mergeable;
+  - on the head commit, every commit status is `success`, every check run completed and passing, and at least one GitHub Actions check run succeeded.
+  Optional per-repo required checks (`integrations.github.prReady.requiredChecks`: `owner/name` → GitHub Actions job names) must each be successful Actions runs. Statuses and check runs are read up to 100 each; more is refused. Tasks are read newest first, and closed or merged PRs are marked done on the task row (`/closed`), so old PRs no longer starve new ones.
+- `getCheckRuns()`, `PullRequestStats.headSha`, `headRepo` and `baseDefaultBranch`; `mergePullRequest()` takes an optional `sha` to pin the head; `getCombinedStatus()` reads 100 statuses.
 
 ## 0.9.4 (2026-09-24)
 

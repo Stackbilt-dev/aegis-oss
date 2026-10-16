@@ -31,13 +31,12 @@ export interface OperatorConfig {
     github: {
       enabled: boolean;
       /**
-       * PR auto-merge for completed docs/tests/research tasks. A repo merges
-       * only when every check named here passed on the PR's head commit
-       * (plus every other status and check run that exists). A repo with no
-       * entry is never auto-merged. Keys are `owner/name`; names are check
-       * run names (GitHub Actions job names) or commit status contexts.
+       * The PR ready flag labels green autonomous-task PRs for a human merge
+       * (nothing is merged automatically). Optionally require named checks
+       * per repo: keys are `owner/name`, values are GitHub Actions job
+       * names, each of which must have succeeded on the PR's head commit.
        */
-      automerge?: { requiredChecks: Record<string, string[]> };
+      prReady?: { requiredChecks?: Record<string, string[]> };
     };
     brave: { enabled: boolean };
     email: {

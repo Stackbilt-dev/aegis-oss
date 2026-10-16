@@ -43,8 +43,8 @@ const config: OperatorConfig = {
     },
     github: {
       enabled: true,
-      // PR auto-merge: only repos listed here, and only when every named check passed.
-      // automerge: { requiredChecks: { 'ExampleOrg/my-project': ['typecheck', 'test'] } },
+      // PR ready flag: also require these GitHub Actions jobs before labelling a PR ready.
+      // prReady: { requiredChecks: { 'ExampleOrg/my-project': ['typecheck', 'test'] } },
     },
     brave: { enabled: true },
     email: {

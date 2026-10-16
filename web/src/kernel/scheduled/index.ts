@@ -18,7 +18,7 @@ import { runArgusNotifications } from './argus-notify.js';
 import { runArgusHeartbeat } from './argus-heartbeat.js';
 import { runCognitiveMetrics } from './cognitive-metrics.js';
 import { runArgusAnalytics } from './argus-analytics.js';
-import { runPrAutomerge } from './pr-automerge.js';
+import { runPrReadyFlag } from './pr-ready.js';
 import { runFeedWatcher } from './feed-watcher.js';
 import { runCostReport } from './cost-report.js';
 import { runBoardSync } from './board-sync.js';
@@ -134,7 +134,7 @@ async function runHeartbeatPhase(env: EdgeEnv): Promise<void> {
   await runTask(env, 'argus-notify', 'heartbeat', runArgusNotifications);
   await runTask(env, 'argus-heartbeat', 'heartbeat', runArgusHeartbeat);
   await runTask(env, 'cognitive-metrics', 'heartbeat', runCognitiveMetrics);
-  await runTask(env, 'pr-automerge', 'heartbeat', runPrAutomerge);
+  await runTask(env, 'pr-ready', 'heartbeat', runPrReadyFlag);
 
   // Agent inbox -- process unread messages from peer agents
   await runTask(env, 'inbox', 'heartbeat', runInboxProcessor);
