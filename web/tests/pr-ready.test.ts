@@ -53,6 +53,9 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
   let sqls: string[];
   let files: unknown[];
   let rows: Record<string, unknown>[];
+  let prReads: number;
+  let movedHead: string | null;
+  let checksFail: boolean;
 
   const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
@@ -76,6 +79,7 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-16T22:00:00Z'));
     calls = []; logs = []; sqls = [];
+    prReads = 0; movedHead = null; checksFail = false;
     files = [{ filename: 'docs/readme.md', status: 'modified' }];
     rows = [{ id: 'task-1234abcd', title: 'docs: fix typo', pr_url: 'https://github.com/ExampleOrg/demo/pull/7' }];
     pr = {
@@ -91,7 +95,11 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
       const u = String(url);
       const method = init?.method ?? 'GET';
       calls.push({ url: u, method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-      if (u.endsWith('/pulls/7') && method === 'GET') return json(pr);
+      if (u.endsWith('/pulls/7') && method === 'GET') {
+        prReads++;
+        return json(prReads > 1 && movedHead ? { ...pr, head: { ...(pr.head as object), sha: movedHead } } : pr);
+      }
+      if (u.includes('/check-runs') && checksFail) return new Response('forbidden', { status: 403 });
       if (u.includes(`/commits/${HEAD_SHA}/status?per_page=100`)) return json({ state: 'pending', total_count: 0, statuses: [] });
       if (u.includes(`/commits/${HEAD_SHA}/check-runs`)) {
         return json({ ...checkRuns, check_runs: checkRuns.check_runs.map((r) => ({ ...r, app: r.app ? { slug: r.app } : null })) });
@@ -148,7 +156,7 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
     ['a failed check next to a green one', () => { checkRuns = { total_count: 2, check_runs: [green, run('test', 'completed', 'failure')] }; }, 'check test: failure'],
     ['no CI', () => { checkRuns = { total_count: 0, check_runs: [] }; }, 'no successful GitHub Actions check run'],
     ['a workflow edit', () => { files = [{ filename: '.github/workflows/ci.yml', status: 'modified' }]; }, 'touches .github/workflows/ci.yml'],
-    ['a workflow renamed away', () => { files = [{ filename: 'old-ci.yml', status: 'renamed', previousFilename: undefined, previous_filename: '.github/workflows/ci.yml' }]; }, 'touches .github/workflows/ci.yml'],
+    ['a workflow renamed away', () => { files = [{ filename: 'old-ci.yml', status: 'renamed', previous_filename: '.github/workflows/ci.yml' }]; }, 'touches .github/workflows/ci.yml'],
     ['a workflow edit in a different case', () => { files = [{ filename: '.GitHub/workflows/ci.yml', status: 'added' }]; }, 'touches .GitHub/workflows/ci.yml'],
     ['too many files to read', () => { pr.changed_files = 101; }, 'too many changed files to verify (101)'],
   ])('does not flag %s', async (_name, setup, reason) => {
@@ -183,6 +191,24 @@ describe('runPrReadyFlag (mocked GitHub)', () => {
     const { env: e, updates } = env();
     await runPrReadyFlag(e);
     expect(updates).toEqual([['https://example.com/not-a-pr/closed', 'task-x']]);
+  });
+
+  it('takes the label back off when the head moved while CI was being checked', async () => {
+    movedHead = 'fff999aaa000';
+    const { env: e } = env();
+    await runPrReadyFlag(e);
+    expect(labelled()).toBe(true);
+    expect(unlabelled()).toBe(true);
+    expect(notReady('head moved to fff999a while checking; label removed')).toBe(true);
+  });
+
+  it('withdraws the label when the PR can no longer be checked', async () => {
+    pr.labels = [{ name: READY_LABEL }];
+    checksFail = true;
+    const { env: e } = env();
+    await runPrReadyFlag(e);
+    expect(unlabelled()).toBe(true);
+    expect(logs.some((l) => l.startsWith('WARN') && l.includes('Error evaluating ExampleOrg/demo#7'))).toBe(true);
   });
 
   it('honours required checks from the operator config', async () => {

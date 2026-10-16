@@ -18,8 +18,11 @@
 //      for the repo (integrations.github.prReady.requiredChecks) is a
 //      successful GitHub Actions run
 //
-// A flagged PR that stops qualifying (say, a new commit fails CI) loses the
-// label. Closed or merged PRs are marked done on the task row so the
+// The label means "CI reported green on the head commit at the last check":
+// it can lag a new push by up to one run (2 h), covers only the newest
+// tracked PRs, and CI is reported by code the PR itself can change -- so
+// re-check CI when merging. A flagged PR that stops qualifying (say, a new
+// commit fails CI), or can't be re-checked, loses the label. Closed or merged PRs are marked done on the task row so the
 // heartbeat stops reading them.
 //
 // Runs in Phase 1 (free -- GitHub API only, no LLM).
@@ -114,6 +117,9 @@ export async function runPrReadyFlag(env: EdgeEnv): Promise<void> {
     } catch (err) {
       console.warn(`[pr-ready] Error evaluating ${candidate.ghRepo}#${candidate.prNumber}:`,
         err instanceof Error ? err.message : String(err));
+      // Couldn't confirm the PR is still ready: withdraw any label (best effort)
+      // rather than leave a possibly stale one.
+      await removeLabelFromIssue(env.githubToken, candidate.ghRepo, candidate.prNumber, READY_LABEL).catch(() => {});
     }
   }
 }
@@ -131,7 +137,16 @@ async function evaluate(token: string, candidate: Candidate): Promise<Outcome> {
     if (labelled) await removeLabelFromIssue(token, candidate.ghRepo, candidate.prNumber, READY_LABEL);
     return { kind: 'not_ready', reason: labelled ? `${verdict} (label removed)` : verdict };
   }
-  if (!labelled) await addLabelsToIssue(token, candidate.ghRepo, candidate.prNumber, [READY_LABEL]);
+  if (!labelled) {
+    await addLabelsToIssue(token, candidate.ghRepo, candidate.prNumber, [READY_LABEL]);
+    // The label belongs to the PR, not the commit: if a push landed while CI
+    // was being checked, take it back off until the next run judges the new head.
+    const after = await getPullRequestStats(token, candidate.ghRepo, candidate.prNumber);
+    if (after.headSha !== stats.headSha) {
+      await removeLabelFromIssue(token, candidate.ghRepo, candidate.prNumber, READY_LABEL);
+      return { kind: 'not_ready', reason: `head moved to ${after.headSha.slice(0, 7)} while checking; label removed` };
+    }
+  }
   return { kind: 'flagged', already: labelled };
 }
 
