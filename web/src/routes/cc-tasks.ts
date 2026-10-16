@@ -3,7 +3,7 @@ import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../types.js';
 import { classifyTaskFailure, parseTaskPreflight, scoreTaskUtility } from '../task-intelligence.js';
 import { moveBoardItemLocal, linkTaskToBoard } from '../kernel/board.js';
-import { TASK_AUTHORITIES, TASK_CATEGORIES, validateEnum } from '../schema-enums.js';
+import { TASK_AUTHORITIES, TASK_CATEGORIES, TASK_RUNNABLE_SQL, validateEnum } from '../schema-enums.js';
 
 const CC_TASKS_BODY_LIMIT = 256 * 1024;
 
@@ -14,7 +14,7 @@ ccTasks.get('/api/cc-tasks/next', async (c) => {
   const task = await c.env.DB.prepare(`
     SELECT * FROM cc_tasks
     WHERE status = 'pending'
-      AND authority != 'proposed'
+      AND ${TASK_RUNNABLE_SQL}
       AND (depends_on IS NULL OR depends_on IN (
         SELECT id FROM cc_tasks WHERE status = 'completed'
       ))
@@ -303,13 +303,14 @@ ccTasks.post('/api/cc-tasks/:id/cancel', bodyLimit({ maxSize: CC_TASKS_BODY_LIMI
 ccTasks.post('/api/cc-tasks/:id/approve', bodyLimit({ maxSize: CC_TASKS_BODY_LIMIT }), async (c) => {
   const taskId = c.req.param('id');
   const result = await c.env.DB.prepare(`
-    UPDATE cc_tasks SET authority = 'operator'
-    WHERE id = ? AND authority = 'proposed' AND status = 'pending'
+    UPDATE cc_tasks SET approved_at = datetime('now'), approved_by = 'rest'
+    WHERE id = ? AND authority = 'proposed' AND approved_at IS NULL AND status = 'pending'
   `).bind(taskId).run();
   if (!result.meta.changes) {
-    return c.json({ error: 'Task not found, not proposed, or not pending' }, 404);
+    return c.json({ error: 'Task not found, not awaiting approval, or not pending' }, 404);
   }
-  return c.json({ id: taskId, authority: 'operator', status: 'pending' });
+  // Authority stays 'proposed': the task runs isolated and lands as a PR.
+  return c.json({ id: taskId, authority: 'proposed', approved: true, status: 'pending' });
 });
 
 // Reject a proposed task

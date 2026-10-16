@@ -334,7 +334,9 @@ CREATE TABLE IF NOT EXISTS cc_tasks (
   github_issue_number INTEGER,                   -- source issue number (repo-scoped)
   business_unit TEXT NOT NULL DEFAULT 'stackbilt', -- partition key for multi-BU operators
   executor TEXT NOT NULL DEFAULT 'claude_code'   -- where it runs: claude_code (local runner) or do_sandbox (sandbox executor)
-    CHECK (executor IN ('claude_code', 'do_sandbox'))
+    CHECK (executor IN ('claude_code', 'do_sandbox')),
+  approved_at TEXT,                              -- when an operator approved a proposed task (authority stays 'proposed')
+  approved_by TEXT                               -- who approved it (e.g. 'mcp', 'rest')
 );
 
 CREATE INDEX IF NOT EXISTS idx_cc_tasks_status ON cc_tasks(status, priority);

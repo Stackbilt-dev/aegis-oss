@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.0 (2026-10-16)
+
+### Fixed
+- **Approving a proposed task no longer makes it an operator task.** Approval (REST `POST /api/cc-tasks/:id/approve`, MCP `aegis_approve_cc_task` and `aegis_batch_approve`) rewrote `authority` to `operator`. The local task runner runs operator tasks in the operator's own checkout with no branch or PR, so approved work, often generated from untrusted issue bodies, ran there unisolated, and nothing afterwards showed it had started as proposed. Approval now keeps `authority = 'proposed'` and records `approved_at` and `approved_by` (`rest` or `mcp`); a task can be approved once. The task queue (`/next`), sandbox dispatch and the sandbox claim run proposed tasks once approved, and the runner keeps giving every non-operator task its own worktree and PR.
+- Awaiting-approval listings (briefing, digest, task summary, dashboard) and the contract invariant `proposed_task_needs_approval` count only proposed tasks not yet approved. The shared conditions are `TASK_RUNNABLE_SQL` and `TASK_AWAITING_APPROVAL_SQL` in `schema-enums.ts`.
+
+### Upgrade
+- Existing databases: apply `migrations/0002_cc_tasks_approval.sql` (adds `approved_at`, `approved_by`) before deploying. Fresh installs get the columns from `schema.sql`. Tasks approved on earlier versions were already rewritten to `operator`; their original authority wasn't kept, so they can't be restored.
+
 ## 0.10.0 (2026-10-16)
 
 ### Breaking

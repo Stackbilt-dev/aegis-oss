@@ -4,6 +4,7 @@
 // No fluff, no preamble. Answer before the question is asked.
 
 import type { EdgeEnv } from './dispatch.js';
+import { TASK_AWAITING_APPROVAL_SQL } from '../schema-enums.js';
 
 export interface Briefing {
   // What happened while you were away
@@ -47,7 +48,7 @@ export async function generateBriefing(env: EdgeEnv): Promise<Briefing> {
 
     // Proposed tasks awaiting approval
     env.db.prepare(
-      "SELECT title, repo FROM cc_tasks WHERE authority = 'proposed' AND status = 'pending' ORDER BY created_at ASC LIMIT 5"
+      `SELECT title, repo FROM cc_tasks WHERE ${TASK_AWAITING_APPROVAL_SQL} AND status = 'pending' ORDER BY created_at ASC LIMIT 5`
     ).all<{ title: string; repo: string }>(),
 
     // Currently running

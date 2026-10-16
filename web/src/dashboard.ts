@@ -123,7 +123,7 @@ export async function getDashboardData(db: D1Database, memoryBinding?: MemorySer
     db.prepare("SELECT COALESCE(SUM(cost), 0) as total FROM episodic_memory WHERE created_at > datetime('now', '-7 days')").first<{ total: number }>(),
     db.prepare("SELECT summary, outcome, cost, latency_ms, created_at FROM episodic_memory ORDER BY created_at DESC LIMIT 20").all<{ summary: string; outcome: string; cost: number; latency_ms: number; created_at: string }>(),
     db.prepare("SELECT severity, summary, created_at FROM heartbeat_results ORDER BY created_at DESC LIMIT 1").first<{ severity: string; summary: string; created_at: string }>(),
-    db.prepare("SELECT status, authority, COUNT(*) as c FROM cc_tasks WHERE status IN ('pending', 'running') GROUP BY status, authority").all<{ status: string; authority: string; c: number }>(),
+    db.prepare("SELECT status, CASE WHEN authority = 'proposed' AND approved_at IS NULL THEN 'proposed' ELSE 'runnable' END AS authority, COUNT(*) as c FROM cc_tasks WHERE status IN ('pending', 'running') GROUP BY 1, 2").all<{ status: string; authority: string; c: number }>(),
     db.prepare("SELECT status, COUNT(*) as c FROM cc_tasks WHERE completed_at > datetime('now', '-24 hours') GROUP BY status").all<{ status: string; c: number }>(),
     db.prepare("SELECT id, title, repo, status, authority, category, exit_code, pr_url, completed_at FROM cc_tasks ORDER BY COALESCE(completed_at, started_at, created_at) DESC LIMIT 10").all<{ id: string; title: string; repo: string; status: string; authority: string; category: string; exit_code: number | null; pr_url: string | null; completed_at: string | null }>(),
   ]);
@@ -216,7 +216,7 @@ export async function getDashboardData(db: D1Database, memoryBinding?: MemorySer
     } : null,
     tasks: {
       pending: taskStatusRows.results.filter(r => r.status === 'pending' && r.authority !== 'proposed').reduce((s, r) => s + r.c, 0),
-      proposed: taskStatusRows.results.filter(r => r.authority === 'proposed').reduce((s, r) => s + r.c, 0),
+      proposed: taskStatusRows.results.filter(r => r.status === 'pending' && r.authority === 'proposed').reduce((s, r) => s + r.c, 0),
       running: taskStatusRows.results.filter(r => r.status === 'running').reduce((s, r) => s + r.c, 0),
       completed24h: taskCompletedRows.results.find(r => r.status === 'completed')?.c ?? 0,
       failed24h: taskCompletedRows.results.find(r => r.status === 'failed')?.c ?? 0,

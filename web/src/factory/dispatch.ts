@@ -12,6 +12,7 @@
 
 import type { ScheduledTaskPlugin } from '../core.js';
 import type { EdgeEnv } from '../kernel/dispatch.js';
+import { TASK_RUNNABLE_SQL } from '../schema-enums.js';
 
 interface RunResponse {
   ok?: boolean;
@@ -25,7 +26,7 @@ export async function runTaskExecutorDispatch(env: EdgeEnv): Promise<void> {
     SELECT id FROM cc_tasks
     WHERE status = 'pending'
       AND executor = 'do_sandbox'
-      AND authority IN ('auto_safe', 'operator')
+      AND ${TASK_RUNNABLE_SQL}
     LIMIT 1
   `).first<{ id: string }>();
   if (!eligible) return;

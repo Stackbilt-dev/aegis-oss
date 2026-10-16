@@ -42,6 +42,8 @@ export const CCTaskContract = defineContract({
     githubIssueRepo: z.string().nullable(),
     githubIssueNumber: z.number().int().positive().nullable(),
     businessUnit: z.string().min(1).default('stackbilt'),
+    approvedAt: z.string().nullable().default(null),
+    approvedBy: z.string().nullable().default(null),
   }),
 
   operations: {
@@ -180,8 +182,8 @@ export const CCTaskContract = defineContract({
       name: 'proposed_task_needs_approval',
       description: 'Proposed tasks must be approved before they can run',
       check: (entity: unknown) => {
-        const t = entity as { authority?: string; status?: string };
-        if (t.authority === 'proposed' && t.status === 'running') {
+        const t = entity as { authority?: string; status?: string; approvedAt?: string | null };
+        if (t.authority === 'proposed' && !t.approvedAt && t.status === 'running') {
           return 'Proposed tasks require approval before execution';
         }
         return true;

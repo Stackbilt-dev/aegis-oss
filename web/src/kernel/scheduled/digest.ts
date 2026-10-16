@@ -10,6 +10,7 @@ import {
   type DigestServiceAlert,
   type DigestSections,
 } from '../../email.js';
+import { TASK_AWAITING_APPROVAL_SQL } from '../../schema-enums.js';
 
 // ─── Daily Digest ──────────────────────────────────────────────
 // Consolidates operator notifications into one daily email at 09:00 UTC (4:00 AM CT).
@@ -168,7 +169,7 @@ export async function runDailyDigest(env: EdgeEnv): Promise<void> {
       "SELECT id, title, repo, status, authority, category, exit_code, error, result, pr_url, completed_at FROM cc_tasks WHERE status = 'failed' AND completed_at > ? ORDER BY completed_at DESC"
     ).bind(since).all<DigestTask>(),
     env.db.prepare(
-      "SELECT id, title, repo, status, authority, category, exit_code, error, result, pr_url, completed_at FROM cc_tasks WHERE authority = 'proposed' AND status = 'pending' ORDER BY created_at ASC"
+      `SELECT id, title, repo, status, authority, category, exit_code, error, result, pr_url, completed_at FROM cc_tasks WHERE ${TASK_AWAITING_APPROVAL_SQL} AND status = 'pending' ORDER BY created_at ASC`
     ).all<DigestTask>(),
   ]);
 

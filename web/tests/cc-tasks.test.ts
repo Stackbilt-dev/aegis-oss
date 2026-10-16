@@ -439,7 +439,12 @@ describe('cc-tasks routes', () => {
 
       expect(res.status).toBe(200);
       const json = await res.json() as any;
-      expect(json.authority).toBe('operator');
+      // Approval keeps the authority: the task still runs isolated and lands as a PR.
+      expect(json.authority).toBe('proposed');
+      expect(json.approved).toBe(true);
+      const sql = db._queries[0].sql;
+      expect(sql).toContain("approved_at = datetime('now')");
+      expect(sql).not.toContain("authority = 'operator'");
     });
 
     it('returns 404 when task not found or not proposed', async () => {

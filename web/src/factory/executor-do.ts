@@ -56,6 +56,7 @@ import {
   type ExternalRepoPolicy,
   type TaskRepoTarget,
 } from './repo.js';
+import { TASK_RUNNABLE_SQL } from '../schema-enums.js';
 
 /** Bindings and secrets the executor reads. Declare them in your Worker's wrangler config. */
 export interface TaskExecutorEnv {
@@ -518,7 +519,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
            SELECT id FROM cc_tasks
            WHERE status = 'pending'
              AND executor = 'do_sandbox'
-             AND authority IN ('auto_safe', 'operator')
+             AND ${TASK_RUNNABLE_SQL}
            ORDER BY priority ASC, created_at ASC
            LIMIT 1
          )
