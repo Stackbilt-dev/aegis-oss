@@ -6,6 +6,7 @@ import { getMemoryStats } from './kernel/memory-adapter.js';
 import type { MemoryServiceBinding } from './types.js';
 import type { ProceduralEntry } from './kernel/types.js';
 import { VERSION } from './version.js';
+import { prLink } from './lib/pr-url.js';
 
 // ─── Data Model ──────────────────────────────────────────────
 
@@ -588,7 +589,7 @@ export function dashboardPage(data: DashboardData): string {
           <span style="display:inline-block;background:${statusColors[t.status] ?? '#666'}15;color:var(--text-secondary);font-size:9px;padding:1px 4px;border-radius:2px">${esc(t.category)}</span>
           ${t.authority === 'proposed' ? '<span style="color:#a855f7;font-size:9px">[PROPOSED]</span>' : ''}
           <span style="color:var(--text-primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>
-          ${t.pr_url ? `<a href="${esc(t.pr_url)}" target="_blank" style="color:#3dd6c8;font-size:9px;text-decoration:none" title="View PR">PR</a>` : ''}
+          ${t.pr_url ? `<a href="${esc(prLink(t.pr_url))}" target="_blank" style="color:#3dd6c8;font-size:9px;text-decoration:none" title="View PR">PR</a>` : ''}
           <span style="color:var(--text-secondary);font-family:'JetBrains Mono',monospace;font-size:10px">${exitLabel}</span>
         </div>`;
       }).join('') || '<p style="font-size:12px;color:var(--text-secondary)">No tasks</p>'}

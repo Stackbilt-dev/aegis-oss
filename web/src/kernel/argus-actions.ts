@@ -7,7 +7,7 @@
 //
 // Authority model:
 //   READ_ONLY  — label, comment, create agenda item (auto)
-//   MUTATION   — close issue, merge PR (requires operator approval)
+//   MUTATION   — close issue (requires operator approval). Nothing merges PRs.
 
 import { commentOnIssue, addLabelsToIssue, resolveRepoName } from '../github.js';
 import {

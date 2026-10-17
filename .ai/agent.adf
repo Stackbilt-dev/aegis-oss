@@ -25,7 +25,7 @@ ADF: 0.1
     - groq.ts: askGroq() — fetch-based, no SDK dependency
     - github.ts: GitHub REST API client — fetch-based, no SDK
         - Read: getRepoTree, getFileContent, getRecentCommits, listIssues, listPullRequests, listOrgRepos
-        - Write: createIssue, createBranch, getFileSha, updateFile, createPullRequest, mergePullRequest
+        - Write: createIssue, createBranch, getFileSha, updateFile, createPullRequest
         - CI: listWorkflowRuns (Actions API), getCombinedStatus (Status API)
         - Git Data API: createBlob, getBaseTreeSha, createTree, createGitCommit, updateRef (multi-file commits)
         - ghFetch: GitHubApiError class, retry on 500/502/503 (2x exponential backoff), rate limit detection (403/429)
@@ -93,7 +93,6 @@ ADF: 0.1
     - create_improvement_issue: POST /issues + addAgendaItem mirror
     - create_improvement_pr: single-file: createBranch → updateFile → createPullRequest + addAgendaItem(high)
     - create_multi_file_pr: multi-file: createBranch → createBlob(each) → createTree → createGitCommit → updateRef → createPullRequest + addAgendaItem(high)
-    - merge_pull_request: PUT /pulls/{n}/merge (squash/merge/rebase) + auto-resolve matching agenda item
 
   Classification: 'self_improvement' → claude executor (via DEFAULT_ROUTES in router.ts)
 

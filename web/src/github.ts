@@ -728,21 +728,3 @@ export async function removeLabelFromIssue(
   }
 }
 
-// ─── PR Merge ────────────────────────────────────────────────
-
-export async function mergePullRequest(
-  token: string,
-  repo: string,
-  pullNumber: number,
-  method: 'merge' | 'squash' | 'rebase' = 'squash',
-  commitMessage?: string,
-): Promise<{ sha: string; merged: boolean; message: string }> {
-  const body: Record<string, unknown> = { merge_method: method };
-  if (commitMessage) body.commit_message = commitMessage;
-  const res = await ghFetch(token, `/repos/${repo}/pulls/${pullNumber}/merge`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  return (await res.json()) as { sha: string; merged: boolean; message: string };
-}

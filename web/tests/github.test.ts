@@ -18,7 +18,6 @@ import {
   createPullRequest,
   listWorkflowRuns,
   getCombinedStatus,
-  mergePullRequest,
   searchIssues,
   closeIssue,
   commentOnIssue,
@@ -332,16 +331,6 @@ describe('GitHub API functions', () => {
       expect(status.state).toBe('success');
       expect(status.total).toBe(2);
       expect(status.statuses).toHaveLength(1);
-    });
-  });
-
-  describe('mergePullRequest', () => {
-    it('returns merge result', async () => {
-      mockFetch({ sha: 'merge_sha', merged: true, message: 'Pull Request successfully merged' });
-
-      const result = await mergePullRequest(token, 'ExampleOrg/aegis', 1);
-      expect(result.merged).toBe(true);
-      expect(result.sha).toBe('merge_sha');
     });
   });
 

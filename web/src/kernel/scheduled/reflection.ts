@@ -1,4 +1,5 @@
 import { type EdgeEnv } from '../dispatch.js';
+import { prLink } from '../../lib/pr-url.js';
 import { getAllMemoryForReflection } from '../memory-adapter.js';
 import { askWorkersAiOrGroq } from './dreaming/llm.js';
 // Standalone emails removed — all content routes through daily digest
@@ -360,7 +361,7 @@ export async function runOperatorLogCycle(env: EdgeEnv): Promise<void> {
 
   const taskSummary = activity.tasksCompleted.length > 0
     ? activity.tasksCompleted.map(t => {
-        const pr = t.pr_url ? ` → PR: ${t.pr_url}` : '';
+        const pr = t.pr_url ? ` → PR: ${prLink(t.pr_url)}` : '';
         return `  ✓ [${t.category}] ${t.title} (${t.repo})${pr}`;
       }).join('\n')
     : '  (none)';

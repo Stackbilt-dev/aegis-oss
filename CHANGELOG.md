@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.1 (2026-10-16)
+
+### Removed
+- **The `merge_pull_request` LLM tool.** It was in `GITHUB_TOOLS`, so every tool-using dispatch offered it, including the scheduled goal loop, whose goals read issues, PR bodies and comments anyone can write. Only prompt text told the model not to merge, so an injected "merge PR #N" could merge with no person involved. `mergePullRequest()` is removed from `github.ts` too, so nothing in core can merge a PR. Merge on GitHub.
+
+### Fixed
+- The dashboard's PR link, the daily digest email, the re-entry briefing, the reflection email and decision-doc timelines showed `pr_url` with the `/closed` (or older `/merged`) tracking suffix the PR heartbeats append, which 404s on GitHub. They now strip it (`lib/pr-url.ts`).
+
 ## 0.10.0 (2026-10-16)
 
 ### Breaking

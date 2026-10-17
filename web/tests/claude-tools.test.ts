@@ -96,7 +96,6 @@ const mockCreateGitCommit = vi.fn();
 const mockUpdateRef = vi.fn();
 const mockListWorkflowRuns = vi.fn();
 const mockGetCombinedStatus = vi.fn();
-const mockMergePullRequest = vi.fn();
 vi.mock('../src/github.js', () => ({
   getRepoTree: (...args: unknown[]) => mockGetRepoTree(...args),
   getFileContent: (...args: unknown[]) => mockGetFileContent(...args),
@@ -116,7 +115,6 @@ vi.mock('../src/github.js', () => ({
   updateRef: (...args: unknown[]) => mockUpdateRef(...args),
   listWorkflowRuns: (...args: unknown[]) => mockListWorkflowRuns(...args),
   getCombinedStatus: (...args: unknown[]) => mockGetCombinedStatus(...args),
-  mergePullRequest: (...args: unknown[]) => mockMergePullRequest(...args),
   resolveRepoName: (repo: string) => repo.includes('/') ? repo : `ExampleOrg/${repo}`,
 }));
 
@@ -159,7 +157,7 @@ vi.mock('../src/mcp-client.js', () => ({
 // ─── Import after mocks ─────────────────────────────────────
 
 const { buildContext, handleInProcessTool, resolveMcpTool, GITHUB_TOOLS } = await import('../src/claude-tools/index.js');
-const { handleGithubTool } = await import('../src/claude-tools/github.js');
+const { handleGithubTool, GITHUB_TOOLS: GITHUB_TOOL_DEFS } = await import('../src/claude-tools/github.js');
 const { handleGoalTool, GOAL_TOOLS } = await import('../src/claude-tools/goals.js');
 const { handleContentTool, ROUNDTABLE_TOOLS, DISPATCH_TOOLS } = await import('../src/claude-tools/content.js');
 const { handleWebTool, WEB_TOOLS } = await import('../src/claude-tools/web.js');
@@ -247,7 +245,7 @@ describe('tool schema exports', () => {
     const web = await import('../src/claude-tools/web.js');
     const email = await import('../src/claude-tools/email.js');
 
-    expect(github.GITHUB_TOOLS).toHaveLength(12);
+    expect(github.GITHUB_TOOLS).toHaveLength(11);
     expect(goals.GOAL_TOOLS).toHaveLength(5);
     expect(content.ROUNDTABLE_TOOLS).toHaveLength(5);
     expect(content.DISPATCH_TOOLS).toHaveLength(3);
@@ -764,26 +762,11 @@ describe('handleGithubTool', () => {
     expect(result).toContain('too many');
   });
 
-  it('merge_pull_request merges and resolves agenda', async () => {
-    mockMergePullRequest.mockResolvedValue({ merged: true, sha: 'merge-sha-123', message: 'ok' });
-    const mergeDb = baseMockDb();
-    const result = await handleGithubTool(
-      mergeDb as unknown as D1Database, 'merge_pull_request',
-      { pull_number: 42 }, token, repo,
-    );
-    expect(result).toContain('Merged PR #42');
-    expect(result).toContain('squash');
-    // Check agenda auto-resolve query
-    const agendaQuery = mergeDb._queries.find(q => q.sql.includes('UPDATE agent_agenda'));
-    expect(agendaQuery).toBeDefined();
-    expect(agendaQuery!.bindings[0]).toContain('PR #42');
-  });
-
-  it('merge_pull_request reports failure', async () => {
-    mockMergePullRequest.mockResolvedValue({ merged: false, sha: '', message: 'not ready' });
-    const result = await handleGithubTool(db, 'merge_pull_request', { pull_number: 99 }, token, repo);
-    expect(result).toContain('Failed');
-    expect(result).toContain('not ready');
+  it('offers no merge tool, and a merge_pull_request call is not handled', async () => {
+    expect(GITHUB_TOOL_DEFS.map((t) => t.name)).not.toContain('merge_pull_request');
+    expect(GITHUB_TOOL_DEFS.some((t) => /merge/i.test(t.name))).toBe(false);
+    const result = await handleGithubTool(db, 'merge_pull_request', { pull_number: 42 }, token, repo);
+    expect(result).toBeNull();
   });
 
   it('trigger_worker_deploy creates agenda item', async () => {
