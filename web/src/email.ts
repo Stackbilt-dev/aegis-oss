@@ -267,6 +267,11 @@ export interface DigestSections {
   bizopsInteractions: number | null;
 }
 
+/** Escape a value for a double-quoted HTML attribute. */
+function escAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 export async function sendDailyDigest(
   apiKeys: { resendApiKey: string; resendApiKeyPersonal: string },
   sections: DigestSections,
@@ -325,7 +330,7 @@ export async function sendDailyDigest(
   let workShippedHtml = '';
   if (sections.failedTasks.length > 0 || sections.completedTasks.length > 0) {
     const taskRow = (t: DigestTask) => {
-      const pr = t.pr_url ? ` <a href="${prLink(t.pr_url)}" style="color:#8b8bff;text-decoration:none;font-size:11px">PR →</a>` : '';
+      const pr = t.pr_url ? ` <a href="${escAttr(prLink(t.pr_url))}" style="color:#8b8bff;text-decoration:none;font-size:11px">PR →</a>` : '';
       const errorSnippet = t.error ? `<p style="margin:2px 0 0;font-size:11px;color:#ff6b6b">${t.error.slice(0, 100)}</p>` : '';
       return `
       <div style="background:#111;border:1px solid #222;border-left:3px solid ${t.status === 'completed' ? '#2dd4bf' : '#ff6b6b'};border-radius:4px;padding:8px 12px;margin-bottom:6px">
