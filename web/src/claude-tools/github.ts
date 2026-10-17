@@ -20,7 +20,6 @@ import {
   updateRef,
   listWorkflowRuns,
   getCombinedStatus,
-  mergePullRequest,
   resolveRepoName,
 } from '../github.js';
 import { addAgendaItem } from '../kernel/memory/index.js';
@@ -190,20 +189,9 @@ const TRIGGER_WORKER_DEPLOY_TOOL = {
   },
 };
 
-const MERGE_PR_TOOL = {
-  name: 'merge_pull_request',
-  description: 'Merge an approved pull request. Uses squash by default for clean history. Auto-resolves the matching agenda item. Defaults to the AEGIS repo.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      pull_number: { type: 'number', description: 'PR number to merge' },
-      method: { type: 'string', enum: ['merge', 'squash', 'rebase'], description: 'Merge strategy (default: squash)' },
-      commit_message: { type: 'string', description: 'Custom squash/merge commit message (optional)' },
-      ...REPO_PARAM,
-    },
-    required: ['pull_number'],
-  },
-};
+// No merge tool: a person merges every PR. GitHub text the model reads
+// (issues, PR bodies, comments) is untrusted, so a merge tool would let
+// anyone who can write there ask for a merge.
 
 export const GITHUB_TOOLS = [
   LIST_ORG_REPOS_TOOL,
@@ -217,7 +205,6 @@ export const GITHUB_TOOLS = [
   CREATE_IMPROVEMENT_ISSUE_TOOL,
   CREATE_IMPROVEMENT_PR_TOOL,
   CREATE_MULTI_FILE_PR_TOOL,
-  MERGE_PR_TOOL,
 ];
 
 // ─── Handler ─────────────────────────────────────────────────
@@ -314,19 +301,6 @@ export async function handleGithubTool(
       parts.push(`\n**Actions** (${ref}): no workflow runs`);
     }
     return parts.join('\n');
-  }
-
-  if (name === 'merge_pull_request') {
-    const pullNumber = input.pull_number as number;
-    const method = (input.method as 'merge' | 'squash' | 'rebase' | undefined) ?? 'squash';
-    const commitMessage = input.commit_message as string | undefined;
-    const result = await mergePullRequest(githubToken, targetRepo, pullNumber, method, commitMessage);
-    if (!result.merged) return `Failed to merge PR #${pullNumber}: ${result.message}`;
-    // Auto-resolve matching agenda item
-    await db.prepare(
-      "UPDATE agent_agenda SET status = 'done', resolved_at = datetime('now') WHERE status = 'active' AND item LIKE ?"
-    ).bind(`%PR #${pullNumber}%`).run();
-    return `Merged PR #${pullNumber} via ${method} (sha: ${result.sha.slice(0, 8)}). Agenda item auto-resolved.`;
   }
 
   if (name === 'create_improvement_issue') {

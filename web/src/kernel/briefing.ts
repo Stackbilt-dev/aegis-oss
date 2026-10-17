@@ -4,6 +4,7 @@
 // No fluff, no preamble. Answer before the question is asked.
 
 import type { EdgeEnv } from './dispatch.js';
+import { prLink } from '../lib/pr-url.js';
 
 export interface Briefing {
   // What happened while you were away
@@ -92,7 +93,7 @@ export async function generateBriefing(env: EdgeEnv): Promise<Briefing> {
 
   // Build briefing
   const shipped = completedTasks.results.map(t =>
-    t.pr_url ? `${t.title} (${t.repo}) — PR: ${t.pr_url}` : `${t.title} (${t.repo})`
+    t.pr_url ? `${t.title} (${t.repo}) — PR: ${prLink(t.pr_url)}` : `${t.title} (${t.repo})`
   );
 
   const failed = failedTasks.results.map(t =>

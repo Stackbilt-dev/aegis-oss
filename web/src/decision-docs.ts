@@ -8,6 +8,7 @@
 
 import type { EdgeEnv } from './kernel/dispatch.js';
 import type { MemoryFragmentResult } from './types.js';
+import { prLink } from './lib/pr-url.js';
 import { listIssues, listPullRequests, resolveRepoName } from './github.js';
 
 interface TimelineEvent {
@@ -157,7 +158,7 @@ export async function generateDecisionDoc(
     timeline.push({ date: g.created_at, source: 'goal', summary: `Goal: "${g.title}" (${g.status}, ${g.run_count} runs)` });
   }
   for (const t of tasks) {
-    timeline.push({ date: t.created_at, source: 'task', summary: `Task: "${t.title}" → ${t.status}${t.pr_url ? ` (${t.pr_url})` : ''}` });
+    timeline.push({ date: t.created_at, source: 'task', summary: `Task: "${t.title}" → ${t.status}${t.pr_url ? ` (${prLink(t.pr_url)})` : ''}` });
   }
   for (const i of issues) {
     timeline.push({ date: i.created_at, source: 'issue', summary: `#${i.number}: ${i.title} (${i.state})` });
