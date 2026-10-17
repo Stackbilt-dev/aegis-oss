@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.10.0 (2026-10-16)
+
+### Breaking
+- **PR auto-merge is removed.** The `pr-automerge` heartbeat merged completed docs/tests/research task PRs, and its CI gate read only the legacy combined-status API, which doesn't include GitHub Actions check runs and reports `pending` with zero statuses on an Actions-only repo. That was treated as "no CI configured", so a PR whose checks all failed could be merged. Four review rounds on a hardened gate showed that no file category is safe to merge by rule without branch protection: docs steer later agents (`CLAUDE.md`, `AGENTS.md`, prompts, skills), Markdown is served as pages on some sites, and a new test file is code that runs in CI next to deploy credentials. A human merge is the control.
+
+### Added
+- **PR ready flag** (`pr-ready` heartbeat, every 2 h). It labels a completed task's PR `aegis:ready-to-merge` when:
+  - it is open, comes from an `auto/` branch in the same repo, and targets the repo's default branch;
+  - GitHub reports it mergeable;
+  - it doesn't touch `.github/` (checked case-insensitively, including the old path of a rename), since a PR that edits its own workflows decides which checks run on it;
+  - on the head commit, every commit status is `success`, every check run completed and passing, and at least one GitHub Actions check run succeeded.
+  Optional per-repo required checks (`integrations.github.prReady.requiredChecks`: `owner/name` → GitHub Actions job names) must each be successful Actions runs. Statuses and check runs are read up to 100 each; more is refused. A labelled PR that stops qualifying (for example a new commit fails CI), or that can't be re-checked, loses the label, and a label applied while the head moved is taken back off. The label means "CI reported green on the head commit at the last check": it can lag a push by up to one run (2 h), covers the newest tracked PRs, and CI is reported by code the PR can change (package scripts, test config), so re-check CI when merging. It applies to any completed task's PR, not only docs/tests/research. Up to 25 tracked PRs are re-evaluated per run, newest first; closed or merged PRs, and task rows whose `pr_url` isn't a GitHub PR, are marked done (`/closed`) and no longer read.
+- `getCheckRuns()`, `getPullRequestFileDetails()`, `removeLabelFromIssue()`; `PullRequestStats.headSha`, `headRepo`, `baseDefaultBranch` and `labels`; `getCombinedStatus()` reads 100 statuses.
+
 ## 0.9.4 (2026-09-24)
 
 ### Added

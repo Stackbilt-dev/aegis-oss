@@ -84,9 +84,6 @@ export const AUTO_SAFE_CATEGORIES = new Set<TaskCategory>(['docs', 'tests', 'res
 /** Categories that require approval before execution. */
 export const PROPOSED_CATEGORIES = new Set<TaskCategory>(['bugfix', 'feature']);
 
-/** Subset safe for PR automerge. */
-export const AUTOMERGE_SAFE_CATEGORIES = new Set<TaskCategory>(['docs', 'tests', 'research']);
-
 // ─── Narratives ─────────────────────────────────────────────
 
 export const MEMORY_GOAL_STATUSES = ['active', 'resolved', 'stalled', 'abandoned'] as const;

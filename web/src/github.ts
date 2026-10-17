@@ -580,7 +580,7 @@ export async function getCombinedStatus(
   repo: string,
   ref: string,
 ): Promise<CombinedStatus> {
-  const res = await ghFetch(token, `/repos/${repo}/commits/${encodeURIComponent(ref)}/status`);
+  const res = await ghFetch(token, `/repos/${repo}/commits/${encodeURIComponent(ref)}/status?per_page=100`);
   const data = (await res.json()) as {
     state: string;
     total_count: number;
@@ -597,6 +597,36 @@ export async function getCombinedStatus(
   };
 }
 
+// ─── Check Runs ──────────────────────────────────────────────
+
+export interface CheckRunSummary {
+  total: number;
+  runs: { name: string; status: string; conclusion: string | null; app: string | null }[];
+}
+
+/**
+ * GitHub Actions (and other Checks API) results for a commit. The legacy
+ * combined-status endpoint above does not include them.
+ */
+export async function getCheckRuns(
+  token: string,
+  repo: string,
+  ref: string,
+): Promise<CheckRunSummary> {
+  const res = await ghFetch(token, `/repos/${repo}/commits/${encodeURIComponent(ref)}/check-runs?per_page=100`);
+  const data = (await res.json()) as {
+    total_count: number;
+    check_runs: { name: string; status: string; conclusion: string | null; app?: { slug?: string } | null }[];
+  };
+  // GitHub's default filter=latest keeps only the most recent run per check
+  // name, so a passing re-run replaces a failed attempt. filter=all would make
+  // every re-run failure block forever.
+  return {
+    total: data.total_count,
+    runs: data.check_runs.map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion, app: r.app?.slug ?? null })),
+  };
+}
+
 // ─── PR Stats ────────────────────────────────────────────────
 
 export interface PullRequestStats {
@@ -607,7 +637,14 @@ export interface PullRequestStats {
   deletions: number;
   changed_files: number;
   head: string;
+  /** Head commit SHA: what CI ran on, and what a merge must pin to. */
+  headSha: string;
+  /** `owner/name` of the head branch's repo; null if the fork was deleted. */
+  headRepo: string | null;
   base: string;
+  /** The base repo's default branch. */
+  baseDefaultBranch: string;
+  labels: string[];
 }
 
 export async function getPullRequestStats(
@@ -623,8 +660,9 @@ export async function getPullRequestStats(
     additions: number;
     deletions: number;
     changed_files: number;
-    head: { ref: string };
-    base: { ref: string };
+    head: { ref: string; sha: string; repo: { full_name: string } | null };
+    base: { ref: string; repo: { default_branch: string } };
+    labels?: { name: string }[];
   };
   return {
     number: data.number,
@@ -634,7 +672,11 @@ export async function getPullRequestStats(
     deletions: data.deletions,
     changed_files: data.changed_files,
     head: data.head.ref,
+    headSha: data.head.sha,
+    headRepo: data.head.repo?.full_name ?? null,
     base: data.base.ref,
+    baseDefaultBranch: data.base.repo.default_branch,
+    labels: (data.labels ?? []).map((l) => l.name),
   };
 }
 
@@ -648,6 +690,42 @@ export async function getPullRequestFiles(
   const res = await ghFetch(token, `/repos/${repo}/pulls/${pullNumber}/files?per_page=100`);
   const data = (await res.json()) as { filename: string }[];
   return data.map(f => f.filename);
+}
+
+export interface PullRequestFile {
+  filename: string;
+  status: string;
+  previousFilename?: string;
+}
+
+/** Changed files with status and, for renames, the old path. Reads up to 100. */
+export async function getPullRequestFileDetails(
+  token: string,
+  repo: string,
+  pullNumber: number,
+): Promise<PullRequestFile[]> {
+  const res = await ghFetch(token, `/repos/${repo}/pulls/${pullNumber}/files?per_page=100`);
+  const data = (await res.json()) as { filename: string; status: string; previous_filename?: string }[];
+  return data.map((f) => ({
+    filename: f.filename,
+    status: f.status,
+    ...(f.previous_filename ? { previousFilename: f.previous_filename } : {}),
+  }));
+}
+
+/** Remove one label from an issue or PR; a label that isn't there is not an error. */
+export async function removeLabelFromIssue(
+  token: string,
+  repo: string,
+  issueNumber: number,
+  label: string,
+): Promise<void> {
+  try {
+    await ghFetch(token, `/repos/${repo}/issues/${issueNumber}/labels/${encodeURIComponent(label)}`, { method: 'DELETE' });
+  } catch (err) {
+    if (err instanceof GitHubApiError && err.status === 404) return;
+    throw err;
+  }
 }
 
 // ─── PR Merge ────────────────────────────────────────────────

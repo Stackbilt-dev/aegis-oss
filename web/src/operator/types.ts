@@ -28,7 +28,16 @@ export interface OperatorConfig {
   selfModel: SelfModel;
   integrations: {
     bizops: { enabled: boolean; fallbackUrl: string; toolPrefix: string };
-    github: { enabled: boolean };
+    github: {
+      enabled: boolean;
+      /**
+       * The PR ready flag labels green autonomous-task PRs for a human merge
+       * (nothing is merged automatically). Optionally require named checks
+       * per repo: keys are `owner/name`, values are GitHub Actions job
+       * names, each of which must have succeeded on the PR's head commit.
+       */
+      prReady?: { requiredChecks?: Record<string, string[]> };
+    };
     brave: { enabled: boolean };
     email: {
       profiles: Record<string, { from: string; defaultTo: string; keyEnvField: 'resendApiKey' | 'resendApiKeyPersonal' }>;

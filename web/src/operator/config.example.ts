@@ -41,7 +41,11 @@ const config: OperatorConfig = {
       fallbackUrl: 'https://your-bizops.example.com/mcp',
       toolPrefix: 'BizOps Copilot',
     },
-    github: { enabled: true },
+    github: {
+      enabled: true,
+      // PR ready flag: also require these GitHub Actions jobs before labelling a PR ready.
+      // prReady: { requiredChecks: { 'ExampleOrg/my-project': ['typecheck', 'test'] } },
+    },
     brave: { enabled: true },
     email: {
       profiles: {

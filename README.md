@@ -187,7 +187,7 @@ AEGIS runs 26 tasks on an hourly cron, split into heartbeat (always-run) and tim
 | CI Watcher | Hourly | Monitor GitHub Actions runs |
 | ARGUS Notify | Hourly | Classify webhook events, route alerts |
 | Cognitive Metrics | Daily | Classifier accuracy, dispatch cost tracking |
-| PR Automerge | Hourly | Auto-merge approved docs/tests PRs |
+| PR ready flag | Every 2 h | Labels green autonomous-task PRs `aegis:ready-to-merge` for a human merge (never merges) |
 | Consolidation | Hourly | Memory dedup, decay, promotion, dynamic tool GC |
 | Heartbeat | 6h | System health + email digest |
 | Product Health | Hourly | Worker availability checks |
