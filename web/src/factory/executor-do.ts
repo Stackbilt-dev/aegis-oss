@@ -56,6 +56,7 @@ import {
   type ExternalRepoPolicy,
   type TaskRepoTarget,
 } from './repo.js';
+import { claimNextSandboxTask, type CCTaskRow } from './claim.js';
 
 /** Bindings and secrets the executor reads. Declare them in your Worker's wrangler config. */
 export interface TaskExecutorEnv {
@@ -103,17 +104,6 @@ const READABLE_ARTIFACTS = new Set([
   'harness.json',
   'acceptance.json',
 ]);
-
-interface CCTaskRow {
-  id: string;
-  title: string;
-  prompt: string;
-  repo: string;
-  category: string;
-  authority: string;
-  github_issue_repo: string | null;
-  github_issue_number: number | null;
-}
 
 interface TaskPlan {
   branch: string;
@@ -283,7 +273,14 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
           homeOrg,
           config.externalRepoPolicy,
         );
-        if (external) throw new TaskExecutorError('external_repo_refused', false, 1, external);
+        if (external) {
+          // Approval keeps a task 'proposed', so an approved issue-derived task
+          // can never meet a policy that asks for operator authority.
+          const hint = task.authority === 'proposed'
+            ? ' (an approved proposed task keeps proposed authority; queue it again with operator authority to run it here)'
+            : '';
+          throw new TaskExecutorError('external_repo_refused', false, 1, external + hint);
+        }
         const target = parseTaskRepo(task.repo, homeOrg);
         // Recipes and the verification cwd key on the bare name for home-org
         // repos, so `<homeOrg>/app` is configured the same as `app`.
@@ -511,19 +508,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
     }
 
     private async claimNextTask(): Promise<CCTaskRow | null> {
-      return this.env.DB.prepare(
-        `UPDATE cc_tasks
-         SET status = 'running', started_at = datetime('now'), session_id = 'do-sandbox'
-         WHERE id = (
-           SELECT id FROM cc_tasks
-           WHERE status = 'pending'
-             AND executor = 'do_sandbox'
-             AND authority IN ('auto_safe', 'operator')
-           ORDER BY priority ASC, created_at ASC
-           LIMIT 1
-         )
-         RETURNING id, title, prompt, repo, category, authority, github_issue_repo, github_issue_number`,
-      ).first<CCTaskRow>();
+      return claimNextSandboxTask(this.env.DB);
     }
 
     private createPlan(task: CCTaskRow, target: TaskRepoTarget): TaskPlan {

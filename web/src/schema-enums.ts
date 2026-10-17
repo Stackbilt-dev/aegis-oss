@@ -71,6 +71,17 @@ export type TaskStatus = EnumValues<typeof TASK_STATUSES>;
 export const TASK_AUTHORITIES = ['proposed', 'auto_safe', 'operator'] as const;
 export type TaskAuthority = EnumValues<typeof TASK_AUTHORITIES>;
 
+/**
+ * Approving a `proposed` task records `approved_at`/`approved_by` and keeps
+ * the authority. It used to rewrite authority to `operator`, which made the
+ * local task runner run approved work -- often from untrusted issue bodies --
+ * in the operator's own checkout with no branch or PR. A non-operator task
+ * always runs isolated and lands as a PR.
+ */
+export const TASK_RUNNABLE_SQL = "(authority != 'proposed' OR approved_at IS NOT NULL)";
+/** Proposed tasks still waiting for an operator decision. */
+export const TASK_AWAITING_APPROVAL_SQL = "(authority = 'proposed' AND approved_at IS NULL)";
+
 /** Where a cc_task runs: a local `claude -p` task runner, or the sandbox task executor. */
 export const TASK_EXECUTORS = ['claude_code', 'do_sandbox'] as const;
 export type TaskExecutor = EnumValues<typeof TASK_EXECUTORS>;

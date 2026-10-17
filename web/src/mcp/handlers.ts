@@ -6,7 +6,7 @@ import { generateDecisionDoc } from '../decision-docs.js';
 import { createDynamicTool, getDynamicTool, listDynamicTools, executeDynamicTool, invalidateToolCache } from '../kernel/dynamic-tools.js';
 import { buildEdgeEnv } from '../edge-env.js';
 import type { MessageMetadata } from '../types.js';
-import { TASK_CATEGORIES, TASK_AUTHORITIES, TASK_EXECUTORS, validateEnum } from '../schema-enums.js';
+import { TASK_CATEGORIES, TASK_AUTHORITIES, TASK_EXECUTORS, TASK_RUNNABLE_SQL, TASK_AWAITING_APPROVAL_SQL, validateEnum } from '../schema-enums.js';
 import { acceptanceAdmissionError, parseAcceptanceSpec } from '../factory/acceptance.js';
 
 // ─── Tool Handler Types ──────────────────────────────────────
@@ -349,7 +349,7 @@ export async function toolAegisListCcTasks(args: Record<string, unknown>, env: E
   const businessUnit = typeof args.business_unit === 'string' ? args.business_unit : undefined;
   const limit = Math.min(Math.max(1, (args.limit as number) || 20), 50);
 
-  const cols = 'id, title, repo, status, priority, authority, category, business_unit, created_at, started_at, completed_at, exit_code, error, failure_kind, retryable';
+  const cols = 'id, title, repo, status, priority, authority, approved_at, approved_by, category, business_unit, created_at, started_at, completed_at, exit_code, error, failure_kind, retryable';
   const conditions: string[] = [];
   const bindings: unknown[] = [];
   if (status) {
@@ -388,13 +388,13 @@ export async function toolAegisApproveCcTask(args: Record<string, unknown>, env:
   if (!id) return { content: [{ type: 'text', text: 'Error: id is required' }], isError: true };
 
   const result = await env.db.prepare(
-    "UPDATE cc_tasks SET authority = 'operator' WHERE id = ? AND authority = 'proposed' AND status = 'pending'"
+    "UPDATE cc_tasks SET approved_at = datetime('now'), approved_by = 'mcp' WHERE id = ? AND authority = 'proposed' AND approved_at IS NULL AND status = 'pending'"
   ).bind(id).run();
 
   if (result.meta.changes === 0) {
-    return { content: [{ type: 'text', text: `Task ${id} not found, not proposed, or not pending` }], isError: true };
+    return { content: [{ type: 'text', text: `Task ${id} not found, not awaiting approval, or not pending` }], isError: true };
   }
-  return { content: [{ type: 'text', text: `Approved task ${id} — now eligible for autonomous execution` }] };
+  return { content: [{ type: 'text', text: `Approved task ${id} — now eligible to run, isolated on its own branch; it lands as a PR for review` }] };
 }
 
 export async function toolAegisTaskSummary(env: EdgeEnv): Promise<ToolResult> {
@@ -409,12 +409,12 @@ export async function toolAegisTaskSummary(env: EdgeEnv): Promise<ToolResult> {
 
   // Proposed tasks awaiting approval
   const proposed = await env.db.prepare(
-    "SELECT id, title, repo, category, priority, created_at FROM cc_tasks WHERE authority = 'proposed' AND status = 'pending' ORDER BY priority ASC, created_at ASC"
+    `SELECT id, title, repo, category, priority, created_at FROM cc_tasks WHERE ${TASK_AWAITING_APPROVAL_SQL} AND status = 'pending' ORDER BY priority ASC, created_at ASC`
   ).all();
 
   // Pending tasks ready to run (approved, not proposed)
   const pending = await env.db.prepare(
-    "SELECT id, title, repo, authority, category, priority, preflight_json FROM cc_tasks WHERE status = 'pending' AND authority != 'proposed' ORDER BY priority ASC, created_at ASC"
+    `SELECT id, title, repo, authority, category, priority, preflight_json FROM cc_tasks WHERE status = 'pending' AND ${TASK_RUNNABLE_SQL} ORDER BY priority ASC, created_at ASC`
   ).all();
 
   // Recent failures (last 3)
@@ -475,7 +475,7 @@ export async function toolAegisBatchApprove(args: Record<string, unknown>, env: 
 
   if (ids.trim().toLowerCase() === 'all') {
     const result = await env.db.prepare(
-      "UPDATE cc_tasks SET authority = 'operator' WHERE authority = 'proposed' AND status = 'pending'"
+      "UPDATE cc_tasks SET approved_at = datetime('now'), approved_by = 'mcp' WHERE authority = 'proposed' AND approved_at IS NULL AND status = 'pending'"
     ).run();
     approved = result.meta.changes ?? 0;
   } else {
@@ -485,13 +485,13 @@ export async function toolAegisBatchApprove(args: Record<string, unknown>, env: 
     }
     for (const taskId of taskIds) {
       const result = await env.db.prepare(
-        "UPDATE cc_tasks SET authority = 'operator' WHERE id = ? AND authority = 'proposed' AND status = 'pending'"
+        "UPDATE cc_tasks SET approved_at = datetime('now'), approved_by = 'mcp' WHERE id = ? AND authority = 'proposed' AND approved_at IS NULL AND status = 'pending'"
       ).bind(taskId).run();
       approved += result.meta.changes ?? 0;
     }
   }
 
-  return { content: [{ type: 'text', text: `Approved ${approved} task(s) — now eligible for autonomous execution` }] };
+  return { content: [{ type: 'text', text: `Approved ${approved} task(s) — now eligible to run, each isolated on its own branch and landing as a PR for review` }] };
 }
 
 export async function toolAegisPublishTechPost(args: Record<string, unknown>, env: EdgeEnv): Promise<ToolResult> {

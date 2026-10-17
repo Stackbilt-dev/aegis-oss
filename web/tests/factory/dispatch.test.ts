@@ -35,7 +35,7 @@ describe('runTaskExecutorDispatch', () => {
     const sql = prepare.mock.calls[0][0] as string;
     expect(sql).toContain("executor = 'do_sandbox'");
     expect(sql).toContain("status = 'pending'");
-    expect(sql).toContain("authority IN ('auto_safe', 'operator')");
+    expect(sql).toContain("(authority != 'proposed' OR approved_at IS NOT NULL)");
   });
 
   it('POSTs /run on the singleton executor when a task is eligible', async () => {

@@ -975,7 +975,7 @@ describe('MCP Tool Handlers', () => {
       const env = { ...makeEnv(), db: db as unknown as D1Database };
       const result = await handlers.toolAegisApproveCcTask({ id: 'task-999' }, env as any);
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('not found, not proposed, or not pending');
+      expect(result.content[0].text).toContain('not found, not awaiting approval, or not pending');
     });
   });
 

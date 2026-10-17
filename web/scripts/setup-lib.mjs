@@ -49,6 +49,20 @@ export function workerUrlFromDeployOutput(output) {
   return match ? match[0] : null;
 }
 
+/** Migration files in apply order (`NNNN_name.sql`). */
+export function migrationFiles(names) {
+  return names.filter((name) => /^\d{4}_[\w-]+\.sql$/.test(name)).sort();
+}
+
+/**
+ * True when a migration failed only because its columns already exist: a
+ * fresh database gets them from schema.sql, and a re-run has applied them.
+ * SQLite has no ADD COLUMN IF NOT EXISTS.
+ */
+export function migrationAlreadyApplied(output) {
+  return /duplicate column name/i.test(output ?? '');
+}
+
 /** A 256-bit bearer token for AEGIS_TOKEN. */
 export function generateToken() {
   return randomBytes(32).toString('hex');

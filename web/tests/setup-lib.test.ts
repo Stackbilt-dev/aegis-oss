@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error — plain .mjs helper without type declarations
-import { findDatabaseId, generateToken, renderWranglerToml, workerNameError, workerUrlFromDeployOutput } from '../scripts/setup-lib.mjs';
+import { findDatabaseId, generateToken, migrationAlreadyApplied, migrationFiles, renderWranglerToml, workerNameError, workerUrlFromDeployOutput } from '../scripts/setup-lib.mjs';
+import { readdirSync } from 'node:fs';
 
 const example = readFileSync(join(__dirname, '..', 'wrangler.toml.example'), 'utf8');
 
@@ -63,5 +64,23 @@ describe('generateToken', () => {
     const token = generateToken();
     expect(token).toMatch(/^[0-9a-f]{64}$/);
     expect(generateToken()).not.toBe(token);
+  });
+});
+
+describe('migrations', () => {
+  it('orders migration files and ignores everything else', () => {
+    expect(migrationFiles(['0002_b.sql', 'README.md', '0001_a.sql', 'x.sql'])).toEqual(['0001_a.sql', '0002_b.sql']);
+  });
+
+  it('includes every migration in the repo', () => {
+    const files = readdirSync(join(__dirname, '..', 'migrations'));
+    expect(migrationFiles(files)).toEqual(files.filter((f) => f.endsWith('.sql')).sort());
+    expect(migrationFiles(files)).toContain('0002_cc_tasks_approval.sql');
+  });
+
+  it('treats only an existing column as already applied', () => {
+    expect(migrationAlreadyApplied('✘ [ERROR] duplicate column name: approved_at: SQLITE_ERROR')).toBe(true);
+    expect(migrationAlreadyApplied('no such table: cc_tasks')).toBe(false);
+    expect(migrationAlreadyApplied(undefined)).toBe(false);
   });
 });

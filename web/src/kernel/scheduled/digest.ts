@@ -10,11 +10,32 @@ import {
   type DigestServiceAlert,
   type DigestSections,
 } from '../../email.js';
+import { TASK_AWAITING_APPROVAL_SQL } from '../../schema-enums.js';
 
 // ─── Daily Digest ──────────────────────────────────────────────
 // Consolidates operator notifications into one daily email at 09:00 UTC (4:00 AM CT).
 // Reads accumulated digest_sections, cc_tasks, operator_log, and agenda.
 // Operator log runs at 08:00 UTC to generate content before this fires.
+
+/** Tasks completed or failed since `since`, and proposed tasks still awaiting approval. */
+export async function digestTasks(db: D1Database, since: string): Promise<{
+  completedTasks: DigestTask[];
+  failedTasks: DigestTask[];
+  proposedTasks: DigestTask[];
+}> {
+  const [completedResult, failedResult, proposedResult] = await Promise.all([
+    db.prepare(
+      "SELECT id, title, repo, status, authority, category, exit_code, error, result, pr_url, completed_at FROM cc_tasks WHERE status = 'completed' AND completed_at > ? ORDER BY completed_at DESC"
+    ).bind(since).all<DigestTask>(),
+    db.prepare(
+      "SELECT id, title, repo, status, authority, category, exit_code, error, result, pr_url, completed_at FROM cc_tasks WHERE status = 'failed' AND completed_at > ? ORDER BY completed_at DESC"
+    ).bind(since).all<DigestTask>(),
+    db.prepare(
+      `SELECT id, title, repo, status, authority, category, exit_code, error, result, pr_url, completed_at FROM cc_tasks WHERE ${TASK_AWAITING_APPROVAL_SQL} AND status = 'pending' ORDER BY created_at ASC`
+    ).all<DigestTask>(),
+  ]);
+  return { completedTasks: completedResult.results, failedTasks: failedResult.results, proposedTasks: proposedResult.results };
+}
 
 export async function runDailyDigest(env: EdgeEnv): Promise<void> {
   // Time gate: fire at or after 09:00 UTC (4:00 AM CT).
@@ -160,17 +181,7 @@ export async function runDailyDigest(env: EdgeEnv): Promise<void> {
   // 2. Completed/failed/proposed tasks since last digest (24h)
   const since = lastDigest?.received_at ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-  const [completedResult, failedResult, proposedResult] = await Promise.all([
-    env.db.prepare(
-      "SELECT id, title, repo, status, authority, category, exit_code, error, result, pr_url, completed_at FROM cc_tasks WHERE status = 'completed' AND completed_at > ? ORDER BY completed_at DESC"
-    ).bind(since).all<DigestTask>(),
-    env.db.prepare(
-      "SELECT id, title, repo, status, authority, category, exit_code, error, result, pr_url, completed_at FROM cc_tasks WHERE status = 'failed' AND completed_at > ? ORDER BY completed_at DESC"
-    ).bind(since).all<DigestTask>(),
-    env.db.prepare(
-      "SELECT id, title, repo, status, authority, category, exit_code, error, result, pr_url, completed_at FROM cc_tasks WHERE authority = 'proposed' AND status = 'pending' ORDER BY created_at ASC"
-    ).all<DigestTask>(),
-  ]);
+  const { completedTasks, failedTasks, proposedTasks } = await digestTasks(env.db, since);
 
   // 3. Latest operator log entry (generated at 08:00 UTC)
   const logEntry = await env.db.prepare(
@@ -219,9 +230,9 @@ export async function runDailyDigest(env: EdgeEnv): Promise<void> {
   }
 
   const sections: DigestSections = {
-    completedTasks: completedResult.results,
-    failedTasks: failedResult.results,
-    proposedTasks: proposedResult.results,
+    completedTasks,
+    failedTasks,
+    proposedTasks,
     operatorLog,
     healthChecks,
     eventNotifications,

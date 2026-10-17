@@ -1,7 +1,7 @@
 // Heartbeat dispatcher for the sandbox task executor.
 //
-// The executor claims its own work (executor = 'do_sandbox', authority
-// auto_safe | operator) when POSTed /run. This plugin does that on the hourly
+// The executor claims its own work (executor = 'do_sandbox', and not a
+// proposed task still awaiting approval) when POSTed /run. This plugin does that on the hourly
 // heartbeat, and checks for an eligible task first so an empty queue never
 // wakes the Durable Object. A Durable Object evicted mid-task re-attaches
 // through onFiberRecovered, not here.
@@ -12,6 +12,7 @@
 
 import type { ScheduledTaskPlugin } from '../core.js';
 import type { EdgeEnv } from '../kernel/dispatch.js';
+import { TASK_RUNNABLE_SQL } from '../schema-enums.js';
 
 interface RunResponse {
   ok?: boolean;
@@ -25,7 +26,7 @@ export async function runTaskExecutorDispatch(env: EdgeEnv): Promise<void> {
     SELECT id FROM cc_tasks
     WHERE status = 'pending'
       AND executor = 'do_sandbox'
-      AND authority IN ('auto_safe', 'operator')
+      AND ${TASK_RUNNABLE_SQL}
     LIMIT 1
   `).first<{ id: string }>();
   if (!eligible) return;
