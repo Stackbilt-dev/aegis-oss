@@ -86,6 +86,7 @@ interface DashboardData {
       repo: string;
       status: string;
       authority: string;
+      approved_at: string | null;
       category: string;
       exit_code: number | null;
       pr_url: string | null;
@@ -125,7 +126,7 @@ export async function getDashboardData(db: D1Database, memoryBinding?: MemorySer
     db.prepare("SELECT severity, summary, created_at FROM heartbeat_results ORDER BY created_at DESC LIMIT 1").first<{ severity: string; summary: string; created_at: string }>(),
     db.prepare("SELECT status, CASE WHEN authority = 'proposed' AND approved_at IS NULL THEN 'proposed' ELSE 'runnable' END AS authority, COUNT(*) as c FROM cc_tasks WHERE status IN ('pending', 'running') GROUP BY 1, 2").all<{ status: string; authority: string; c: number }>(),
     db.prepare("SELECT status, COUNT(*) as c FROM cc_tasks WHERE completed_at > datetime('now', '-24 hours') GROUP BY status").all<{ status: string; c: number }>(),
-    db.prepare("SELECT id, title, repo, status, authority, category, exit_code, pr_url, completed_at FROM cc_tasks ORDER BY COALESCE(completed_at, started_at, created_at) DESC LIMIT 10").all<{ id: string; title: string; repo: string; status: string; authority: string; category: string; exit_code: number | null; pr_url: string | null; completed_at: string | null }>(),
+    db.prepare("SELECT id, title, repo, status, authority, approved_at, category, exit_code, pr_url, completed_at FROM cc_tasks ORDER BY COALESCE(completed_at, started_at, created_at) DESC LIMIT 10").all<{ id: string; title: string; repo: string; status: string; authority: string; approved_at: string | null; category: string; exit_code: number | null; pr_url: string | null; completed_at: string | null }>(),
   ]);
 
   // Build executor stats from episodes
@@ -586,7 +587,7 @@ export function dashboardPage(data: DashboardData): string {
           ${statusBadge(t.status)}
           <span style="color:var(--text-secondary);font-family:'JetBrains Mono',monospace;min-width:50px">${esc(t.repo)}</span>
           <span style="display:inline-block;background:${statusColors[t.status] ?? '#666'}15;color:var(--text-secondary);font-size:9px;padding:1px 4px;border-radius:2px">${esc(t.category)}</span>
-          ${t.authority === 'proposed' ? '<span style="color:#a855f7;font-size:9px">[PROPOSED]</span>' : ''}
+          ${t.authority === 'proposed' ? (t.approved_at ? '<span style="color:#a855f7;font-size:9px" title="Approved; runs isolated">[APPROVED]</span>' : '<span style="color:#a855f7;font-size:9px">[PROPOSED]</span>') : ''}
           <span style="color:var(--text-primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>
           ${t.pr_url ? `<a href="${esc(t.pr_url)}" target="_blank" style="color:#3dd6c8;font-size:9px;text-decoration:none" title="View PR">PR</a>` : ''}
           <span style="color:var(--text-secondary);font-family:'JetBrains Mono',monospace;font-size:10px">${exitLabel}</span>

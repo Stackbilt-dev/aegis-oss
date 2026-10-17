@@ -349,7 +349,7 @@ export async function toolAegisListCcTasks(args: Record<string, unknown>, env: E
   const businessUnit = typeof args.business_unit === 'string' ? args.business_unit : undefined;
   const limit = Math.min(Math.max(1, (args.limit as number) || 20), 50);
 
-  const cols = 'id, title, repo, status, priority, authority, category, business_unit, created_at, started_at, completed_at, exit_code, error, failure_kind, retryable';
+  const cols = 'id, title, repo, status, priority, authority, approved_at, approved_by, category, business_unit, created_at, started_at, completed_at, exit_code, error, failure_kind, retryable';
   const conditions: string[] = [];
   const bindings: unknown[] = [];
   if (status) {

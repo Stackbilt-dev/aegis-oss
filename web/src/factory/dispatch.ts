@@ -1,7 +1,7 @@
 // Heartbeat dispatcher for the sandbox task executor.
 //
-// The executor claims its own work (executor = 'do_sandbox', authority
-// auto_safe | operator) when POSTed /run. This plugin does that on the hourly
+// The executor claims its own work (executor = 'do_sandbox', and not a
+// proposed task still awaiting approval) when POSTed /run. This plugin does that on the hourly
 // heartbeat, and checks for an eligible task first so an empty queue never
 // wakes the Durable Object. A Durable Object evicted mid-task re-attaches
 // through onFiberRecovered, not here.

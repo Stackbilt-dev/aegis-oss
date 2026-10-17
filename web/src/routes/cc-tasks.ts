@@ -321,7 +321,7 @@ ccTasks.post('/api/cc-tasks/:id/reject', bodyLimit({ maxSize: CC_TASKS_BODY_LIMI
     WHERE id = ? AND authority = 'proposed' AND status = 'pending'
   `).bind(taskId).run();
   if (!result.meta.changes) {
-    return c.json({ error: 'Task not found, not proposed, or not pending' }, 404);
+    return c.json({ error: 'Task not found, not proposed (approved or not), or not pending' }, 404);
   }
   return c.json({ id: taskId, status: 'cancelled' });
 });

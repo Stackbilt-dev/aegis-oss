@@ -93,13 +93,15 @@ export function parseAcceptanceSpec(prompt: string): ParsedAcceptance {
 
 /**
  * Admission rule shared by task creation and the executor: a malformed block is
- * always rejected, and unattended (`auto_safe`) tasks must declare one. Returns
- * the rejection reason, or null when the task may run.
+ * always rejected, and every task the operator didn't queue directly
+ * (`auto_safe`, and `proposed` even once approved -- its prompt often comes
+ * from an untrusted issue) must declare one. Returns the rejection reason, or
+ * null when the task may run.
  */
 export function acceptanceAdmissionError(parsed: ParsedAcceptance, authority: string): string | null {
   if (parsed.kind === 'invalid') return `acceptance block rejected: ${parsed.error}`;
-  if (parsed.kind === 'absent' && authority === 'auto_safe') {
-    return 'auto_safe do_sandbox tasks must declare an ```acceptance block; use operator authority to run without one';
+  if (parsed.kind === 'absent' && authority !== 'operator') {
+    return `${authority} do_sandbox tasks must declare an \`\`\`acceptance block; use operator authority to run without one`;
   }
   return null;
 }

@@ -141,3 +141,13 @@ describe('contract invariant', () => {
     expect(inv.check({ authority: 'proposed', status: 'running', approvedAt: '2026-10-16T00:00:00Z' })).toBe(true);
   });
 });
+
+describe('reject', () => {
+  it('cancels an approved task that has not started, and refuses a running one', async () => {
+    insert('r1', 'proposed', { approved_at: '2026-10-16 00:00:00', approved_by: 'rest' });
+    expect((await post('/api/cc-tasks/r1/reject')).status).toBe(200);
+    expect(task('r1').status).toBe('cancelled');
+    insert('r2', 'proposed', { status: 'running', approved_at: '2026-10-16 00:00:00' });
+    expect((await post('/api/cc-tasks/r2/reject')).status).toBe(404);
+  });
+});

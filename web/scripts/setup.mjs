@@ -6,19 +6,22 @@
 //   pnpm run setup -- --dry-run         # print every command; change nothing
 //
 // Steps: check the wrangler login → create (or reuse) the D1 database → write
-// wrangler.toml → apply schema.sql → deploy → set a generated AEGIS_TOKEN →
-// check /health. Safe to re-run: it reuses an existing database of the same
-// name, the schema is idempotent, and it refuses to overwrite an existing
+// wrangler.toml → apply schema.sql and migrations/ → deploy → set a generated
+// AEGIS_TOKEN → check /health. Safe to re-run: it reuses an existing database
+// of the same name, the schema is idempotent, a migration whose columns
+// already exist is skipped, and it refuses to overwrite an existing
 // wrangler.toml unless you pass --force.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import {
   findDatabaseId,
   generateToken,
+  migrationAlreadyApplied,
+  migrationFiles,
   renderWranglerToml,
   workerNameError,
   workerUrlFromDeployOutput,
@@ -111,6 +114,16 @@ async function main() {
   step('Applying the database schema');
   const schema = run('npx', ['wrangler', 'd1', 'execute', name, '--remote', '--file=schema.sql', '--yes'], { capture: false });
   if (schema.status !== 0) fail('Applying schema.sql failed (see the output above).');
+
+  // schema.sql only creates missing tables, so a reused database gets new
+  // columns from the migrations.
+  step('Applying migrations');
+  for (const file of migrationFiles(readdirSync(join(root, 'migrations')))) {
+    const migration = run('npx', ['wrangler', 'd1', 'execute', name, '--remote', `--file=migrations/${file}`, '--yes']);
+    if (migration.status === 0) console.log(`  Applied ${file}`);
+    else if (migrationAlreadyApplied(migration.stdout)) console.log(`  ${file}: already applied`);
+    else fail(`Applying migrations/${file} failed:\n${migration.stdout.slice(-2000)}`);
+  }
 
   step('Building and deploying');
   const deploy = run('npm', ['run', 'deploy'], {
