@@ -29,11 +29,13 @@ export class SandboxBootstrapError extends Error {
   }
 }
 
+// A failed install's actual error is at the end of its output, so most of the
+// budget goes to the tail. The container is gone by the time anyone reads this.
 function evidence(value: string): string {
   const redacted = redactHarnessText(value);
-  return redacted.length <= MAX_EVIDENCE_CHARS
-    ? redacted
-    : `${redacted.slice(0, MAX_EVIDENCE_CHARS)}\n...[truncated]`;
+  if (redacted.length <= MAX_EVIDENCE_CHARS) return redacted;
+  const head = MAX_EVIDENCE_CHARS / 4;
+  return `${redacted.slice(0, head)}\n...[truncated]...\n${redacted.slice(head - MAX_EVIDENCE_CHARS)}`;
 }
 
 export interface BootstrapCommand {
@@ -119,17 +121,31 @@ export async function bootstrapSandbox(options: {
   return result;
 }
 
+export const SANDBOX_RELEASE_TIMEOUT_MS = 30_000;
+
 /**
  * Gives the container's instance back as soon as its task ends. Otherwise each
  * finished task holds a slot for `sleepAfter`, and the next task past
- * `max_instances` fails with a misleading 503. Everything worth keeping is
- * already in the executor's artifacts. A failure here can't change the task's
- * outcome: the instance still sleeps on its own.
+ * `max_instances` fails with a misleading 503. Neither a failure nor a hang here
+ * can change the task's outcome or hold up the next task: the SDK's `destroy()`
+ * can wait forever on an unresponsive control plane, and the instance still
+ * sleeps on its own.
  */
-export async function releaseSandbox(sandbox: { destroy(): Promise<void> }): Promise<void> {
+export async function releaseSandbox(
+  sandbox: { destroy(): Promise<void> },
+  timeoutMs: number = SANDBOX_RELEASE_TIMEOUT_MS,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await sandbox.destroy();
+    await Promise.race([
+      sandbox.destroy(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`no response after ${timeoutMs} ms`)), timeoutMs);
+      }),
+    ]);
   } catch (error) {
     console.warn(`[task-executor-do] sandbox release failed: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    clearTimeout(timer);
   }
 }

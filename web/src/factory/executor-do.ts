@@ -271,7 +271,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
 
       console.log(`[task-executor-do] starting ${task.id.slice(0, 8)} — ${task.title}`);
 
-      let started: { destroy(): Promise<void> } | undefined;
+      let started: ReturnType<typeof getSandbox> | undefined;
       try {
         // Reject a malformed acceptance block before spending a container on it.
         const acceptance = parseAcceptanceSpec(task.prompt);
@@ -507,10 +507,24 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         } else {
           await this.failTask(task.id, msg);
         }
+        if (terminalPhase === 'failed' && started) await this.saveFailureDiff(task.id, started);
         this.setState({ ...this.state, taskId: null, phase: terminalPhase });
       } finally {
-        if (started) await releaseSandbox(started);
+        // Free the executor first, so a slow release can't hold up the next task.
         this.ctrl = undefined;
+        if (started) await releaseSandbox(started);
+      }
+    }
+
+    // The container is about to go, and with it any edits a failed task made.
+    private async saveFailureDiff(taskId: string, sandbox: ReturnType<typeof getSandbox>): Promise<void> {
+      try {
+        const diff = await sandbox.exec(`cd ${REPO_PATH} && git add -A && git diff --cached`, { timeout: 30_000 });
+        if (diff.success && diff.stdout) {
+          await this.workspace.writeFile(`tasks/${taskId}/diff.patch`, redactCredentials(diff.stdout).slice(0, 200_000));
+        }
+      } catch (error) {
+        console.warn(`[task-executor-do] failure diff not saved: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
