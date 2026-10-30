@@ -306,7 +306,13 @@ export function formatAcceptanceReport(verdict: AcceptanceVerdict): string {
   }
   const passed = verdict.checks.filter((check) => check.ok).length;
   const lines = verdict.checks.map((check) => `- ${check.ok ? '✅' : '❌'} \`${check.check}\` — ${check.detail}`);
-  return [`Acceptance: ${passed}/${verdict.checks.length} checks passed (re-run by the executor, not reported by the model).`, '', ...lines].join('\n');
+  return [
+    `Acceptance: ${passed}/${verdict.checks.length} checks passed (re-run by the executor, not reported by the model).`,
+    '',
+    ...lines,
+    '',
+    "These checks read the repository in the container, so code that ran there can make this PR contain changes they didn't see. Review the diff.",
+  ].join('\n');
 }
 
 export function acceptanceResultNote(verdict: AcceptanceVerdict): string {

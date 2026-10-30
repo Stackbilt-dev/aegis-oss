@@ -2,9 +2,10 @@ import type { ExecResult } from '@cloudflare/sandbox';
 
 // The repository's .git was within reach of the code that ran before this. A hook
 // or fsmonitor left there must not run during publication, and a command-line
-// setting beats anything in .git/config. Other settings can still run code, such
-// as gpg.program or a clean filter.
-export const PUBLISH_GIT = 'git -c core.hooksPath=/dev/null -c core.fsmonitor=false';
+// setting beats anything in .git/config. A replace ref left there must not hide a
+// change from the staged diff. Other settings can still run code, such as
+// gpg.program or a clean filter.
+export const PUBLISH_GIT = 'git --no-replace-objects -c core.hooksPath=/dev/null -c core.fsmonitor=false';
 /** For a diff that is kept or relied on: the patch itself, not what a configured diff driver prints. */
 export const REAL_DIFF = '--no-ext-diff --no-textconv';
 const MAX_DIAGNOSTIC_CHARS = 4_000;

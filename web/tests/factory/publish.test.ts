@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { STAGED_NUMSTAT_COMMAND } from '../../src/factory/acceptance.js';
+import { STAGED_NUMSTAT_COMMAND, decodeStagedNumstat } from '../../src/factory/acceptance.js';
 import { githubBasicAuthorizationValue } from '../../src/factory/git.js';
 import type { ExecResult } from '@cloudflare/sandbox';
 import {
@@ -216,7 +216,7 @@ describe('publishBranch', () => {
     const commands = h.exec.mock.calls.map(([command]) => String(command));
     expect(commands.length).toBeGreaterThan(0);
     for (const command of commands) {
-      expect(command).toContain('git -c core.hooksPath=/dev/null -c core.fsmonitor=false ');
+      expect(command).toContain('git --no-replace-objects -c core.hooksPath=/dev/null -c core.fsmonitor=false ');
     }
   });
 
@@ -465,15 +465,38 @@ describe('isPushRejected', () => {
 
 // The container runs these under sh, and cmd.exe quotes differently.
 describe.skipIf(spawnSync('sh', ['-c', 'true']).status !== 0)('publishBranch against real git', () => {
+  const sh = (command: string, cwd: string) => {
+    try {
+      return { success: true, exitCode: 0, stdout: execSync(command, { cwd, encoding: 'utf8', stdio: 'pipe', shell: 'sh' }), stderr: '' };
+    } catch (error) {
+      return { success: false, exitCode: 1, stdout: '', stderr: String((error as { stderr?: unknown }).stderr ?? error) };
+    }
+  };
+
+  it('sees a change a replace ref hides from HEAD', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'publish-'));
+    try {
+      for (const command of ['git init -q', 'git config user.email a@example.com', 'git config user.name a']) {
+        expect(sh(command, repo).success).toBe(true);
+      }
+      writeFileSync(join(repo, 'secret.txt'), 'old');
+      expect(sh('git add -A && git commit -q -m base', repo).success).toBe(true);
+      writeFileSync(join(repo, 'secret.txt'), 'changed');
+      expect(sh('git add -A && git replace HEAD "$(git commit-tree "$(git write-tree)" -m x)"', repo).success).toBe(true);
+      writeFileSync(join(repo, 'allowed.txt'), 'wanted');
+
+      // Proof that this git would be fooled.
+      expect(sh('git add -A && git diff --cached --name-only', repo).stdout).not.toContain('secret.txt');
+
+      const files = decodeStagedNumstat(sh(STAGED_NUMSTAT_COMMAND, repo).stdout);
+      expect(files.map((file) => file.path).sort()).toEqual(['allowed.txt', 'secret.txt']);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it('does not run an fsmonitor or diff driver left in .git/config', async () => {
     const root = mkdtempSync(join(tmpdir(), 'publish-'));
-    const sh = (command: string, cwd: string) => {
-      try {
-        return { success: true, exitCode: 0, stdout: execSync(command, { cwd, encoding: 'utf8', stdio: 'pipe', shell: 'sh' }), stderr: '' };
-      } catch (error) {
-        return { success: false, exitCode: 1, stdout: '', stderr: String((error as { stderr?: unknown }).stderr ?? error) };
-      }
-    };
     try {
       const repo = join(root, 'repo');
       const ran = join(root, 'fsmonitor-ran');

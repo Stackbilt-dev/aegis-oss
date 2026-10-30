@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SANDBOX_PLACEHOLDER_TOKEN, type GitHubEgressScope } from '../../src/factory/egress.js';
 
 const sandboxMock = vi.hoisted(() => ({ current: undefined as unknown }));
+const files = vi.hoisted(() => new Map<string, string>());
 vi.mock('@cloudflare/sandbox', () => ({
   getSandbox: () => sandboxMock.current,
   // Keeps the setter semantics that matter: handlers register per class name.
@@ -18,7 +19,7 @@ vi.mock('@cloudflare/sandbox', () => ({
 }));
 vi.mock('@cloudflare/shell', () => ({
   Workspace: class {
-    async writeFile() { return undefined; }
+    async writeFile(path: string, content: string) { files.set(path, content); }
     async readFile() { return ''; }
   },
 }));
@@ -155,6 +156,13 @@ describe('a brokered task', () => {
     sandboxMock.current = sandbox;
     await run(execute('app', { bootstrap: () => [{ name: 'install', command: 'install', cwd: '/workspace/repo' }] }), 'failed');
     expect(JSON.stringify(dbWrites)).toContain(`HEAD moved from ${SHA} to ${OTHER_SHA}`);
+    // Retrying re-runs what moved it, and the evidence has to include what it committed.
+    expect(dbWrites.some((write) => write[1] === 'acceptance_failed' && write[2] === 0)).toBe(true);
+    expect(sandbox.commands.some((command) => command.includes(` diff --cached --no-ext-diff --no-textconv ${SHA}`))).toBe(true);
+    expect(JSON.parse(files.get('tasks/11111111-1111-4111-8111-111111111111/acceptance.json') ?? '{}')).toMatchObject({
+      status: 'failed',
+      checks: expect.arrayContaining([expect.objectContaining({ check: 'head_unmoved', ok: false })]),
+    });
     expect(sandbox.timeline).not.toContain('push');
     expect(sandbox.commands.some((command) => command.includes(' commit -m '))).toBe(false);
   });
@@ -164,7 +172,7 @@ describe('a brokered task', () => {
     sandboxMock.current = sandbox;
     await run(execute('app', {}, 'Do the task.\n\n```acceptance\n{"changed_files_only":["other.ts"]}\n```'), 'failed');
     expect(JSON.stringify(dbWrites)).toContain('acceptance checks failed');
-    expect(sandbox.commands).toContain('cd /workspace/repo && git -c core.hooksPath=/dev/null -c core.fsmonitor=false diff --cached --no-ext-diff --no-textconv');
+    expect(sandbox.commands).toContain('cd /workspace/repo && git --no-replace-objects -c core.hooksPath=/dev/null -c core.fsmonitor=false diff --cached --no-ext-diff --no-textconv');
   });
 
   it('never tells the container the real token', async () => {
