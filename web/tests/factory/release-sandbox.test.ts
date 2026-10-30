@@ -24,7 +24,7 @@ vi.mock('agents', () => ({
 }));
 
 import { bootstrapSandbox, releaseSandbox } from '../../src/factory/bootstrap.js';
-import { createTaskExecutorDO } from '../../src/factory/executor-do.js';
+import { FAILURE_DIFF_TIMEOUT_MS, createTaskExecutorDO } from '../../src/factory/executor-do.js';
 
 const TASK = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -37,31 +37,38 @@ const TASK = {
   github_issue_number: null,
 };
 
-function fakeDb() {
+function fakeDb(task: typeof TASK = TASK) {
   const statement = {
     bind: () => statement,
-    first: async () => TASK,
+    first: async () => task,
     run: async () => ({}),
   };
   return { prepare: () => statement };
 }
 
-function fakeSandbox(destroy: () => Promise<void>, stdout = 'diff --git a/x b/x') {
+const OK = { success: true, exitCode: 0, stderr: '' };
+const FAILED = { success: false, exitCode: 1, stdout: '', stderr: 'failed' };
+
+function fakeSandbox(
+  destroy: () => Promise<void>,
+  stdout = 'diff --git a/x b/x',
+  commands: (command: string) => Promise<typeof FAILED> | undefined = () => undefined,
+) {
   return {
     destroy: vi.fn(destroy),
-    exec: vi.fn(async () => ({ success: true, exitCode: 0, stdout, stderr: '' })),
+    exec: vi.fn(async (command: string) => (await commands(command)) ?? { ...OK, stdout }),
     readFile: async () => ({ content: '' }),
     writeFile: async () => undefined,
     mkdir: async () => undefined,
   };
 }
 
-function executor() {
+function executor(task: typeof TASK = TASK) {
   const TaskExecutorDO = createTaskExecutorDO({ homeOrg: 'org', gitIdentity: { name: 'n', email: 'e@example.com' } });
   const instance = new (TaskExecutorDO as unknown as new (env: unknown) => {
     fetch(request: Request): Promise<Response>;
     workspace: { files: Map<string, string> };
-  })({ DB: fakeDb(), AI: {}, GITHUB_TOKEN: 'real-token' });
+  })({ DB: fakeDb(task), AI: {}, GITHUB_TOKEN: 'real-token' });
   const run = () => instance.fetch(new Request('https://internal/run', { method: 'POST' }));
   const live = async () => (await (await instance.fetch(new Request('https://internal/status'))).json() as { live: boolean }).live;
   return { instance, run, live };
@@ -114,6 +121,57 @@ describe('the executor releases its container when a task ends', () => {
     expect(instance.workspace.files.get(`tasks/${TASK.id}/diff.patch`)).toContain('diff --git');
     const order = sandbox.exec.mock.invocationCallOrder.at(-1) ?? 0;
     expect(order).toBeLessThan(sandbox.destroy.mock.invocationCallOrder[0]);
+  });
+
+  const diffCommands = (sandbox: ReturnType<typeof fakeSandbox>) =>
+    sandbox.exec.mock.calls.filter(([command]) => command.includes('git add -A'));
+
+  it('runs no command to read a diff when the clone failed, and still releases', async () => {
+    const sandbox = fakeSandbox(async () => undefined, '', async (command) => (command.includes(' clone ') ? FAILED : undefined));
+    sandboxMock.current = sandbox;
+    await executor().run();
+    await settle();
+    expect(sandbox.exec.mock.calls.some(([command]) => command.includes(' clone '))).toBe(true);
+    expect(diffCommands(sandbox)).toEqual([]);
+    expect(sandbox.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('releases after a failed bootstrap', async () => {
+    const sandbox = fakeSandbox(async () => undefined, '', async (command) => (command.includes('pnpm-lock.yaml') ? FAILED : undefined));
+    sandboxMock.current = sandbox;
+    await executor().run();
+    await settle();
+    expect(diffCommands(sandbox)).toHaveLength(1);
+    expect(sandbox.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('never touches a container for a task refused at admission', async () => {
+    const sandbox = fakeSandbox(async () => undefined);
+    sandboxMock.current = sandbox;
+    const { run, live } = executor({ ...TASK, authority: 'auto_safe' });
+    await run();
+    await vi.waitFor(async () => expect(await live()).toBe(false));
+    expect(sandbox.exec).not.toHaveBeenCalled();
+    expect(sandbox.destroy).not.toHaveBeenCalled();
+  });
+
+  it('is free while a diff hangs, then gives up on it and still releases', async () => {
+    const sandbox = fakeSandbox(async () => undefined, '', (command) => (
+      command.includes('git add -A') ? new Promise(() => undefined) : undefined
+    ));
+    sandboxMock.current = sandbox;
+    const { run, live } = executor();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await run();
+      await vi.waitFor(() => expect(diffCommands(sandbox)).toHaveLength(1), { interval: 1 });
+      expect(await live()).toBe(false);
+      expect(sandbox.destroy).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(FAILURE_DIFF_TIMEOUT_MS);
+      expect(sandbox.destroy).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('writes no diff artifact when the task changed nothing', async () => {

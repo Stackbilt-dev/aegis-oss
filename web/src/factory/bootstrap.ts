@@ -123,6 +123,21 @@ export async function bootstrapSandbox(options: {
 
 export const SANDBOX_RELEASE_TIMEOUT_MS = 30_000;
 
+/** Rejects if `work` hasn't settled in time. The work itself can't be cancelled. */
+export async function settleWithin<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`no response after ${timeoutMs} ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Gives the container's instance back as soon as its task ends. Otherwise each
  * finished task holds a slot for `sleepAfter`, and the next task past
@@ -135,17 +150,9 @@ export async function releaseSandbox(
   sandbox: { destroy(): Promise<void> },
   timeoutMs: number = SANDBOX_RELEASE_TIMEOUT_MS,
 ): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([
-      sandbox.destroy(),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`no response after ${timeoutMs} ms`)), timeoutMs);
-      }),
-    ]);
+    await settleWithin(sandbox.destroy(), timeoutMs);
   } catch (error) {
     console.warn(`[task-executor-do] sandbox release failed: ${error instanceof Error ? error.message : String(error)}`);
-  } finally {
-    clearTimeout(timer);
   }
 }
