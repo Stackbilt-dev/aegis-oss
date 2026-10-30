@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **The sandbox executor no longer runs out of container slots.** A finished task's container stayed resident for `sleepAfter` (30 minutes), so the sixth task inside that window failed with `RPCTransportError: 503`. The executor now destroys the container when its task ends.
+
 ## 0.10.1 (2026-10-16)
 
 ### Removed

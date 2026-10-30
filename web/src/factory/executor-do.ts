@@ -20,6 +20,7 @@ import { getSandbox } from '@cloudflare/sandbox';
 import {
   SandboxBootstrapError,
   bootstrapSandbox,
+  releaseSandbox,
   type BootstrapRecipe,
 } from './bootstrap.js';
 import {
@@ -270,6 +271,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
 
       console.log(`[task-executor-do] starting ${task.id.slice(0, 8)} — ${task.title}`);
 
+      let started: { destroy(): Promise<void> } | undefined;
       try {
         // Reject a malformed acceptance block before spending a container on it.
         const acceptance = parseAcceptanceSpec(task.prompt);
@@ -293,6 +295,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
           sleepAfter: TASK_SANDBOX_SLEEP_AFTER,
           transport: TASK_SANDBOX_TRANSPORT,
         });
+        started = sandbox;
         const token = this.env.GITHUB_TOKEN_SCOPED ?? this.env.GITHUB_TOKEN ?? '';
 
         if (signal.aborted) return;
@@ -506,6 +509,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         }
         this.setState({ ...this.state, taskId: null, phase: terminalPhase });
       } finally {
+        if (started) await releaseSandbox(started);
         this.ctrl = undefined;
       }
     }

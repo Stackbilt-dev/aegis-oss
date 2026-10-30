@@ -118,3 +118,18 @@ export async function bootstrapSandbox(options: {
   }
   return result;
 }
+
+/**
+ * Gives the container's instance back as soon as its task ends. Otherwise each
+ * finished task holds a slot for `sleepAfter`, and the next task past
+ * `max_instances` fails with a misleading 503. Everything worth keeping is
+ * already in the executor's artifacts. A failure here can't change the task's
+ * outcome: the instance still sleeps on its own.
+ */
+export async function releaseSandbox(sandbox: { destroy(): Promise<void> }): Promise<void> {
+  try {
+    await sandbox.destroy();
+  } catch (error) {
+    console.warn(`[task-executor-do] sandbox release failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
