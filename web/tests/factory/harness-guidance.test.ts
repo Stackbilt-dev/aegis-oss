@@ -221,7 +221,7 @@ describe('loadRepositoryGuidance', () => {
 });
 
 describe('runSandboxHarness', () => {
-  async function firstRequest(options: { repositoryGuidance?: boolean; files: Record<string, string> }) {
+  async function firstRequest(options: { repositoryGuidance?: { text: string; summary: string[] } }) {
     let sent: { messages: { content: string }[]; systemPrompt: string } | undefined;
     const loop = vi.spyOn(LLMProviders.prototype, 'generateResponseWithTools' as never)
       .mockImplementation((async (request: typeof sent) => {
@@ -230,7 +230,7 @@ describe('runSandboxHarness', () => {
       }) as never);
     try {
       await expect(runSandboxHarness({
-        sandbox: sandboxWith(options.files) as never,
+        sandbox: sandboxWith({}) as never,
         repoPath: '/workspace/repo',
         task: { id: 't', title: 'T', repo: 'aegis', category: 'tests', prompt: 'Do the task.' },
         env: { AI: {} as Ai },
@@ -244,7 +244,8 @@ describe('runSandboxHarness', () => {
   }
 
   it('sends the conventions in the task message, with the rules in the system prompt', async () => {
-    const sent = await firstRequest({ repositoryGuidance: true, files: { 'AGENTS.md': 'use tabs' } });
+    const repositoryGuidance = await loadRepositoryGuidance(sandboxWith({ 'AGENTS.md': 'use tabs' }), '/r');
+    const sent = await firstRequest({ repositoryGuidance });
     expect(sent?.messages[0].content).toContain('Do the task.');
     expect(sent?.messages[0].content).toContain('use tabs');
     expect(sent?.systemPrompt).not.toContain('use tabs');
@@ -252,13 +253,12 @@ describe('runSandboxHarness', () => {
   });
 
   it('leaves the conventions out unless asked', async () => {
-    const sent = await firstRequest({ files: { 'AGENTS.md': 'use tabs' } });
-    expect(sent?.messages[0].content).not.toContain('use tabs');
+    const sent = await firstRequest({});
     expect(sent?.systemPrompt).not.toContain('repository-conventions');
   });
 
   it('keeps the system prompt unchanged for a repository with no conventions', async () => {
-    const sent = await firstRequest({ repositoryGuidance: true, files: {} });
+    const sent = await firstRequest({ repositoryGuidance: { text: '', summary: [] } });
     expect(sent?.systemPrompt).not.toContain('repository-conventions');
   });
 });

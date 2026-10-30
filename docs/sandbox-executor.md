@@ -178,6 +178,7 @@ export const Sandbox = createBrokeredSandbox({ extraReadOnlyHosts: ['files.examp
 What the broker doesn't cover:
 - **Whatever the task stages gets published.** `git add -A` publishes the repository's tree, so code in the container can put anything it can read into the pull request. That includes a private sibling already cloned to disk. Don't give a public repository private siblings.
 - **A process left running isn't stopped.** It can't push anything but the executor's commit to the task's branch, but it can change the files between the acceptance check and the commit. A push can also carry extra objects that no branch points to, and GitHub may serve those by hash, so the same warning about public repositories applies.
+- **Settings in `.git/config`.** Publication overrides `core.hooksPath` and `core.fsmonitor`, but other settings can still run code in the container during it, such as `gpg.program` or a clean filter. That code is held to the same limits as a process left running.
 - **Workflows in the pushed commit.** With the `workflow` scope, a commit that adds a workflow can run on `push` with the repository's Actions secrets, before anyone reviews it. Leave that scope off the token, and protect your default branch.
 - **Git LFS.** Its batch API is a `POST`, so a repository that needs LFS objects at checkout fails.
 - **Private registries.** Credentials for them aren't brokered, and those hosts aren't on the list.
@@ -187,8 +188,9 @@ What the broker doesn't cover:
 
 For repositories in your home organization, the task message includes conventions from the repository, so the agent follows them without having to find them. In fork mode, and for a home-org repository that is itself a fork, nothing is included, because the content comes from whoever can commit upstream, but the agent can still choose to read those files.
 
-- If `.agents/sandbox.md` is tracked and isn't a symlink, only that file is used, so an empty one turns conventions off. This is the best option: a short file written for this agent, with your layout, code style and test commands.
+- If `.agents/sandbox.md` is tracked and isn't a symlink, only that file is used, so an empty one turns conventions off for that repository. There is no executor setting for this. This is the best option: a short file written for this agent, with your layout, code style and test commands.
 - Otherwise, `AGENTS.md` and `CLAUDE.md` are used, matched case-insensitively. Symlinks are skipped and identical files are sent once.
+- The files are read right after the clone, before any of the repository's code runs, so an install script can't change what the agent is given.
 - A file over 6,000 characters is replaced by an outline of its headings. Long general-purpose files often open with material for interactive sessions, so keep the rules you want applied in `.agents/sandbox.md`. A file over 1 MB is skipped.
 
 The content is fenced, and the system prompt tells the agent that it can't change the task and that the executor's own rules win. That is an instruction to a model, not a security control, so review what you commit to these files. They can't change the acceptance contract, which comes only from the task prompt. Known GitHub, Anthropic and AWS key formats are stripped, but other secrets aren't, so don't commit any. Each run records what it included as a `load_guidance` event in `harness.json`.

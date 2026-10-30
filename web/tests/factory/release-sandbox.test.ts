@@ -124,7 +124,7 @@ describe('the executor releases its container when a task ends', () => {
   });
 
   const diffCommands = (sandbox: ReturnType<typeof fakeSandbox>) =>
-    sandbox.exec.mock.calls.filter(([command]) => command.includes('git add -A'));
+    sandbox.exec.mock.calls.filter(([command]) => command.includes(' add -A'));
 
   it('runs no command to read a diff when the clone failed, and still releases', async () => {
     const sandbox = fakeSandbox(async () => undefined, '', async (command) => (command.includes(' clone ') ? FAILED : undefined));
@@ -157,7 +157,7 @@ describe('the executor releases its container when a task ends', () => {
 
   it('is free while a diff hangs, then gives up on it and still releases', async () => {
     const sandbox = fakeSandbox(async () => undefined, '', (command) => (
-      command.includes('git add -A') ? new Promise(() => undefined) : undefined
+      command.includes(' add -A') ? new Promise(() => undefined) : undefined
     ));
     sandboxMock.current = sandbox;
     const { run, live } = executor();

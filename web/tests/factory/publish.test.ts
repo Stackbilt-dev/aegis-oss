@@ -1,4 +1,9 @@
+import { execSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { STAGED_NUMSTAT_COMMAND } from '../../src/factory/acceptance.js';
 import { githubBasicAuthorizationValue } from '../../src/factory/git.js';
 import type { ExecResult } from '@cloudflare/sandbox';
 import {
@@ -198,7 +203,7 @@ describe('publishBranch', () => {
     expect(h.exec.mock.calls[4]?.[0]).toContain(`'test: handle Kurt'\"'\"'s case'`);
   });
 
-  it('commits and pushes with hooks disabled', async () => {
+  it('runs every git command with hooks and fsmonitor disabled', async () => {
     const h = harness(successfulGitResults());
     await publishBranch({
       repoPath: '/workspace/repo',
@@ -209,8 +214,9 @@ describe('publishBranch', () => {
       createPullRequest: h.createPullRequest,
     });
     const commands = h.exec.mock.calls.map(([command]) => String(command));
-    for (const verb of [' commit -m ', ' push --set-upstream ']) {
-      expect(commands.find((command) => command.includes(verb))).toContain('-c core.hooksPath=/dev/null');
+    expect(commands.length).toBeGreaterThan(0);
+    for (const command of commands) {
+      expect(command).toContain('git -c core.hooksPath=/dev/null -c core.fsmonitor=false ');
     }
   });
 
@@ -337,7 +343,7 @@ describe('publishBranch', () => {
     expect(published.branch).toBe(`auto/do-sandbox/${key}`);
     expect(published.attached).toBe(false);
     // Renamed before the push, and the push targets the derived branch.
-    expect(h.exec.mock.calls.map((c) => c[0]).join('\n')).toContain(`git branch -M 'auto/do-sandbox/${key}'`);
+    expect(h.exec.mock.calls.map((c) => c[0]).join('\n')).toContain(`branch -M 'auto/do-sandbox/${key}'`);
     expect(h.exec.mock.calls.map((c) => c[0]).join('\n')).toContain(`push --set-upstream origin 'auto/do-sandbox/${key}'`);
     // The PR is opened against the derived branch, not the task-id branch.
     expect(h.createPullRequest).toHaveBeenCalledWith(`auto/do-sandbox/${key}`);
@@ -454,5 +460,57 @@ describe('isPushRejected', () => {
       exitCode: 128,
       stderr: 'fatal: unable to access: The requested URL returned error: 503\n',
     }))).toBe(false);
+  });
+});
+
+// The container runs these under sh, and cmd.exe quotes differently.
+describe.skipIf(spawnSync('sh', ['-c', 'true']).status !== 0)('publishBranch against real git', () => {
+  it('does not run an fsmonitor left in .git/config', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'publish-'));
+    const sh = (command: string, cwd: string) => {
+      try {
+        return { success: true, exitCode: 0, stdout: execSync(command, { cwd, encoding: 'utf8', stdio: 'pipe', shell: 'sh' }), stderr: '' };
+      } catch (error) {
+        return { success: false, exitCode: 1, stdout: '', stderr: String((error as { stderr?: unknown }).stderr ?? error) };
+      }
+    };
+    try {
+      const repo = join(root, 'repo');
+      const ran = join(root, 'fsmonitor-ran');
+      const setup = [
+        `git init -q --bare ${join(root, 'remote.git')}`,
+        `git init -q ${repo}`,
+      ].map((command) => command.replace(/\\/g, '/'));
+      for (const command of setup) expect(sh(command, root).success).toBe(true);
+      for (const command of [
+        'git config user.email a@example.com',
+        'git config user.name a',
+        `git remote add origin '${join(root, 'remote.git').replace(/\\/g, '/')}'`,
+        `git checkout -q -b ${BRANCH}`,
+      ]) expect(sh(command, repo).success).toBe(true);
+      writeFileSync(join(repo, 'monitor.sh'), `#!/bin/sh\ntouch '${ran.replace(/\\/g, '/')}'\n`, { mode: 0o755 });
+      writeFileSync(join(repo, 'file.txt'), 'content');
+      expect(sh(`git config core.fsmonitor '${join(repo, 'monitor.sh').replace(/\\/g, '/')}'`, repo).success).toBe(true);
+
+      // Proof that this git would run it.
+      sh('git status --short', repo);
+      expect(existsSync(ran)).toBe(true);
+      rmSync(ran);
+
+      const published = await publishBranch({
+        repoPath: repo.replace(/\\/g, '/'),
+        branch: BRANCH,
+        commitMessage: 'test: fsmonitor',
+        exec: async (command) => sh(command, root) as ExecResult,
+        writeArtifact: async () => undefined,
+        createPullRequest: async () => 'https://github.com/Stackbilt-dev/aegis/pull/1',
+      });
+      expect(published.commitSha).toMatch(/^[0-9a-f]{40}$/);
+      expect(existsSync(ran)).toBe(false);
+      expect(sh(`${STAGED_NUMSTAT_COMMAND}`, repo).success).toBe(true);
+      expect(existsSync(ran)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

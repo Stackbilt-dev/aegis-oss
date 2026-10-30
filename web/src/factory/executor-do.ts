@@ -27,6 +27,7 @@ import {
 } from './bootstrap.js';
 import {
   SandboxHarnessError,
+  loadRepositoryGuidance,
   redactCredentials,
   runSandboxHarness,
 } from './harness.js';
@@ -372,6 +373,11 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
 
         await cloneRepository({ sandbox, repo: target.name, token: sandboxToken, repoPath: REPO_PATH, org: target.owner });
         cloned = true;
+        // Nothing from the repository has run yet, so these are the files as cloned.
+        // A home-org fork's files still come from whoever commits upstream.
+        const repositoryGuidance = !target.external && !isFork
+          ? await loadRepositoryGuidance(sandbox, REPO_PATH)
+          : undefined;
         await sandbox.exec(
           `cd ${REPO_PATH} && git config user.email ${shellQuote(config.gitIdentity.email)} && git config user.name ${shellQuote(config.gitIdentity.name)}`,
         );
@@ -432,8 +438,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
             repoPath: REPO_PATH,
             task: harnessTask,
             model: config.model,
-            // A home-org fork's files still come from whoever commits upstream.
-            repositoryGuidance: !target.external && !isFork,
+            repositoryGuidance,
             verificationCwd: config.verificationCwd?.(harnessTask.repo) ?? '',
             env: this.env,
             signal,

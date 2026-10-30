@@ -258,7 +258,8 @@ async function trackedGuidanceFiles(sandbox: Pick<SandboxToolSurface, 'exec'>, r
  * marker its content can't predict. They stay out of the system prompt because
  * they are repository content, so the executor doesn't load them for repositories
  * outside the home organization. A file too long to include becomes an outline,
- * because the part that matters is rarely at the start.
+ * because the part that matters is rarely at the start. Call it before any
+ * repository code runs: an install script can rewrite these files and the index.
  */
 export async function loadRepositoryGuidance(
   sandbox: Pick<SandboxToolSurface, 'exec' | 'readFile'>,
@@ -619,7 +620,8 @@ export async function runSandboxHarness(options: {
   /** Repository-relative directory package commands run from. Defaults to the root. */
   verificationCwd?: string;
   /** Include the repository's convention files. Only for repositories you trust. */
-  repositoryGuidance?: boolean;
+  /** From loadRepositoryGuidance, called before any repository code has run. */
+  repositoryGuidance?: RepositoryGuidance;
   onCheckpoint?: (result: SandboxHarnessResult) => Promise<void>;
 }): Promise<SandboxHarnessResult> {
   const model = options.model ?? SANDBOX_HARNESS_MODEL;
@@ -650,9 +652,7 @@ export async function runSandboxHarness(options: {
   let iterations = 0;
   let response;
   try {
-    const guidance = options.repositoryGuidance
-      ? await loadRepositoryGuidance(options.sandbox, options.repoPath)
-      : { text: '', summary: [] };
+    const guidance = options.repositoryGuidance ?? { text: '', summary: [] };
     if (guidance.summary.length > 0) {
       events.push({ tool: 'load_guidance', args: {}, ok: true, output: guidance.summary.join('; ') });
     }

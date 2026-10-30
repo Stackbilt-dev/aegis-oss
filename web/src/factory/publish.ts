@@ -1,9 +1,10 @@
 import type { ExecResult } from '@cloudflare/sandbox';
 
 // The repository's .git was within reach of the code that ran before this. A hook
-// left there must not run during publication, and a command-line setting beats
-// anything in .git/config.
-const NO_HOOKS = '-c core.hooksPath=/dev/null';
+// or fsmonitor left there must not run during publication, and a command-line
+// setting beats anything in .git/config. Other settings can still run code, such
+// as gpg.program or a clean filter.
+export const PUBLISH_GIT = 'git -c core.hooksPath=/dev/null -c core.fsmonitor=false';
 const MAX_DIAGNOSTIC_CHARS = 4_000;
 const MAX_DIFF_CHARS = 1_000_000;
 /** Hex chars of the change digest kept for branch names — 48 bits of identity. */
@@ -111,12 +112,12 @@ export async function publishBranch(options: PublishBranchOptions): Promise<Publ
     return result;
   };
 
-  const add = await run('git_add', `cd ${shellQuote(options.repoPath)} && git add -A`);
+  const add = await run('git_add', `cd ${shellQuote(options.repoPath)} && ${PUBLISH_GIT} add -A`);
   assertSuccess(add, 'git_add_failed', false, 'git add failed', options.secrets);
 
   const stagedFiles = await run(
     'staged_files',
-    `cd ${shellQuote(options.repoPath)} && git diff --cached --name-only`,
+    `cd ${shellQuote(options.repoPath)} && ${PUBLISH_GIT} diff --cached --name-only`,
   );
   assertSuccess(stagedFiles, 'git_diff_failed', false, 'staged-file inspection failed', options.secrets);
   if (!stagedFiles.stdout.trim()) {
@@ -125,7 +126,7 @@ export async function publishBranch(options: PublishBranchOptions): Promise<Publ
 
   const diff = await run(
     'staged_diff',
-    `cd ${shellQuote(options.repoPath)} && git diff --cached --binary`,
+    `cd ${shellQuote(options.repoPath)} && ${PUBLISH_GIT} diff --cached --binary`,
   );
   assertSuccess(diff, 'git_diff_failed', false, 'staged diff capture failed', options.secrets);
   await options.writeArtifact(
@@ -151,7 +152,7 @@ export async function publishBranch(options: PublishBranchOptions): Promise<Publ
       // idempotently if this stage is ever retried within one sandbox.
       const rename = await run(
         'rename_branch',
-        `cd ${shellQuote(options.repoPath)} && git branch -M ${shellQuote(derived)}`,
+        `cd ${shellQuote(options.repoPath)} && ${PUBLISH_GIT} branch -M ${shellQuote(derived)}`,
       );
       assertSuccess(rename, 'git_push_failed', false, 'branch rename failed', options.secrets);
       branch = derived;
@@ -162,7 +163,7 @@ export async function publishBranch(options: PublishBranchOptions): Promise<Publ
 
   const status = await run(
     'git_status',
-    `cd ${shellQuote(options.repoPath)} && git status --short`,
+    `cd ${shellQuote(options.repoPath)} && ${PUBLISH_GIT} status --short`,
   );
   assertSuccess(status, 'git_diff_failed', false, 'git status capture failed', options.secrets);
   await options.writeArtifact(
@@ -172,13 +173,13 @@ export async function publishBranch(options: PublishBranchOptions): Promise<Publ
 
   const commit = await run(
     'git_commit',
-    `cd ${shellQuote(options.repoPath)} && git ${NO_HOOKS} commit -m ${shellQuote(options.commitMessage)}`,
+    `cd ${shellQuote(options.repoPath)} && ${PUBLISH_GIT} commit -m ${shellQuote(options.commitMessage)}`,
   );
   assertSuccess(commit, 'git_commit_failed', false, 'git commit failed', options.secrets);
 
   const sha = await run(
     'commit_sha',
-    `cd ${shellQuote(options.repoPath)} && git rev-parse HEAD`,
+    `cd ${shellQuote(options.repoPath)} && ${PUBLISH_GIT} rev-parse HEAD`,
   );
   assertSuccess(sha, 'git_commit_failed', false, 'commit SHA lookup failed', options.secrets);
   const commitSha = sha.stdout.trim();
@@ -212,7 +213,7 @@ export async function publishBranch(options: PublishBranchOptions): Promise<Publ
 
   const push = await run(
     'git_push',
-    `cd ${shellQuote(options.repoPath)} && git ${NO_HOOKS}${options.pushAuthHeader
+    `cd ${shellQuote(options.repoPath)} && ${PUBLISH_GIT}${options.pushAuthHeader
       ? ` -c http.extraHeader=${shellQuote(options.pushAuthHeader)}`
       : ''} push --set-upstream ${options.pushRemote ? shellQuote(options.pushRemote) : 'origin'} ${shellQuote(branch)}`,
   );
