@@ -56,7 +56,7 @@ import {
 import { PublicationError, publishBranch } from './publish.js';
 import {
   RepoTargetError,
-  defaultBranch,
+  repositoryDetails,
   ensureFork,
   externalRepoAdmissionError,
   gitHubClient,
@@ -326,7 +326,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         // Outside repositories publish through a home-org fork; the PR targets
         // the upstream's default branch either way.
         const github = gitHubClient(token, userAgent);
-        const baseBranch = await defaultBranch(github, target);
+        const { defaultBranch: baseBranch, isFork } = await repositoryDetails(github, target);
         const fork = target.external ? await ensureFork(github, target, homeOrg) : null;
 
         // Clone the upstream so the branch starts from its tip, not the fork's.
@@ -432,6 +432,8 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
             repoPath: REPO_PATH,
             task: harnessTask,
             model: config.model,
+            // A home-org fork's files still come from whoever commits upstream.
+            repositoryGuidance: !target.external && !isFork,
             verificationCwd: config.verificationCwd?.(harnessTask.repo) ?? '',
             env: this.env,
             signal,

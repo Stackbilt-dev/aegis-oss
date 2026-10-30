@@ -136,13 +136,20 @@ export function gitHubClient(token: string, userAgent: string, fetchImpl: typeof
   };
 }
 
-export async function defaultBranch(client: GitHubClient, target: TaskRepoTarget): Promise<string> {
+export async function repositoryDetails(
+  client: GitHubClient,
+  target: TaskRepoTarget,
+): Promise<{ defaultBranch: string; isFork: boolean }> {
   const resp = await client.fetch(`/repos/${target.owner}/${target.name}`);
   if (!resp.ok) {
     throw new RepoTargetError('github_api_failed', resp.status >= 500, `repository lookup for ${target.owner}/${target.name} failed (${resp.status})`);
   }
-  const data = (await resp.json()) as { default_branch?: string };
-  return data.default_branch || 'main';
+  const data = (await resp.json()) as { default_branch?: string; fork?: boolean };
+  return { defaultBranch: data.default_branch || 'main', isFork: data.fork === true };
+}
+
+export async function defaultBranch(client: GitHubClient, target: TaskRepoTarget): Promise<string> {
+  return (await repositoryDetails(client, target)).defaultBranch;
 }
 
 /**
