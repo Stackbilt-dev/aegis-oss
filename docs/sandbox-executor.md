@@ -9,7 +9,7 @@ It is optional. A default AEGIS deploy doesn't include it, stays on the Workers 
 1. **Claim.** The executor claims one pending `cc_tasks` row with `executor = 'do_sandbox'`.
 2. **Clone.** It clones the repository into a fresh container. A bare `repo` name means a repository in your home organization. `owner/name` means a repository outside it, which runs in fork mode (step 7).
 3. **Bootstrap.** It installs dependencies from the committed root lockfile (`pnpm install --frozen-lockfile` or `npm ci`), or from a recipe you configure.
-4. **Run the agent.** A tool-calling agent on Workers AI inspects, edits and runs tests. By default it uses `@cf/moonshotai/kimi-k2.7-code`. It can't push, commit or open a PR; the executor keeps that authority.
+4. **Run the agent.** A tool-calling agent on Workers AI inspects, edits and runs tests. By default it uses `@cf/moonshotai/kimi-k2.7-code`. It can't push, commit or open a PR; the executor keeps that authority. For repositories in your home organization, the task message includes the [repository's conventions](#repository-conventions).
 5. **Acceptance.** The executor checks the ` ```acceptance ` block from the task prompt against facts it gathers itself:
    - the staged diff;
    - file contents;
@@ -134,6 +134,16 @@ By default, `defaultExternalRepoPolicy` admits a task on a repository outside `h
 Pass your own `externalRepoPolicy` to be stricter (for example, an allowlist of owners) or looser. The executor applies it when it claims a task.
 
 **Know the exposure.** Fork mode runs the upstream's install scripts and tests inside the container. Your GitHub token never enters the container's environment. It does appear on the `git clone` and `git push` command lines, so a process left running by a hostile repository could read it. Use a token scoped to what the executor needs, and run fork mode only on repositories you have reviewed.
+
+## Repository conventions
+
+For repositories in your home organization, the task message includes conventions from the repository, so the agent follows them without having to find them. In fork mode nothing is included, because the content comes from whoever can commit upstream, but the agent can still choose to read those files.
+
+- If `.agents/sandbox.md` exists, only that file is used. This is the best option: a short file written for this agent, with your layout, code style and test commands.
+- Otherwise, `AGENTS.md` and `CLAUDE.md` are used, matched case-insensitively. Symlinks are skipped and identical files are sent once.
+- A file over 6,000 characters is replaced by an outline of its headings. Long general-purpose files often open with material for interactive sessions, so keep the rules you want applied in `.agents/sandbox.md`.
+
+The content is fenced, and the system prompt tells the agent that it can't change the task and that the executor's own rules win. That is an instruction to a model, not a security control, so review what you commit to these files. They can't change the acceptance contract, which comes only from the task prompt. Known GitHub, Anthropic and AWS key formats are stripped, but other secrets aren't, so don't commit any. Each run records what it included as a `load_guidance` event in `harness.json`.
 
 ## Limits
 

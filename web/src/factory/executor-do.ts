@@ -362,6 +362,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
             repoPath: REPO_PATH,
             task: harnessTask,
             model: config.model,
+            repositoryGuidance: !target.external,
             verificationCwd: config.verificationCwd?.(harnessTask.repo) ?? '',
             env: this.env,
             signal,
