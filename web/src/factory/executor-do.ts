@@ -50,6 +50,7 @@ import {
   GITHUB_SCOPED_HANDLER,
   SANDBOX_PLACEHOLDER_TOKEN,
   assertEgressEnforced,
+  assertEgressScope,
   type GitHubEgressScope,
 } from './egress.js';
 import { PublicationError, publishBranch } from './publish.js';
@@ -109,6 +110,7 @@ const EXECUTOR_FIBER = 'task-executor';
 export const TASK_SANDBOX_SLEEP_AFTER = '30m';
 export const TASK_SANDBOX_TRANSPORT = 'rpc';
 export const FAILURE_DIFF_TIMEOUT_MS = 30_000;
+const EGRESS_CLOSE_TIMEOUT_MS = 10_000;
 const READABLE_ARTIFACTS = new Set([
   'plan.json',
   'publish.json',
@@ -292,6 +294,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
       // reason to run a command: that would boot a container, or wait on a slot.
       let cloned = false;
       let saveDiff = false;
+      let closeEgress: (() => Promise<void>) | undefined;
       try {
         // Reject a malformed acceptance block before spending a container on it.
         const acceptance = parseAcceptanceSpec(task.prompt);
@@ -330,13 +333,29 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         // The real token stays in this Durable Object for the GitHub API. Commands
         // that run in the container get `sandboxToken`.
         const sandboxToken = config.egressBroker ? SANDBOX_PLACEHOLDER_TOKEN : token;
+        let egressOpen = false;
         const setEgressScope = async (scope: GitHubEgressScope): Promise<void> => {
           if (!config.egressBroker) return;
+          egressOpen = true;
           try {
             await sandbox.setOutboundByHost('github.com', GITHUB_SCOPED_HANDLER, scope);
+            await assertEgressScope(sandbox, scope);
           } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
             throw new TaskExecutorError('egress_setup_failed', false, 1, `sandbox egress broker unavailable: ${detail}`);
+          }
+          egressOpen = scope.writeRepos.length > 0 || scope.readRepos.length > 0;
+        };
+        // For when the task is over, whichever way it ended: nothing here can
+        // change its outcome, and the container goes straight after.
+        closeEgress = async () => {
+          for (let attempt = 0; egressOpen && attempt < 2; attempt += 1) {
+            try {
+              await settleWithin(sandbox.setOutboundByHost('github.com', GITHUB_SCOPED_HANDLER, EMPTY_GITHUB_SCOPE), EGRESS_CLOSE_TIMEOUT_MS);
+              egressOpen = false;
+            } catch (error) {
+              console.warn(`[task-executor-do] closing sandbox egress failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
           }
         };
         if (config.egressBroker) {
@@ -496,13 +515,14 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
           branchForChange: (changeKey) => `auto/do-sandbox/${changeKey}`,
           findOpenPullRequest: (branch) => this.findOpenPullRequest(target, branch, token),
           artifactPrefix: `tasks/${task.id}/`,
-          beforePush: () => setEgressScope({
+          beforePush: ({ branch, commitSha }) => setEgressScope({
             writeRepos: [fork ? `${homeOrg}/${fork}` : `${target.owner}/${target.name}`],
             readRepos: [],
+            pushUpdate: { ref: `refs/heads/${branch}`, sha: commitSha },
           }),
           secrets: [token],
           pushAuthHeader: `Authorization: ${githubBasicAuthorizationValue(sandboxToken)}`,
-        }).finally(() => setEgressScope(EMPTY_GITHUB_SCOPE).catch(() => undefined));
+        }).finally(closeEgress);
 
         // Complete. The branch is only known after publication now that it is
         // derived from the change, so record the final name rather than the plan's.
@@ -564,6 +584,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
       } finally {
         // Free the executor first, so a slow diff or release can't hold up the next task.
         this.ctrl = undefined;
+        await closeEgress?.();
         if (started && saveDiff) await this.saveFailureDiff(task.id, started);
         if (started) await releaseSandbox(started);
       }

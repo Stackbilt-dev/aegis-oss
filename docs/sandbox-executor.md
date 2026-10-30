@@ -151,7 +151,7 @@ export const TaskExecutorDO = createTaskExecutorDO({
 
 Your Worker needs `ctx.exports`: a compatibility date of 2025-11-17 or later, or the `enable_ctx_exports` flag. Set both halves: exporting `BrokeredSandbox` without `egressBroker: true` closes the network but still puts the real token on the command line, and the task's push is refused. With `egressBroker: true` and a plain `Sandbox`, the task fails with `egress_setup_failed` before anything runs in the container.
 
-Before any repository code runs, the task also checks from inside the container that a push and a registry write are refused by this policy and that `example.com` is unreachable. If any of that fails, the task fails with `egress_setup_failed`.
+Before any repository code runs, the task also checks from inside the container that a push and a registry write are refused by this policy and that `example.com` is unreachable. Each time the allowed access changes while the task runs, it checks that new requests get the new access. If any of that fails, the task fails with `egress_setup_failed`.
 
 What a brokered task can do depends on the stage:
 
@@ -159,9 +159,9 @@ What a brokered task can do depends on the stage:
 |---|---|---|---|
 | Read the task's repository and its siblings cloned with `cloneSiblingCommand` | Real token | No credentials | No credentials |
 | Read anything else on `github.com` | No credentials | No credentials | No credentials |
-| Push to the repository the task publishes to (its fork in fork mode) | 403 | 403 | Real token |
-| Push to any other repository | 403 | 403 | 403 |
-| Other writes to `github.com`, including Git LFS uploads | 403 | 403 | 403 |
+| Push the commit the executor made to the task's branch, in the repository it publishes to (its fork in fork mode) | 403 | 403 | Real token |
+| Any other push, including another branch, another commit, a delete, or another repository | 403 | 403 | 403 |
+| Other writes to `github.com`, including all Git LFS traffic | 403 | 403 | 403 |
 | `GET`/`HEAD` to the other hosts in `SANDBOX_EGRESS_HOSTS` | No credentials | No credentials | No credentials |
 | Writes to those hosts | 403 | 403 | 403 |
 | Plain `http://` to any of these hosts | 403 | 403 | 403 |
@@ -177,7 +177,9 @@ export const Sandbox = createBrokeredSandbox({ extraReadOnlyHosts: ['files.examp
 
 What the broker doesn't cover:
 - **Whatever the task stages gets published.** `git add -A` publishes the repository's tree, so code in the container can put anything it can read into the pull request. That includes a private sibling already cloned to disk. Don't give a public repository private siblings.
-- **A process left running can use the push window.** It could push to the same repository while the executor pushes, including to other branches. Protect your default branch, and scope the token to what the executor needs.
+- **A process left running isn't stopped.** It can't push anything but the executor's commit to the task's branch, but it can change the files between the acceptance check and the commit. A push can also carry extra objects that no branch points to, and GitHub may serve those by hash, so the same warning about public repositories applies.
+- **Workflows in the pushed commit.** With the `workflow` scope, a commit that adds a workflow can run on `push` with the repository's Actions secrets, before anyone reviews it. Leave that scope off the token, and protect your default branch.
+- **Git LFS.** Its batch API is a `POST`, so a repository that needs LFS objects at checkout fails.
 - **Private registries.** Credentials for them aren't brokered, and those hosts aren't on the list.
 - **Data in URLs.** `GET` requests to allowed hosts can carry data in their URLs. That only helps an attacker who can read those hosts' logs.
 

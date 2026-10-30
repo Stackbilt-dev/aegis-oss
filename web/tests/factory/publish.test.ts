@@ -217,6 +217,7 @@ describe('publishBranch', () => {
   it('runs beforePush immediately before the push, and not when attaching to an open PR', async () => {
     const h = harness(successfulGitResults());
     const order: string[] = [];
+    let pushed: unknown;
     await publishBranch({
       repoPath: '/workspace/repo',
       branch: BRANCH,
@@ -227,9 +228,13 @@ describe('publishBranch', () => {
       },
       writeArtifact: h.writeArtifact,
       createPullRequest: h.createPullRequest,
-      beforePush: async () => { order.push('beforePush'); },
+      beforePush: async (update) => {
+        order.push('beforePush');
+        pushed = update;
+      },
     });
     expect(order.indexOf('beforePush')).toBe(order.indexOf('push') - 1);
+    expect(pushed).toEqual({ branch: expect.any(String), commitSha: expect.stringMatching(/^[0-9a-f]{40}$/) });
 
     const attached = harness(successfulGitResults());
     const beforePush = vi.fn(async () => undefined);

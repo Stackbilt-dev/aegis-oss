@@ -10,7 +10,7 @@
 //
 //   clone and bootstrap   reads the task's repository and its declared siblings
 //   model and tests       public reads only
-//   the executor's push   writes the one repository it publishes to
+//   the executor's push   writes one commit to one branch of one repository
 
 /** What a brokered sandbox uses in place of a GitHub token. Worthless outside it. */
 export const SANDBOX_PLACEHOLDER_TOKEN = 'sandbox-placeholder-token';
@@ -39,6 +39,12 @@ export interface GitHubEgressScope {
   writeRepos: string[];
   /** `owner/name` repositories the token may read, beyond what's public. */
   readRepos: string[];
+  /**
+   * The one update a push may make. Without it, no push goes through. This holds
+   * a process left running in the container to the commit the executor publishes,
+   * and it's safe to repeat, so nothing has to count pushes across isolates.
+   */
+  pushUpdate?: { ref: string; sha: string };
 }
 
 export const EMPTY_GITHUB_SCOPE: GitHubEgressScope = { writeRepos: [], readRepos: [] };
@@ -52,6 +58,12 @@ const GIT_PATH = /^\/([^/]+)\/([^/]+?)(?:\.git)?\/(info\/refs|git-upload-pack|gi
 
 /** Marks a refusal as this policy's, which is how the self-test tells it from any other error. */
 const BLOCK_MARKER = 'Blocked by the sandbox egress policy';
+
+/** Answered by the handler, never by GitHub: the scope a new request gets right now. */
+const SCOPE_PROBE_URL = 'https://github.com/-/sandbox-egress-scope';
+
+/** Far more than the commands of a real push, which are one line and its shallow boundary. */
+const MAX_PUSH_COMMAND_BYTES = 256 * 1024;
 
 function isReadOnlyMethod(method: string): boolean {
   return method === 'GET' || method === 'HEAD';
@@ -89,11 +101,106 @@ export function decideGitHubEgress(method: string, url: URL, scope: GitHubEgress
   if (service !== 'git-upload-pack') {
     return { action: 'deny', reason: `unsupported git service on ${repo}` };
   }
-  return { action: 'forward', authenticate: writable || listed(scope.readRepos, repo) };
+  return { action: 'forward', authenticate: listed(scope.readRepos, repo) };
 }
 
 function blocked(reason: string): Response {
   return new Response(`${BLOCK_MARKER}: ${reason}\n`, { status: 403 });
+}
+
+/** The pkt-lines before a push's pack: optional `shallow` lines, then commands, then a flush. */
+class PushCommandParser {
+  private readonly decoder = new TextDecoder();
+  private offset = 0;
+  readonly commands: string[] = [];
+
+  /** Picks up where it stopped, so a body arriving in small chunks costs no more to read. */
+  parse(bytes: Uint8Array): 'complete' | 'incomplete' | 'invalid' {
+    while (this.offset + 4 <= bytes.length) {
+      const prefix = this.decoder.decode(bytes.subarray(this.offset, this.offset + 4));
+      if (!/^[0-9a-f]{4}$/i.test(prefix)) return 'invalid';
+      const length = Number.parseInt(prefix, 16);
+      if (length === 0) return 'complete';
+      if (length < 4) return 'invalid';
+      if (this.offset + length > bytes.length) return 'incomplete';
+      // Capabilities follow the first command after a NUL.
+      const line = this.decoder.decode(bytes.subarray(this.offset + 4, this.offset + length)).split('\0')[0].replace(/\n$/, '');
+      if (!line.startsWith('shallow ')) this.commands.push(line);
+      this.offset += length;
+    }
+    return 'incomplete';
+  }
+}
+
+function pushRefusal(commands: string[], update: GitHubEgressScope['pushUpdate']): string | null {
+  // A body of only a flush is the probe git sends before a large push. It changes nothing.
+  if (commands.length === 0) return null;
+  if (!update) return 'no push is expected now';
+  if (commands.length > 1) return 'a push may update only one ref';
+  const command = /^[0-9a-f]{40,64} ([0-9a-f]{40,64}) (\S+)$/i.exec(commands[0]);
+  if (!command) return 'unsupported push command';
+  if (command[2] !== update.ref) return `pushing to ${command[2]} is not allowed`;
+  if (command[1].toLowerCase() !== update.sha.toLowerCase()) return `pushing ${command[1]} to ${command[2]} is not allowed`;
+  return null;
+}
+
+/** Checks what a push would change, then sends it on with its body intact, without holding the pack in memory. */
+async function forwardPush(
+  request: Request,
+  headers: Headers,
+  update: GitHubEgressScope['pushUpdate'],
+  fetcher: typeof fetch,
+): Promise<Response> {
+  if (!request.body) return blocked('a push needs a body');
+  if (request.headers.has('Content-Encoding')) return blocked('a compressed push can\'t be checked');
+
+  const reader = request.body.getReader();
+  const parser = new PushCommandParser();
+  let read = new Uint8Array(0);
+  let state = parser.parse(read);
+  while (state === 'incomplete') {
+    const { done, value } = await reader.read();
+    if (done || read.length + value.length > MAX_PUSH_COMMAND_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return blocked('the push commands can\'t be read');
+    }
+    const joined = new Uint8Array(read.length + value.length);
+    joined.set(read);
+    joined.set(value, read.length);
+    read = joined;
+    state = parser.parse(read);
+  }
+  const refusal = state === 'invalid' ? 'the push commands can\'t be read' : pushRefusal(parser.commands, update);
+  if (refusal) {
+    await reader.cancel().catch(() => undefined);
+    return blocked(refusal);
+  }
+
+  const first = read;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(first);
+    },
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) controller.close();
+      else controller.enqueue(value);
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+  // The body is a new stream, so it goes out chunked, as git's own large pushes do.
+  headers.delete('Content-Length');
+  return fetcher(new Request(request.url, {
+    method: request.method,
+    headers,
+    body,
+    redirect: 'manual',
+    duplex: 'half',
+  } as RequestInit));
+}
+
+function comparableScope(scope: GitHubEgressScope) {
+  return { writeRepos: scope.writeRepos, readRepos: scope.readRepos, pushUpdate: scope.pushUpdate ?? null };
 }
 
 /** Applies the rules to one request. A placeholder never reaches GitHub; a denied request never leaves. */
@@ -103,6 +210,8 @@ export async function brokerGitHubRequest(
   scope: GitHubEgressScope,
   fetcher: typeof fetch = fetch,
 ): Promise<Response> {
+  if (request.url === SCOPE_PROBE_URL) return Response.json(comparableScope(scope));
+
   const decision = decideGitHubEgress(request.method, new URL(request.url), scope);
   if (decision.action === 'deny') return blocked(decision.reason);
 
@@ -111,6 +220,9 @@ export async function brokerGitHubRequest(
   if (decision.authenticate) {
     if (!token.trim()) return blocked('no GitHub token is configured');
     headers.set('Authorization', `Basic ${btoa(`x-access-token:${token}`)}`);
+  }
+  if (request.method === 'POST' && new URL(request.url).pathname.endsWith('/git-receive-pack')) {
+    return forwardPush(request, headers, scope.pushUpdate, fetcher);
   }
   // Redirects go back to the container, which asks again and is checked again.
   return fetcher(new Request(request, { headers, redirect: 'manual' }));
@@ -141,6 +253,14 @@ const SELF_TEST_TIMEOUT_SECONDS = 20;
 
 function curl(arguments_: string): string {
   return `curl -sS --max-time ${SELF_TEST_TIMEOUT_SECONDS} ${arguments_} 2>&1`;
+}
+
+/** Proves from inside the container that new requests get the scope just set. */
+export async function assertEgressScope(sandbox: ExecSurface, scope: GitHubEgressScope): Promise<void> {
+  const result = await sandbox.exec(curl(SCOPE_PROBE_URL), { timeout: (SELF_TEST_TIMEOUT_SECONDS + 5) * 1_000 });
+  if (result.stdout.trim() !== JSON.stringify(comparableScope(scope))) {
+    throw new EgressNotEnforcedError(`the scope in force is not the one set: ${result.stdout.slice(0, 300)}`);
+  }
 }
 
 /**

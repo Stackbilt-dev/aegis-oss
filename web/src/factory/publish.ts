@@ -71,7 +71,7 @@ export interface PublishBranchOptions {
    */
   findOpenPullRequest?(branch: string): Promise<string | null>;
   /** Runs just before the push, and only if there will be one. */
-  beforePush?(): Promise<void>;
+  beforePush?(update: { branch: string; commitSha: string }): Promise<void>;
 }
 
 export interface PublishBranchResult {
@@ -208,7 +208,7 @@ export async function publishBranch(options: PublishBranchOptions): Promise<Publ
     }
   }
 
-  await options.beforePush?.();
+  await options.beforePush?.({ branch, commitSha });
 
   const push = await run(
     'git_push',

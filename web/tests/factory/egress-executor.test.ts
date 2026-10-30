@@ -58,7 +58,7 @@ function task(repo: string) {
   };
 }
 
-function fakeSandbox(enforced = true) {
+function fakeSandbox(enforced = true, staleScope = false) {
   const commands: string[] = [];
   const scopes: GitHubEgressScope[] = [];
   const timeline: string[] = [];
@@ -77,7 +77,10 @@ function fakeSandbox(enforced = true) {
       else if (command.includes(' clone ')) timeline.push('clone');
       else if (command.includes('install')) timeline.push('install');
       let stdout = 'M\tfile.ts\n';
-      if (command.includes('example.com')) stdout = '520';
+      if (command.includes('sandbox-egress-scope')) {
+        const inForce = (staleScope ? scopes[0] : scopes.at(-1)) as GitHubEgressScope;
+        stdout = JSON.stringify({ ...inForce, pushUpdate: inForce.pushUpdate ?? null });
+      } else if (command.includes('example.com')) stdout = '520';
       else if (command.includes('curl')) stdout = enforced ? 'Blocked by the sandbox egress policy: no' : 'not found';
       else if (command.includes('rev-parse HEAD')) stdout = SHA;
       else if (command === `cd /workspace/repo && ${STAGED_NUMSTAT_COMMAND}`) stdout = btoa('1\t0\tfile.ts\0');
@@ -159,7 +162,11 @@ describe('a brokered task', () => {
     expect(sandbox.scopes).toEqual([
       { writeRepos: [], readRepos: ['org/app'] },
       { writeRepos: [], readRepos: [] },
-      { writeRepos: ['org/app'], readRepos: [] },
+      {
+        writeRepos: ['org/app'],
+        readRepos: [],
+        pushUpdate: { ref: expect.stringMatching(/^refs\/heads\/auto\/do-sandbox\//), sha: SHA },
+      },
       { writeRepos: [], readRepos: [] },
     ]);
     expect(sandbox.timeline.indexOf('clone')).toBeLessThan(sandbox.timeline.indexOf('scope:w=0,r=0'));
@@ -186,6 +193,79 @@ describe('a brokered task', () => {
     expect(sandbox.scopes[0]).toEqual({ writeRepos: [], readRepos: ['upstream/app'] });
     expect(sandbox.scopes[2].writeRepos).toHaveLength(1);
     expect(sandbox.scopes[2].writeRepos[0]).toMatch(/^org\//);
+  });
+
+  it('holds the push to the branch it pushes and the commit it made', async () => {
+    const sandbox = fakeSandbox();
+    sandboxMock.current = sandbox;
+    await run(execute('app', { egressBroker: true }));
+    const update = sandbox.scopes[2].pushUpdate as { ref: string; sha: string };
+    expect(update.sha).toBe(SHA);
+    const push = sandbox.commands.find((command) => command.includes(' push ')) as string;
+    expect(push).toContain(update.ref.replace('refs/heads/', ''));
+  });
+
+  it('checks each scope it sets from inside the container', async () => {
+    const sandbox = fakeSandbox();
+    sandboxMock.current = sandbox;
+    await run(execute('app', { egressBroker: true }));
+    // Reads, none for the model, and the push. The last narrowing is followed by the release.
+    expect(sandbox.commands.filter((command) => command.includes('sandbox-egress-scope'))).toHaveLength(3);
+  });
+
+  it('stops before the model when a narrower scope did not take', async () => {
+    const sandbox = fakeSandbox(true, true);
+    sandboxMock.current = sandbox;
+    const instance = execute('app', { egressBroker: true });
+    await run(instance, 'failed');
+    expect(sandbox.timeline).toContain('clone');
+    expect(sandbox.timeline).not.toContain('push');
+    expect(JSON.stringify(dbWrites)).toContain('egress_setup_failed');
+  });
+
+  it('closes egress and releases when the task fails with private reads open', async () => {
+    const sandbox = fakeSandbox();
+    const destroy = vi.spyOn(sandbox, 'destroy');
+    const exec = sandbox.exec.getMockImplementation() as (command: string) => Promise<unknown>;
+    sandbox.exec.mockImplementation(async (command: string) => {
+      if (command.includes('pnpm-lock.yaml')) return { success: false, exitCode: 1, stdout: '', stderr: 'failed' };
+      return exec(command) as never;
+    });
+    sandboxMock.current = sandbox;
+    await run(execute('app', { egressBroker: true }), 'failed');
+    expect(sandbox.scopes.at(-1)).toEqual({ writeRepos: [], readRepos: [] });
+    await vi.waitFor(() => expect(destroy).toHaveBeenCalledOnce());
+    expect(sandbox.setOutboundByHost.mock.invocationCallOrder.at(-1)).toBeLessThan(destroy.mock.invocationCallOrder[0]);
+  });
+
+  it('closes write access as soon as publication ends, before recording the result', async () => {
+    const sandbox = fakeSandbox();
+    const set = sandbox.setOutboundByHost.getMockImplementation() as (host: string, handler: string, scope: GitHubEgressScope) => Promise<void>;
+    let writesAtClose = -1;
+    sandbox.setOutboundByHost.mockImplementation(async (host: string, handler: string, scope: GitHubEgressScope) => {
+      if (sandbox.scopes.at(-1)?.pushUpdate) writesAtClose = dbWrites.length;
+      return set(host, handler, scope);
+    });
+    sandboxMock.current = sandbox;
+    await run(execute('app', { egressBroker: true }));
+    expect(writesAtClose).toBeGreaterThan(-1);
+    expect(dbWrites.length).toBeGreaterThan(writesAtClose);
+  });
+
+  it('tries closing egress again, without changing a task that already published', async () => {
+    const sandbox = fakeSandbox();
+    const set = sandbox.setOutboundByHost.getMockImplementation() as (host: string, handler: string, scope: GitHubEgressScope) => Promise<void>;
+    let closes = 0;
+    sandbox.setOutboundByHost.mockImplementation(async (host: string, handler: string, scope: GitHubEgressScope) => {
+      if (sandbox.scopes.at(-1)?.pushUpdate && scope.writeRepos.length === 0) {
+        closes += 1;
+        throw new Error('control plane down');
+      }
+      return set(host, handler, scope);
+    });
+    sandboxMock.current = sandbox;
+    await run(execute('app', { egressBroker: true }));
+    expect(closes).toBeGreaterThan(1);
   });
 
   it('runs nothing from the repository when the policy is not enforced', async () => {
