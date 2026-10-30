@@ -3,4 +3,5 @@
 // from your Worker entry, and everything else from `@stackbilt/aegis-core/factory`.
 
 export { createTaskExecutorDO, type TaskExecutorConfig, type TaskExecutorEnv } from './executor-do.js';
-export { Sandbox } from '@cloudflare/sandbox';
+export { Sandbox, ContainerProxy } from '@cloudflare/sandbox';
+export { BrokeredSandbox } from './brokered-sandbox.js';

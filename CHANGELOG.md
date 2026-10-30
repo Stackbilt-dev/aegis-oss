@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Sandbox egress broker (opt-in).** With `egressBroker: true` and `BrokeredSandbox` exported as `Sandbox`, the container holds a placeholder instead of the GitHub token and its network is closed. A Worker-side handler attaches the real token, allows pushes only to the task's own repository, and keeps other allowed hosts read-only. Off by default, so existing deployments are unchanged. See [docs/sandbox-executor.md](docs/sandbox-executor.md#egress-broker).
+
 ## 0.10.1 (2026-10-16)
 
 ### Removed

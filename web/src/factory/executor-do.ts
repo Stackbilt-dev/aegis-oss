@@ -42,6 +42,7 @@ import {
   cloneRepository,
   githubBasicAuthorizationValue,
 } from './git.js';
+import { GITHUB_SCOPED_HANDLER, SANDBOX_PLACEHOLDER_TOKEN, type GitHubEgressScope } from './egress.js';
 import { PublicationError, publishBranch } from './publish.js';
 import {
   RepoTargetError,
@@ -86,6 +87,12 @@ export interface TaskExecutorConfig {
   verificationCwd?: (repo: string) => string;
   /** Admission policy for repositories outside `homeOrg`. Defaults to defaultExternalRepoPolicy. */
   externalRepoPolicy?: ExternalRepoPolicy;
+  /**
+   * Keep the GitHub token out of the container. Requires exporting BrokeredSandbox
+   * as `Sandbox`, and ContainerProxy, from your Worker. A task fails rather than
+   * run with the token inside if the container class can't broker.
+   */
+  egressBroker?: boolean;
 }
 
 const REPO_PATH = '/workspace/repo';
@@ -304,7 +311,23 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         const fork = target.external ? await ensureFork(github, target, homeOrg) : null;
 
         // Clone the upstream so the branch starts from its tip, not the fork's.
-        await cloneRepository({ sandbox, repo: target.name, token, repoPath: REPO_PATH, org: target.owner });
+        // The real token stays in this Durable Object for the GitHub API. Commands
+        // that run in the container get `sandboxToken`.
+        const sandboxToken = config.egressBroker ? SANDBOX_PLACEHOLDER_TOKEN : token;
+        if (config.egressBroker) {
+          const scope: GitHubEgressScope = {
+            writeRepos: [fork ? `${homeOrg}/${fork}` : `${target.owner}/${target.name}`],
+            readOwners: [homeOrg],
+          };
+          try {
+            await sandbox.setOutboundByHost('github.com', GITHUB_SCOPED_HANDLER, scope);
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            throw new TaskExecutorError('egress_setup_failed', false, 1, `sandbox egress broker unavailable: ${detail}`);
+          }
+        }
+
+        await cloneRepository({ sandbox, repo: target.name, token: sandboxToken, repoPath: REPO_PATH, org: target.owner });
         await sandbox.exec(
           `cd ${REPO_PATH} && git config user.email ${shellQuote(config.gitIdentity.email)} && git config user.name ${shellQuote(config.gitIdentity.name)}`,
         );
@@ -326,7 +349,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
           sandbox,
           repo: recipeKey(target),
           recipe: config.bootstrap,
-          token,
+          token: sandboxToken,
           onCheckpoint: (result) => this.workspace.writeFile(
             `tasks/${task.id}/bootstrap.json`,
             JSON.stringify(result, null, 2),
@@ -446,7 +469,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
           findOpenPullRequest: (branch) => this.findOpenPullRequest(target, branch, token),
           artifactPrefix: `tasks/${task.id}/`,
           secrets: [token],
-          pushAuthHeader: `Authorization: ${githubBasicAuthorizationValue(token)}`,
+          pushAuthHeader: `Authorization: ${githubBasicAuthorizationValue(sandboxToken)}`,
         });
 
         // Complete. The branch is only known after publication now that it is

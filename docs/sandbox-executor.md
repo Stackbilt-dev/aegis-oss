@@ -133,7 +133,41 @@ By default, `defaultExternalRepoPolicy` admits a task on a repository outside `h
 
 Pass your own `externalRepoPolicy` to be stricter (for example, an allowlist of owners) or looser. The executor applies it when it claims a task.
 
-**Know the exposure.** Fork mode runs the upstream's install scripts and tests inside the container. Your GitHub token never enters the container's environment. It does appear on the `git clone` and `git push` command lines, so a process left running by a hostile repository could read it. Use a token scoped to what the executor needs, and run fork mode only on repositories you have reviewed.
+**Know the exposure.** Fork mode runs the upstream's install scripts and tests inside the container. Without the egress broker below, your GitHub token appears on the `git clone` and `git push` command lines, and anything those scripts leave behind, such as a git hook or a running process, can read it. Turn the broker on, use a token scoped to what the executor needs, and run fork mode only on repositories you have reviewed.
+
+## Egress broker
+
+Without the broker, code in the container has open internet access and can reach the token as described above. With it, the container holds a placeholder token and its network is closed. A handler in the Worker attaches the real token on the way out.
+
+```ts
+export { BrokeredSandbox as Sandbox, ContainerProxy } from '@stackbilt/aegis-core/factory/executor';
+
+export const TaskExecutorDO = createTaskExecutorDO({
+  homeOrg: 'your-org',
+  gitIdentity: { name: 'Your Agent', email: 'agent@example.com' },
+  egressBroker: true,
+});
+```
+
+Your Worker needs `ctx.exports`: a compatibility date of 2025-11-17 or later, or the `enable_ctx_exports` flag.
+
+What a brokered task can do:
+
+| Traffic | Result |
+|---|---|
+| Clone or fetch from `homeOrg` or the task's repository | Real token attached |
+| Clone or fetch from anywhere else on GitHub | Sent with no credentials |
+| Push to the task's repository (its fork in fork mode) | Real token attached |
+| Push to any other repository | 403, never leaves the Worker |
+| Other `github.com` reads | Sent with no credentials |
+| `GET`/`HEAD` to the hosts in `SANDBOX_EGRESS_HOSTS`, such as package registries | Sent with no credentials |
+| Writes to those hosts, and every other host | Blocked |
+
+If your repository's install or tests need another host, subclass `BrokeredSandbox`, extend `allowedHosts`, and add a handler for that host.
+
+What the broker doesn't cover:
+- Code in the container can still push whatever it likes to the task's own repository, and read any repository the token can read in `homeOrg`. It has nowhere else to send that data, but scope the token anyway.
+- `GET` requests to allowed hosts can still carry data in their URLs. That only helps an attacker who can read those hosts' logs.
 
 ## Limits
 
