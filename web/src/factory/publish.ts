@@ -1,5 +1,9 @@
 import type { ExecResult } from '@cloudflare/sandbox';
 
+// The repository's .git was within reach of the code that ran before this. A hook
+// left there must not run during publication, and a command-line setting beats
+// anything in .git/config.
+const NO_HOOKS = '-c core.hooksPath=/dev/null';
 const MAX_DIAGNOSTIC_CHARS = 4_000;
 const MAX_DIFF_CHARS = 1_000_000;
 /** Hex chars of the change digest kept for branch names — 48 bits of identity. */
@@ -66,6 +70,8 @@ export interface PublishBranchOptions {
    * already under review and publication attaches to it instead of pushing.
    */
   findOpenPullRequest?(branch: string): Promise<string | null>;
+  /** Runs just before the push, and only if there will be one. */
+  beforePush?(): Promise<void>;
 }
 
 export interface PublishBranchResult {
@@ -166,7 +172,7 @@ export async function publishBranch(options: PublishBranchOptions): Promise<Publ
 
   const commit = await run(
     'git_commit',
-    `cd ${shellQuote(options.repoPath)} && git commit -m ${shellQuote(options.commitMessage)}`,
+    `cd ${shellQuote(options.repoPath)} && git ${NO_HOOKS} commit -m ${shellQuote(options.commitMessage)}`,
   );
   assertSuccess(commit, 'git_commit_failed', false, 'git commit failed', options.secrets);
 
@@ -202,9 +208,11 @@ export async function publishBranch(options: PublishBranchOptions): Promise<Publ
     }
   }
 
+  await options.beforePush?.();
+
   const push = await run(
     'git_push',
-    `cd ${shellQuote(options.repoPath)} && git${options.pushAuthHeader
+    `cd ${shellQuote(options.repoPath)} && git ${NO_HOOKS}${options.pushAuthHeader
       ? ` -c http.extraHeader=${shellQuote(options.pushAuthHeader)}`
       : ''} push --set-upstream ${options.pushRemote ? shellQuote(options.pushRemote) : 'origin'} ${shellQuote(branch)}`,
   );

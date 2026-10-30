@@ -2,13 +2,20 @@
 //
 // With a brokered sandbox the container only ever holds a placeholder token.
 // These rules run in the Worker, outside the container: they decide what each
-// outbound request may do and attach the real token on the way out. Reads are
-// open, and only the task's own repositories can be written.
+// outbound request may do and attach the real token on the way out.
+//
+// The scope changes as a task moves, so code from the repository and the model
+// never holds private reads and write access together, which is what would let
+// it publish one repository's contents to another:
+//
+//   clone and bootstrap   reads the task's repository and its declared siblings
+//   model and tests       public reads only
+//   the executor's push   writes the one repository it publishes to
 
 /** What a brokered sandbox uses in place of a GitHub token. Worthless outside it. */
 export const SANDBOX_PLACEHOLDER_TOKEN = 'sandbox-placeholder-token';
 
-/** The handler name the executor selects, with the task's scope as its params. */
+/** The handler name the executor selects, with the task's current scope as its params. */
 export const GITHUB_SCOPED_HANDLER = 'githubScoped';
 
 /**
@@ -26,15 +33,15 @@ export const SANDBOX_EGRESS_HOSTS = [
   'registry.yarnpkg.com',
 ];
 
-/** What one task may do on github.com. The default is the empty scope: public reads only. */
+/** What github.com allows right now. The default is the empty scope: public reads only. */
 export interface GitHubEgressScope {
-  /** `owner/name` repositories this task may push to. */
+  /** `owner/name` repositories that may be pushed to. */
   writeRepos: string[];
-  /** Owners whose private repositories the token may read, for clones and sibling repos. */
-  readOwners: string[];
+  /** `owner/name` repositories the token may read, beyond what's public. */
+  readRepos: string[];
 }
 
-export const EMPTY_GITHUB_SCOPE: GitHubEgressScope = { writeRepos: [], readOwners: [] };
+export const EMPTY_GITHUB_SCOPE: GitHubEgressScope = { writeRepos: [], readRepos: [] };
 
 export type GitHubEgressDecision =
   | { action: 'deny'; reason: string }
@@ -43,11 +50,20 @@ export type GitHubEgressDecision =
 // Smart-HTTP git, the only github.com traffic that ever carries the token.
 const GIT_PATH = /^\/([^/]+)\/([^/]+?)(?:\.git)?\/(info\/refs|git-upload-pack|git-receive-pack)$/;
 
+/** Marks a refusal as this policy's, which is how the self-test tells it from any other error. */
+const BLOCK_MARKER = 'Blocked by the sandbox egress policy';
+
 function isReadOnlyMethod(method: string): boolean {
   return method === 'GET' || method === 'HEAD';
 }
 
+function listed(repos: string[], repo: string): boolean {
+  return repos.some((allowed) => allowed.toLowerCase() === repo);
+}
+
 export function decideGitHubEgress(method: string, url: URL, scope: GitHubEgressScope): GitHubEgressDecision {
+  if (url.protocol !== 'https:') return { action: 'deny', reason: `${url.protocol} is not allowed` };
+
   const match = GIT_PATH.exec(url.pathname);
   if (!match) {
     return isReadOnlyMethod(method)
@@ -56,8 +72,7 @@ export function decideGitHubEgress(method: string, url: URL, scope: GitHubEgress
   }
 
   // GitHub treats owner and repository names case-insensitively, so these must too.
-  const owner = match[1].toLowerCase();
-  const repo = `${owner}/${match[2].toLowerCase()}`;
+  const repo = `${match[1]}/${match[2]}`.toLowerCase();
   const endpoint = match[3];
 
   const expectedMethod = endpoint === 'info/refs' ? isReadOnlyMethod(method) : method === 'POST';
@@ -65,23 +80,20 @@ export function decideGitHubEgress(method: string, url: URL, scope: GitHubEgress
 
   // The endpoint names the service, so a query string can't relabel a push as a read.
   const service = endpoint === 'info/refs' ? url.searchParams.get('service') : endpoint;
-  const writable = scope.writeRepos.some((allowed) => allowed.toLowerCase() === repo);
+  const writable = listed(scope.writeRepos, repo);
   if (service === 'git-receive-pack') {
     return writable
       ? { action: 'forward', authenticate: true }
-      : { action: 'deny', reason: `this task cannot push to ${repo}` };
+      : { action: 'deny', reason: `pushing to ${repo} is not allowed now` };
   }
   if (service !== 'git-upload-pack') {
     return { action: 'deny', reason: `unsupported git service on ${repo}` };
   }
-  return {
-    action: 'forward',
-    authenticate: writable || scope.readOwners.some((allowed) => allowed.toLowerCase() === owner),
-  };
+  return { action: 'forward', authenticate: writable || listed(scope.readRepos, repo) };
 }
 
 function blocked(reason: string): Response {
-  return new Response(`Blocked by the sandbox egress policy: ${reason}\n`, { status: 403 });
+  return new Response(`${BLOCK_MARKER}: ${reason}\n`, { status: 403 });
 }
 
 /** Applies the rules to one request. A placeholder never reaches GitHub; a denied request never leaves. */
@@ -107,8 +119,50 @@ export async function brokerGitHubRequest(
 /** For hosts the sandbox only reads from, without credentials. */
 export async function brokerReadOnlyRequest(request: Request, fetcher: typeof fetch = fetch): Promise<Response> {
   if (!isReadOnlyMethod(request.method)) return blocked(`${request.method} is read-only here`);
+  if (new URL(request.url).protocol !== 'https:') return blocked('only https is allowed');
 
   const headers = new Headers(request.headers);
   headers.delete('Authorization');
   return fetcher(new Request(request, { headers, redirect: 'manual' }));
+}
+
+export class EgressNotEnforcedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EgressNotEnforcedError';
+  }
+}
+
+interface ExecSurface {
+  exec(command: string, options?: { timeout?: number }): Promise<{ success: boolean; stdout: string; stderr: string }>;
+}
+
+const SELF_TEST_TIMEOUT_SECONDS = 20;
+
+function curl(arguments_: string): string {
+  return `curl -sS --max-time ${SELF_TEST_TIMEOUT_SECONDS} ${arguments_} 2>&1`;
+}
+
+/**
+ * Proves from inside the container that the policy is live, before any
+ * repository code runs. If the handlers weren't reached, allowed hosts would be
+ * wide open while the executor's own requests still looked fine, so a push that
+ * should be refused has to come back refused by this policy, not merely fail.
+ */
+export async function assertEgressEnforced(sandbox: ExecSurface): Promise<void> {
+  const timeout = (SELF_TEST_TIMEOUT_SECONDS + 5) * 1_000;
+  const refused = [
+    'https://github.com/sandbox-egress-self-test/none.git/git-receive-pack',
+    'https://registry.npmjs.org/-/sandbox-egress-self-test',
+  ];
+  for (const url of refused) {
+    const result = await sandbox.exec(curl(`-X POST -d x ${url}`), { timeout });
+    if (!result.stdout.includes(BLOCK_MARKER)) {
+      throw new EgressNotEnforcedError(`POST ${url} was not refused by the policy: ${result.stdout.slice(0, 300)}`);
+    }
+  }
+  const closed = await sandbox.exec(curl('-o /dev/null -w "%{http_code}" https://example.com/'), { timeout });
+  if (closed.stdout.trim().endsWith('200')) {
+    throw new EgressNotEnforcedError('https://example.com/ is reachable, so the network is not closed');
+  }
 }

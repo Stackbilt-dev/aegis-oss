@@ -3,7 +3,10 @@
 ## Unreleased
 
 ### Added
-- **Sandbox egress broker (opt-in).** With `egressBroker: true` and `BrokeredSandbox` exported as `Sandbox`, the container holds a placeholder instead of the GitHub token and its network is closed. A Worker-side handler attaches the real token, allows pushes only to the task's own repository, and keeps other allowed hosts read-only. Off by default, so existing deployments are unchanged. See [docs/sandbox-executor.md](docs/sandbox-executor.md#egress-broker).
+- **Sandbox egress broker (opt-in).** With `egressBroker: true` and `BrokeredSandbox` exported as `Sandbox`, the container holds a placeholder instead of the GitHub token and its network is closed. A Worker-side handler attaches the real token and narrows what it allows by stage: private reads only for clone and bootstrap, nothing for the model and its tests, and one repository's write only for the executor's push. Other allowed hosts are read-only. A self-test fails the task if the policy isn't enforced. Off by default, so existing deployments are unchanged. See [docs/sandbox-executor.md](docs/sandbox-executor.md#egress-broker).
+
+### Changed
+- **The sandbox executor commits and pushes with git hooks disabled**, so a hook left in the repository's `.git` can't run during publication.
 
 ## 0.10.1 (2026-10-16)
 

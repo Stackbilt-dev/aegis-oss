@@ -19,6 +19,7 @@ import { Workspace } from '@cloudflare/shell';
 import { getSandbox } from '@cloudflare/sandbox';
 import {
   SandboxBootstrapError,
+  bootstrapCommands,
   bootstrapSandbox,
   type BootstrapRecipe,
 } from './bootstrap.js';
@@ -42,7 +43,13 @@ import {
   cloneRepository,
   githubBasicAuthorizationValue,
 } from './git.js';
-import { GITHUB_SCOPED_HANDLER, SANDBOX_PLACEHOLDER_TOKEN, type GitHubEgressScope } from './egress.js';
+import {
+  EMPTY_GITHUB_SCOPE,
+  GITHUB_SCOPED_HANDLER,
+  SANDBOX_PLACEHOLDER_TOKEN,
+  assertEgressEnforced,
+  type GitHubEgressScope,
+} from './egress.js';
 import { PublicationError, publishBranch } from './publish.js';
 import {
   RepoTargetError,
@@ -314,16 +321,24 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         // The real token stays in this Durable Object for the GitHub API. Commands
         // that run in the container get `sandboxToken`.
         const sandboxToken = config.egressBroker ? SANDBOX_PLACEHOLDER_TOKEN : token;
-        if (config.egressBroker) {
-          const scope: GitHubEgressScope = {
-            writeRepos: [fork ? `${homeOrg}/${fork}` : `${target.owner}/${target.name}`],
-            readOwners: [homeOrg],
-          };
+        const setEgressScope = async (scope: GitHubEgressScope): Promise<void> => {
+          if (!config.egressBroker) return;
           try {
             await sandbox.setOutboundByHost('github.com', GITHUB_SCOPED_HANDLER, scope);
           } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
             throw new TaskExecutorError('egress_setup_failed', false, 1, `sandbox egress broker unavailable: ${detail}`);
+          }
+        };
+        if (config.egressBroker) {
+          const siblings = bootstrapCommands(recipeKey(target), sandboxToken, config.bootstrap)
+            .flatMap((step) => (step.readsRepo ? [step.readsRepo] : []));
+          await setEgressScope({ writeRepos: [], readRepos: [`${target.owner}/${target.name}`, ...siblings] });
+          try {
+            await assertEgressEnforced(sandbox);
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            throw new TaskExecutorError('egress_setup_failed', false, 1, `sandbox egress policy is not enforced: ${detail}`);
           }
         }
 
@@ -357,6 +372,9 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         });
 
         if (signal.aborted) return;
+
+        // Dependencies are in place. The model and its tests get public reads only.
+        await setEgressScope(EMPTY_GITHUB_SCOPE);
 
         // The executor owns branch and publication metadata. Repository discovery,
         // edits, and verification belong to the bounded tool loop below.
@@ -468,9 +486,13 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
           branchForChange: (changeKey) => `auto/do-sandbox/${changeKey}`,
           findOpenPullRequest: (branch) => this.findOpenPullRequest(target, branch, token),
           artifactPrefix: `tasks/${task.id}/`,
+          beforePush: () => setEgressScope({
+            writeRepos: [fork ? `${homeOrg}/${fork}` : `${target.owner}/${target.name}`],
+            readRepos: [],
+          }),
           secrets: [token],
           pushAuthHeader: `Authorization: ${githubBasicAuthorizationValue(sandboxToken)}`,
-        });
+        }).finally(() => setEgressScope(EMPTY_GITHUB_SCOPE).catch(() => undefined));
 
         // Complete. The branch is only known after publication now that it is
         // derived from the change, so record the final name rather than the plan's.

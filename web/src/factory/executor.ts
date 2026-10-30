@@ -4,4 +4,4 @@
 
 export { createTaskExecutorDO, type TaskExecutorConfig, type TaskExecutorEnv } from './executor-do.js';
 export { Sandbox, ContainerProxy } from '@cloudflare/sandbox';
-export { BrokeredSandbox } from './brokered-sandbox.js';
+export { BrokeredSandbox, createBrokeredSandbox, type BrokeredSandboxOptions } from './brokered-sandbox.js';

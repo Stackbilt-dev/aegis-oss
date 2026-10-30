@@ -1,15 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   EMPTY_GITHUB_SCOPE,
+  EgressNotEnforcedError,
   SANDBOX_EGRESS_HOSTS,
   SANDBOX_PLACEHOLDER_TOKEN,
+  assertEgressEnforced,
   brokerGitHubRequest,
   brokerReadOnlyRequest,
   decideGitHubEgress,
   type GitHubEgressScope,
 } from '../../src/factory/egress.js';
 
-const scope: GitHubEgressScope = { writeRepos: ['Stackbilt-dev/aegis'], readOwners: ['Stackbilt-dev'] };
+const scope: GitHubEgressScope = { writeRepos: ['Stackbilt-dev/aegis'], readRepos: ['Stackbilt-dev/contracts'] };
 const github = (path: string) => new URL(`https://github.com${path}`);
 const authenticated = { action: 'forward', authenticate: true };
 const anonymous = { action: 'forward', authenticate: false };
@@ -43,7 +45,8 @@ describe('decideGitHubEgress', () => {
     expect(decideGitHubEgress('POST', github('/stackbilt-dev/AEGIS/git-receive-pack'), scope)).toEqual(authenticated);
   });
 
-  it('authenticates reads only for allowed owners', () => {
+  it('authenticates reads only for listed repositories', () => {
+    expect(decideGitHubEgress('POST', github('/Stackbilt-dev/secret.git/git-upload-pack'), scope)).toEqual(anonymous);
     expect(decideGitHubEgress('POST', github('/Stackbilt-dev/contracts.git/git-upload-pack'), scope)).toEqual(authenticated);
     expect(decideGitHubEgress('GET', github('/Stackbilt-dev/contracts.git/info/refs?service=git-upload-pack'), scope)).toEqual(authenticated);
     expect(decideGitHubEgress('POST', github('/someone/public.git/git-upload-pack'), scope)).toEqual(anonymous);
@@ -65,6 +68,53 @@ describe('decideGitHubEgress', () => {
 
   it('does not let a query string relabel a push as a read', () => {
     expect(decideGitHubEgress('POST', github('/attacker/loot.git/git-receive-pack?service=git-upload-pack'), scope).action).toBe('deny');
+  });
+});
+
+describe('plain http', () => {
+  it('never carries the token', () => {
+    const url = new URL('http://github.com/Stackbilt-dev/aegis.git/info/refs?service=git-upload-pack');
+    expect(decideGitHubEgress('GET', url, scope).action).toBe('deny');
+  });
+
+  it('is refused on read-only hosts', async () => {
+    const { fetcher } = capture();
+    const response = await brokerReadOnlyRequest(new Request('http://registry.npmjs.org/vitest'), fetcher);
+    expect(response.status).toBe(403);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+describe('assertEgressEnforced', () => {
+  const live = (command: string) => ({
+    success: true,
+    stderr: '',
+    stdout: command.includes('example.com') ? '520' : 'Blocked by the sandbox egress policy: no',
+  });
+
+  it('passes when the policy answers and the network is closed', async () => {
+    await expect(assertEgressEnforced({ exec: async (command) => live(command) })).resolves.toBeUndefined();
+  });
+
+  it('fails when a refused request gets some other answer, as it would with handlers not reached', async () => {
+    const exec = async (command: string) => (command.includes('github.com')
+      ? { success: true, stderr: '', stdout: 'Repository not found.' }
+      : live(command));
+    await expect(assertEgressEnforced({ exec })).rejects.toBeInstanceOf(EgressNotEnforcedError);
+  });
+
+  it('fails when curl cannot connect, rather than treating that as refused', async () => {
+    const exec = async (command: string) => (command.includes('registry')
+      ? { success: false, stderr: '', stdout: 'curl: (60) SSL certificate problem' }
+      : live(command));
+    await expect(assertEgressEnforced({ exec })).rejects.toBeInstanceOf(EgressNotEnforcedError);
+  });
+
+  it('fails when other hosts are reachable', async () => {
+    const exec = async (command: string) => (command.includes('example.com')
+      ? { success: true, stderr: '', stdout: '200' }
+      : live(command));
+    await expect(assertEgressEnforced({ exec })).rejects.toBeInstanceOf(EgressNotEnforcedError);
   });
 });
 

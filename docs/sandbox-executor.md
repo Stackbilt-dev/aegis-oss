@@ -149,25 +149,37 @@ export const TaskExecutorDO = createTaskExecutorDO({
 });
 ```
 
-Your Worker needs `ctx.exports`: a compatibility date of 2025-11-17 or later, or the `enable_ctx_exports` flag.
+Your Worker needs `ctx.exports`: a compatibility date of 2025-11-17 or later, or the `enable_ctx_exports` flag. Set both halves: exporting `BrokeredSandbox` without `egressBroker: true` closes the network but still puts the real token on the command line, and the task's push is refused. With `egressBroker: true` and a plain `Sandbox`, the task fails with `egress_setup_failed` before anything runs in the container.
 
-What a brokered task can do:
+Before any repository code runs, the task also checks from inside the container that a push and a registry write are refused by this policy and that `example.com` is unreachable. If any of that fails, the task fails with `egress_setup_failed`.
 
-| Traffic | Result |
-|---|---|
-| Clone or fetch from `homeOrg` or the task's repository | Real token attached |
-| Clone or fetch from anywhere else on GitHub | Sent with no credentials |
-| Push to the task's repository (its fork in fork mode) | Real token attached |
-| Push to any other repository | 403, never leaves the Worker |
-| Other `github.com` reads | Sent with no credentials |
-| `GET`/`HEAD` to the hosts in `SANDBOX_EGRESS_HOSTS`, such as package registries | Sent with no credentials |
-| Writes to those hosts, and every other host | Blocked |
+What a brokered task can do depends on the stage:
 
-If your repository's install or tests need another host, subclass `BrokeredSandbox`, extend `allowedHosts`, and add a handler for that host.
+| Traffic | Clone and bootstrap | Model and tests | Executor's push |
+|---|---|---|---|
+| Read the task's repository and its siblings cloned with `cloneSiblingCommand` | Real token | No credentials | No credentials |
+| Read anything else on `github.com` | No credentials | No credentials | No credentials |
+| Push to the repository the task publishes to (its fork in fork mode) | 403 | 403 | Real token |
+| Push to any other repository | 403 | 403 | 403 |
+| Other writes to `github.com`, including Git LFS uploads | 403 | 403 | 403 |
+| `GET`/`HEAD` to the other hosts in `SANDBOX_EGRESS_HOSTS` | No credentials | No credentials | No credentials |
+| Writes to those hosts | 403 | 403 | 403 |
+| Plain `http://` to any of these hosts | 403 | 403 | 403 |
+| Every other host | Blocked | Blocked | Blocked |
+
+If your repository's install or tests read from another host, use `createBrokeredSandbox`. Don't subclass `BrokeredSandbox`: handlers are registered per class name, so a subclass would have none.
+
+```ts
+import { createBrokeredSandbox } from '@stackbilt/aegis-core/factory/executor';
+
+export const Sandbox = createBrokeredSandbox({ extraReadOnlyHosts: ['files.example.com'] });
+```
 
 What the broker doesn't cover:
-- Code in the container can still push whatever it likes to the task's own repository, and read any repository the token can read in `homeOrg`. It has nowhere else to send that data, but scope the token anyway.
-- `GET` requests to allowed hosts can still carry data in their URLs. That only helps an attacker who can read those hosts' logs.
+- **Whatever the task stages gets published.** `git add -A` publishes the repository's tree, so code in the container can put anything it can read into the pull request. That includes a private sibling already cloned to disk. Don't give a public repository private siblings.
+- **A process left running can use the push window.** It could push to the same repository while the executor pushes, including to other branches. Protect your default branch, and scope the token to what the executor needs.
+- **Private registries.** Credentials for them aren't brokered, and those hosts aren't on the list.
+- **Data in URLs.** `GET` requests to allowed hosts can carry data in their URLs. That only helps an attacker who can read those hosts' logs.
 
 ## Limits
 
