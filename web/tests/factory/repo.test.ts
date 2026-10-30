@@ -166,7 +166,7 @@ describe('fork-mode publication', () => {
       branchForChange: (key) => `auto/do-sandbox/${key}`,
       pushRemote: 'fork',
     });
-    const push = exec.mock.calls.map((call) => String(call[0])).find((command) => command.includes('git push'));
+    const push = exec.mock.calls.map((call) => String(call[0])).find((command) => command.includes(' push --set-upstream'));
     expect(push).toContain("push --set-upstream 'fork' ");
   });
 });

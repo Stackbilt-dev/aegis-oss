@@ -33,3 +33,4 @@ export {
   type AcceptanceVerdict,
 } from './acceptance.js';
 export { SANDBOX_HARNESS_MODEL } from './harness.js';
+export { SANDBOX_EGRESS_HOSTS, SANDBOX_PLACEHOLDER_TOKEN, type GitHubEgressScope } from './egress.js';

@@ -80,6 +80,7 @@ crons = ["0 * * * *"]
 # (Containers), a Docker-capable build (or deploy from CI), and GITHUB_TOKEN.
 # Your Worker must also export the classes:
 #   export { Sandbox } from '@stackbilt/aegis-core/factory/executor';
+#   (or, to keep the token out of the container, see "Egress broker" in the guide)
 #   export const TaskExecutorDO = createTaskExecutorDO({ homeOrg: 'your-org', gitIdentity: { ... } });
 # Guide: docs/sandbox-executor.md. Uncomment all of the following to enable.
 #

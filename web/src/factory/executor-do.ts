@@ -19,6 +19,7 @@ import { Workspace } from '@cloudflare/shell';
 import { getSandbox } from '@cloudflare/sandbox';
 import {
   SandboxBootstrapError,
+  bootstrapCommands,
   bootstrapSandbox,
   releaseSandbox,
   settleWithin,
@@ -44,6 +45,14 @@ import {
   cloneRepository,
   githubBasicAuthorizationValue,
 } from './git.js';
+import {
+  EMPTY_GITHUB_SCOPE,
+  GITHUB_SCOPED_HANDLER,
+  SANDBOX_PLACEHOLDER_TOKEN,
+  assertEgressEnforced,
+  assertEgressScope,
+  type GitHubEgressScope,
+} from './egress.js';
 import { PublicationError, publishBranch } from './publish.js';
 import {
   RepoTargetError,
@@ -88,6 +97,12 @@ export interface TaskExecutorConfig {
   verificationCwd?: (repo: string) => string;
   /** Admission policy for repositories outside `homeOrg`. Defaults to defaultExternalRepoPolicy. */
   externalRepoPolicy?: ExternalRepoPolicy;
+  /**
+   * Keep the GitHub token out of the container. Requires exporting BrokeredSandbox
+   * as `Sandbox`, and ContainerProxy, from your Worker. A task fails rather than
+   * run with the token inside if the container class can't broker.
+   */
+  egressBroker?: boolean;
 }
 
 const REPO_PATH = '/workspace/repo';
@@ -95,6 +110,7 @@ const EXECUTOR_FIBER = 'task-executor';
 export const TASK_SANDBOX_SLEEP_AFTER = '30m';
 export const TASK_SANDBOX_TRANSPORT = 'rpc';
 export const FAILURE_DIFF_TIMEOUT_MS = 30_000;
+const EGRESS_CLOSE_TIMEOUT_MS = 10_000;
 const READABLE_ARTIFACTS = new Set([
   'plan.json',
   'publish.json',
@@ -278,6 +294,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
       // reason to run a command: that would boot a container, or wait on a slot.
       let cloned = false;
       let saveDiff = false;
+      let closeEgress: (() => Promise<void>) | undefined;
       try {
         // Reject a malformed acceptance block before spending a container on it.
         const acceptance = parseAcceptanceSpec(task.prompt);
@@ -313,7 +330,47 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         const fork = target.external ? await ensureFork(github, target, homeOrg) : null;
 
         // Clone the upstream so the branch starts from its tip, not the fork's.
-        await cloneRepository({ sandbox, repo: target.name, token, repoPath: REPO_PATH, org: target.owner });
+        // The real token stays in this Durable Object for the GitHub API. Commands
+        // that run in the container get `sandboxToken`.
+        const sandboxToken = config.egressBroker ? SANDBOX_PLACEHOLDER_TOKEN : token;
+        let egressOpen = false;
+        const setEgressScope = async (scope: GitHubEgressScope): Promise<void> => {
+          if (!config.egressBroker) return;
+          egressOpen = true;
+          try {
+            await sandbox.setOutboundByHost('github.com', GITHUB_SCOPED_HANDLER, scope);
+            await assertEgressScope(sandbox, scope);
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            throw new TaskExecutorError('egress_setup_failed', false, 1, `sandbox egress broker unavailable: ${detail}`);
+          }
+          egressOpen = scope.writeRepos.length > 0 || scope.readRepos.length > 0;
+        };
+        // For when the task is over, whichever way it ended: nothing here can
+        // change its outcome, and the container goes straight after.
+        closeEgress = async () => {
+          for (let attempt = 0; egressOpen && attempt < 2; attempt += 1) {
+            try {
+              await settleWithin(sandbox.setOutboundByHost('github.com', GITHUB_SCOPED_HANDLER, EMPTY_GITHUB_SCOPE), EGRESS_CLOSE_TIMEOUT_MS);
+              egressOpen = false;
+            } catch (error) {
+              console.warn(`[task-executor-do] closing sandbox egress failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+        };
+        if (config.egressBroker) {
+          const siblings = bootstrapCommands(recipeKey(target), sandboxToken, config.bootstrap)
+            .flatMap((step) => (step.readsRepo ? [step.readsRepo] : []));
+          await setEgressScope({ writeRepos: [], readRepos: [`${target.owner}/${target.name}`, ...siblings] });
+          try {
+            await assertEgressEnforced(sandbox);
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            throw new TaskExecutorError('egress_setup_failed', false, 1, `sandbox egress policy is not enforced: ${detail}`);
+          }
+        }
+
+        await cloneRepository({ sandbox, repo: target.name, token: sandboxToken, repoPath: REPO_PATH, org: target.owner });
         cloned = true;
         await sandbox.exec(
           `cd ${REPO_PATH} && git config user.email ${shellQuote(config.gitIdentity.email)} && git config user.name ${shellQuote(config.gitIdentity.name)}`,
@@ -336,7 +393,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
           sandbox,
           repo: recipeKey(target),
           recipe: config.bootstrap,
-          token,
+          token: sandboxToken,
           onCheckpoint: (result) => this.workspace.writeFile(
             `tasks/${task.id}/bootstrap.json`,
             JSON.stringify(result, null, 2),
@@ -344,6 +401,9 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         });
 
         if (signal.aborted) return;
+
+        // Dependencies are in place. The model and its tests get public reads only.
+        await setEgressScope(EMPTY_GITHUB_SCOPE);
 
         // The executor owns branch and publication metadata. Repository discovery,
         // edits, and verification belong to the bounded tool loop below.
@@ -457,9 +517,14 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
           branchForChange: (changeKey) => `auto/do-sandbox/${changeKey}`,
           findOpenPullRequest: (branch) => this.findOpenPullRequest(target, branch, token),
           artifactPrefix: `tasks/${task.id}/`,
+          beforePush: ({ branch, commitSha }) => setEgressScope({
+            writeRepos: [fork ? `${homeOrg}/${fork}` : `${target.owner}/${target.name}`],
+            readRepos: [],
+            pushUpdate: { ref: `refs/heads/${branch}`, sha: commitSha },
+          }),
           secrets: [token],
-          pushAuthHeader: `Authorization: ${githubBasicAuthorizationValue(token)}`,
-        });
+          pushAuthHeader: `Authorization: ${githubBasicAuthorizationValue(sandboxToken)}`,
+        }).finally(closeEgress);
 
         // Complete. The branch is only known after publication now that it is
         // derived from the change, so record the final name rather than the plan's.
@@ -521,6 +586,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
       } finally {
         // Free the executor first, so a slow diff or release can't hold up the next task.
         this.ctrl = undefined;
+        await closeEgress?.();
         if (started && saveDiff) await this.saveFailureDiff(task.id, started);
         if (started) await releaseSandbox(started);
       }

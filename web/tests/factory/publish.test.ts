@@ -140,7 +140,7 @@ describe('publishBranch', () => {
     })).rejects.toMatchObject({ kind: 'git_commit_failed', retryable: false });
 
     expect(h.exec).toHaveBeenCalledTimes(5);
-    expect(h.exec.mock.calls.some(([command]) => command.includes('git push'))).toBe(false);
+    expect(h.exec.mock.calls.some(([command]) => command.includes(' push --set-upstream'))).toBe(false);
     expect(h.createPullRequest).not.toHaveBeenCalled();
   });
 
@@ -198,6 +198,59 @@ describe('publishBranch', () => {
     expect(h.exec.mock.calls[4]?.[0]).toContain(`'test: handle Kurt'\"'\"'s case'`);
   });
 
+  it('commits and pushes with hooks disabled', async () => {
+    const h = harness(successfulGitResults());
+    await publishBranch({
+      repoPath: '/workspace/repo',
+      branch: BRANCH,
+      commitMessage: 'test: hooks',
+      exec: h.exec,
+      writeArtifact: h.writeArtifact,
+      createPullRequest: h.createPullRequest,
+    });
+    const commands = h.exec.mock.calls.map(([command]) => String(command));
+    for (const verb of [' commit -m ', ' push --set-upstream ']) {
+      expect(commands.find((command) => command.includes(verb))).toContain('-c core.hooksPath=/dev/null');
+    }
+  });
+
+  it('runs beforePush immediately before the push, and not when attaching to an open PR', async () => {
+    const h = harness(successfulGitResults());
+    const order: string[] = [];
+    let pushed: unknown;
+    await publishBranch({
+      repoPath: '/workspace/repo',
+      branch: BRANCH,
+      commitMessage: 'test: order',
+      exec: async (command) => {
+        order.push(command.includes(' push --set-upstream ') ? 'push' : 'other');
+        return h.exec(command);
+      },
+      writeArtifact: h.writeArtifact,
+      createPullRequest: h.createPullRequest,
+      beforePush: async (update) => {
+        order.push('beforePush');
+        pushed = update;
+      },
+    });
+    expect(order.indexOf('beforePush')).toBe(order.indexOf('push') - 1);
+    expect(pushed).toEqual({ branch: expect.any(String), commitSha: expect.stringMatching(/^[0-9a-f]{40}$/) });
+
+    const attached = harness(successfulGitResults());
+    const beforePush = vi.fn(async () => undefined);
+    await publishBranch({
+      repoPath: '/workspace/repo',
+      branch: BRANCH,
+      commitMessage: 'test: order',
+      exec: attached.exec,
+      writeArtifact: attached.writeArtifact,
+      createPullRequest: attached.createPullRequest,
+      findOpenPullRequest: async () => 'https://github.com/o/r/pull/1',
+      beforePush,
+    });
+    expect(beforePush).not.toHaveBeenCalled();
+  });
+
   it('injects push credentials for one command without persisting them in artifacts', async () => {
     const h = harness(successfulGitResults());
     const token = 'github-secret';
@@ -234,7 +287,7 @@ describe('publishBranch', () => {
       createPullRequest: h.createPullRequest,
     })).rejects.toMatchObject({ kind: 'pr_create_failed', retryable: true });
 
-    expect(h.exec.mock.calls.at(-1)?.[0]).toContain('git push --set-upstream');
+    expect(h.exec.mock.calls.at(-1)?.[0]).toContain(' push --set-upstream');
     expect(h.createPullRequest).toHaveBeenCalledOnce();
   });
 

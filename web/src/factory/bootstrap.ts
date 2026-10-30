@@ -43,6 +43,8 @@ export interface BootstrapCommand {
   command: string;
   cwd: string;
   timeoutMs?: number;
+  /** `owner/name` this step clones. A brokered sandbox can read only the repositories named here. */
+  readsRepo?: string;
 }
 
 /**
@@ -50,6 +52,10 @@ export interface BootstrapCommand {
  * name for home-org repos, `owner/name` outside it), or null to use the
  * default lockfile install. Transcribe recipes from the repository's own CI
  * and rehearse them on a fresh clone before relying on them.
+ *
+ * With the egress broker on, `token` is a placeholder that only works for
+ * github.com. Clone siblings with cloneSiblingCommand so the broker knows about
+ * them. A private registry's credentials won't work from inside the container.
  */
 export type BootstrapRecipe = (repo: string, token: string) => BootstrapCommand[] | null;
 
@@ -62,6 +68,7 @@ export function cloneSiblingCommand(org: string, repo: string, token: string): B
     name: `clone-${repo}`,
     command: buildRepositoryCloneCommand(repo, token, `/workspace/${repo}`, org),
     cwd: '/workspace',
+    readsRepo: `${org}/${repo}`,
   };
 }
 

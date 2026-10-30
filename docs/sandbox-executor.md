@@ -133,7 +133,55 @@ By default, `defaultExternalRepoPolicy` admits a task on a repository outside `h
 
 Pass your own `externalRepoPolicy` to be stricter (for example, an allowlist of owners) or looser. The executor applies it when it claims a task.
 
-**Know the exposure.** Fork mode runs the upstream's install scripts and tests inside the container. Your GitHub token never enters the container's environment. It does appear on the `git clone` and `git push` command lines, so a process left running by a hostile repository could read it. Use a token scoped to what the executor needs, and run fork mode only on repositories you have reviewed.
+**Know the exposure.** Fork mode runs the upstream's install scripts and tests inside the container. Without the egress broker below, your GitHub token appears on the `git clone` and `git push` command lines, and anything those scripts leave behind, such as a git hook or a running process, can read it. Turn the broker on, use a token scoped to what the executor needs, and run fork mode only on repositories you have reviewed.
+
+## Egress broker
+
+Without the broker, code in the container has open internet access and can reach the token as described above. With it, the container holds a placeholder token and its network is closed. A handler in the Worker attaches the real token on the way out.
+
+```ts
+export { BrokeredSandbox as Sandbox, ContainerProxy } from '@stackbilt/aegis-core/factory/executor';
+
+export const TaskExecutorDO = createTaskExecutorDO({
+  homeOrg: 'your-org',
+  gitIdentity: { name: 'Your Agent', email: 'agent@example.com' },
+  egressBroker: true,
+});
+```
+
+Your Worker needs `ctx.exports`: a compatibility date of 2025-11-17 or later, or the `enable_ctx_exports` flag. Set both halves: exporting `BrokeredSandbox` without `egressBroker: true` closes the network but still puts the real token on the command line, and the task's push is refused. With `egressBroker: true` and a plain `Sandbox`, the task fails with `egress_setup_failed` before anything runs in the container.
+
+Before any repository code runs, the task also checks from inside the container that a push and a registry write are refused by this policy and that `example.com` is unreachable. Each time the allowed access changes while the task runs, it checks that new requests get the new access. If any of that fails, the task fails with `egress_setup_failed`.
+
+What a brokered task can do depends on the stage:
+
+| Traffic | Clone and bootstrap | Model and tests | Executor's push |
+|---|---|---|---|
+| Read the task's repository and its siblings cloned with `cloneSiblingCommand` | Real token | No credentials | No credentials |
+| Read anything else on `github.com` | No credentials | No credentials | No credentials |
+| Push the commit the executor made to the task's branch, in the repository it publishes to (its fork in fork mode) | 403 | 403 | Real token |
+| Any other push, including another branch, another commit, a delete, or another repository | 403 | 403 | 403 |
+| Other writes to `github.com`, including all Git LFS traffic | 403 | 403 | 403 |
+| `GET`/`HEAD` to the other hosts in `SANDBOX_EGRESS_HOSTS` | No credentials | No credentials | No credentials |
+| Writes to those hosts | 403 | 403 | 403 |
+| Plain `http://` to any of these hosts | 403 | 403 | 403 |
+| Every other host | Blocked | Blocked | Blocked |
+
+If your repository's install or tests read from another host, use `createBrokeredSandbox`. Don't subclass `BrokeredSandbox`: handlers are registered per class name, so a subclass would have none.
+
+```ts
+import { createBrokeredSandbox } from '@stackbilt/aegis-core/factory/executor';
+
+export const Sandbox = createBrokeredSandbox({ extraReadOnlyHosts: ['files.example.com'] });
+```
+
+What the broker doesn't cover:
+- **Whatever the task stages gets published.** `git add -A` publishes the repository's tree, so code in the container can put anything it can read into the pull request. That includes a private sibling already cloned to disk. Don't give a public repository private siblings.
+- **A process left running isn't stopped.** It can't push anything but the executor's commit to the task's branch, but it can change the files between the acceptance check and the commit. A push can also carry extra objects that no branch points to, and GitHub may serve those by hash, so the same warning about public repositories applies.
+- **Workflows in the pushed commit.** With the `workflow` scope, a commit that adds a workflow can run on `push` with the repository's Actions secrets, before anyone reviews it. Leave that scope off the token, and protect your default branch.
+- **Git LFS.** Its batch API is a `POST`, so a repository that needs LFS objects at checkout fails.
+- **Private registries.** Credentials for them aren't brokered, and those hosts aren't on the list.
+- **Data in URLs.** `GET` requests to allowed hosts can carry data in their URLs. That only helps an attacker who can read those hosts' logs.
 
 ## Repository conventions
 
