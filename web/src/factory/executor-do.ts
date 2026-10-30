@@ -20,6 +20,8 @@ import { getSandbox } from '@cloudflare/sandbox';
 import {
   SandboxBootstrapError,
   bootstrapSandbox,
+  releaseSandbox,
+  settleWithin,
   type BootstrapRecipe,
 } from './bootstrap.js';
 import {
@@ -92,6 +94,7 @@ const REPO_PATH = '/workspace/repo';
 const EXECUTOR_FIBER = 'task-executor';
 export const TASK_SANDBOX_SLEEP_AFTER = '30m';
 export const TASK_SANDBOX_TRANSPORT = 'rpc';
+export const FAILURE_DIFF_TIMEOUT_MS = 30_000;
 const READABLE_ARTIFACTS = new Set([
   'plan.json',
   'publish.json',
@@ -270,6 +273,11 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
 
       console.log(`[task-executor-do] starting ${task.id.slice(0, 8)} — ${task.title}`);
 
+      let started: ReturnType<typeof getSandbox> | undefined;
+      // Whether there is a repository to save a diff from. A stub alone is no
+      // reason to run a command: that would boot a container, or wait on a slot.
+      let cloned = false;
+      let saveDiff = false;
       try {
         // Reject a malformed acceptance block before spending a container on it.
         const acceptance = parseAcceptanceSpec(task.prompt);
@@ -293,6 +301,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
           sleepAfter: TASK_SANDBOX_SLEEP_AFTER,
           transport: TASK_SANDBOX_TRANSPORT,
         });
+        started = sandbox;
         const token = this.env.GITHUB_TOKEN_SCOPED ?? this.env.GITHUB_TOKEN ?? '';
 
         if (signal.aborted) return;
@@ -305,6 +314,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
 
         // Clone the upstream so the branch starts from its tip, not the fork's.
         await cloneRepository({ sandbox, repo: target.name, token, repoPath: REPO_PATH, org: target.owner });
+        cloned = true;
         await sandbox.exec(
           `cd ${REPO_PATH} && git config user.email ${shellQuote(config.gitIdentity.email)} && git config user.name ${shellQuote(config.gitIdentity.name)}`,
         );
@@ -504,9 +514,29 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         } else {
           await this.failTask(task.id, msg);
         }
+        saveDiff = terminalPhase === 'failed' && cloned;
         this.setState({ ...this.state, taskId: null, phase: terminalPhase });
       } finally {
+        // Free the executor first, so a slow diff or release can't hold up the next task.
         this.ctrl = undefined;
+        if (started && saveDiff) await this.saveFailureDiff(task.id, started);
+        if (started) await releaseSandbox(started);
+      }
+    }
+
+    // The container is about to go, and with it any edits a failed task made.
+    private async saveFailureDiff(taskId: string, sandbox: ReturnType<typeof getSandbox>): Promise<void> {
+      try {
+        // exec's own timeout covers the command, not a wait for the container.
+        const diff = await settleWithin(
+          sandbox.exec(`cd ${REPO_PATH} && git add -A && git diff --cached`, { timeout: FAILURE_DIFF_TIMEOUT_MS }),
+          FAILURE_DIFF_TIMEOUT_MS,
+        );
+        if (diff.success && diff.stdout) {
+          await this.workspace.writeFile(`tasks/${taskId}/diff.patch`, redactCredentials(diff.stdout).slice(0, 200_000));
+        }
+      } catch (error) {
+        console.warn(`[task-executor-do] failure diff not saved: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 

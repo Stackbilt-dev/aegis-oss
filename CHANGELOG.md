@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **The sandbox executor releases its container when a task ends.** A finished task's container stayed resident for `sleepAfter` (30 minutes), so the first task past `max_instances` in that window failed with `RPCTransportError: 503`. The release is bounded, so a hung teardown can't hold up the next task. Containers from a Durable Object evicted without recovering still wait out `sleepAfter`.
+- **Failed sandbox tasks keep their evidence.** A failed task saves its edits as `diff.patch` before the container goes, and bootstrap output keeps the end of a long log, where an install's error is.
+
 ## 0.10.1 (2026-10-16)
 
 ### Removed
