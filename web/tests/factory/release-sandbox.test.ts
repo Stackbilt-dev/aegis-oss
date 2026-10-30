@@ -56,7 +56,8 @@ function fakeSandbox(
 ) {
   return {
     destroy: vi.fn(destroy),
-    exec: vi.fn(async (command: string) => (await commands(command)) ?? { ...OK, stdout }),
+    exec: vi.fn(async (command: string) => (await commands(command))
+      ?? { ...OK, stdout: command.includes('rev-parse HEAD') ? 'a'.repeat(40) : stdout }),
     readFile: async () => ({ content: '' }),
     writeFile: async () => undefined,
     mkdir: async () => undefined,
@@ -125,6 +126,16 @@ describe('the executor releases its container when a task ends', () => {
 
   const diffCommands = (sandbox: ReturnType<typeof fakeSandbox>) =>
     sandbox.exec.mock.calls.filter(([command]) => command.includes(' add -A'));
+
+  it('reads that diff with fsmonitor and diff drivers off', async () => {
+    const sandbox = fakeSandbox(async () => undefined);
+    sandboxMock.current = sandbox;
+    await executor().run();
+    await settle();
+    const [command] = diffCommands(sandbox).at(-1) ?? [''];
+    expect(command).toContain('-c core.fsmonitor=false add -A');
+    expect(command).toContain('-c core.fsmonitor=false diff --cached --no-ext-diff --no-textconv');
+  });
 
   it('runs no command to read a diff when the clone failed, and still releases', async () => {
     const sandbox = fakeSandbox(async () => undefined, '', async (command) => (command.includes(' clone ') ? FAILED : undefined));

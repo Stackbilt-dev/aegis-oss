@@ -465,7 +465,7 @@ describe('isPushRejected', () => {
 
 // The container runs these under sh, and cmd.exe quotes differently.
 describe.skipIf(spawnSync('sh', ['-c', 'true']).status !== 0)('publishBranch against real git', () => {
-  it('does not run an fsmonitor left in .git/config', async () => {
+  it('does not run an fsmonitor or diff driver left in .git/config', async () => {
     const root = mkdtempSync(join(tmpdir(), 'publish-'));
     const sh = (command: string, cwd: string) => {
       try {
@@ -489,6 +489,7 @@ describe.skipIf(spawnSync('sh', ['-c', 'true']).status !== 0)('publishBranch aga
         `git checkout -q -b ${BRANCH}`,
       ]) expect(sh(command, repo).success).toBe(true);
       writeFileSync(join(repo, 'monitor.sh'), `#!/bin/sh\ntouch '${ran.replace(/\\/g, '/')}'\n`, { mode: 0o755 });
+      writeFileSync(join(root, 'driver.sh'), '#!/bin/sh\necho FORGED-DIFF\n', { mode: 0o755 });
       writeFileSync(join(repo, 'file.txt'), 'content');
       expect(sh(`git config core.fsmonitor '${join(repo, 'monitor.sh').replace(/\\/g, '/')}'`, repo).success).toBe(true);
 
@@ -496,21 +497,28 @@ describe.skipIf(spawnSync('sh', ['-c', 'true']).status !== 0)('publishBranch aga
       sh('git status --short', repo);
       expect(existsSync(ran)).toBe(true);
       rmSync(ran);
+      expect(sh(`git config diff.external '${join(root, 'driver.sh').replace(/\\/g, '/')}'`, repo).success).toBe(true);
+      expect(sh('git add -A && git diff --cached --binary', repo).stdout).toContain('FORGED-DIFF');
+      expect(sh('git reset -q', repo).success).toBe(true);
+      rmSync(ran, { force: true });
+      const artifacts = new Map<string, string>();
 
       const published = await publishBranch({
         repoPath: repo.replace(/\\/g, '/'),
         branch: BRANCH,
         commitMessage: 'test: fsmonitor',
         exec: async (command) => sh(command, root) as ExecResult,
-        writeArtifact: async () => undefined,
+        writeArtifact: async (path, content) => { artifacts.set(path, content); },
         createPullRequest: async () => 'https://github.com/Stackbilt-dev/aegis/pull/1',
       });
       expect(published.commitSha).toMatch(/^[0-9a-f]{40}$/);
+      expect(artifacts.get('diff.patch')).toContain('+content');
+      expect(artifacts.get('diff.patch')).not.toContain('FORGED-DIFF');
       expect(existsSync(ran)).toBe(false);
       expect(sh(`${STAGED_NUMSTAT_COMMAND}`, repo).success).toBe(true);
       expect(existsSync(ran)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });

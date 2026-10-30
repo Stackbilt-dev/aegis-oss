@@ -54,7 +54,7 @@ import {
   assertEgressScope,
   type GitHubEgressScope,
 } from './egress.js';
-import { PublicationError, publishBranch } from './publish.js';
+import { PUBLISH_GIT, PublicationError, REAL_DIFF, publishBranch } from './publish.js';
 import {
   RepoTargetError,
   repositoryDetails,
@@ -141,6 +141,16 @@ interface TaskPlan {
   commit_message: string;
   pr_title: string;
   pr_body: string;
+}
+
+/** The commit checked out in the repository, read with its hooks and fsmonitor off. */
+async function headCommit(sandbox: ReturnType<typeof getSandbox>): Promise<string> {
+  const head = await sandbox.exec(`cd ${REPO_PATH} && ${PUBLISH_GIT} rev-parse HEAD`);
+  const sha = head.stdout.trim();
+  if (!head.success || !/^[0-9a-f]{40}$/i.test(sha)) {
+    throw new TaskExecutorError('acceptance_check_failed', true, 1, `HEAD lookup failed: ${head.stderr || head.stdout}`);
+  }
+  return sha;
 }
 
 class TaskExecutorError extends Error {
@@ -373,7 +383,9 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
 
         await cloneRepository({ sandbox, repo: target.name, token: sandboxToken, repoPath: REPO_PATH, org: target.owner });
         cloned = true;
-        // Nothing from the repository has run yet, so these are the files as cloned.
+        // Nothing from the repository has run yet, so this is the commit as cloned
+        // and these are its files. The value stays out here, out of the container's reach.
+        const clonedHead = await headCommit(sandbox);
         // A home-org fork's files still come from whoever commits upstream.
         const repositoryGuidance = !target.external && !isFork
           ? await loadRepositoryGuidance(sandbox, REPO_PATH)
@@ -498,8 +510,14 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
           },
         });
         await this.workspace.writeFile(`tasks/${task.id}/acceptance.json`, JSON.stringify(verdict, null, 2));
+        // Those checks read the index against HEAD, so a commit made in the container
+        // would pass them unseen and still be pushed. Checked last: they run tests too.
+        const currentHead = await headCommit(sandbox);
+        if (currentHead !== clonedHead) {
+          throw new TaskExecutorError('acceptance_failed', false, 1, `HEAD moved from ${clonedHead} to ${currentHead} during the task, so the acceptance checks don't cover what would be pushed`);
+        }
         if (verdict.status === 'failed') {
-          const diff = await sandbox.exec(`cd ${REPO_PATH} && git diff --cached`);
+          const diff = await sandbox.exec(`cd ${REPO_PATH} && ${PUBLISH_GIT} diff --cached ${REAL_DIFF}`);
           await this.workspace.writeFile(`tasks/${task.id}/diff.patch`, redactCredentials(diff.stdout).slice(0, 200_000));
           const failed = verdict.checks.filter((check) => !check.ok).map((check) => `${check.check}: ${check.detail}`);
           throw new TaskExecutorError('acceptance_failed', true, 1, `acceptance checks failed — ${failed.join('; ')}`);
@@ -602,7 +620,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
       try {
         // exec's own timeout covers the command, not a wait for the container.
         const diff = await settleWithin(
-          sandbox.exec(`cd ${REPO_PATH} && git add -A && git diff --cached`, { timeout: FAILURE_DIFF_TIMEOUT_MS }),
+          sandbox.exec(`cd ${REPO_PATH} && ${PUBLISH_GIT} add -A && ${PUBLISH_GIT} diff --cached ${REAL_DIFF}`, { timeout: FAILURE_DIFF_TIMEOUT_MS }),
           FAILURE_DIFF_TIMEOUT_MS,
         );
         if (diff.success && diff.stdout) {

@@ -41,7 +41,9 @@ async function runTask(repo: string) {
     destroy: async () => undefined,
     exec: async (command: string) => {
       if (command.includes('install-script')) conventions = 'rewritten by install script';
-      const stdout = command.startsWith('git ls-files') ? '100644 abc 0\tAGENTS.md\n' : command.startsWith('wc -c') ? '9\n' : '';
+      const stdout = command.startsWith('git ls-files') ? '100644 abc 0\tAGENTS.md\n'
+        : command.startsWith('wc -c') ? '9\n'
+          : command.includes('rev-parse HEAD') ? 'a'.repeat(40) : '';
       return { success: true, exitCode: 0, stdout, stderr: '' };
     },
     readFile: async () => ({ content: conventions }),

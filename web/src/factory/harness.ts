@@ -619,8 +619,7 @@ export async function runSandboxHarness(options: {
   model?: string;
   /** Repository-relative directory package commands run from. Defaults to the root. */
   verificationCwd?: string;
-  /** Include the repository's convention files. Only for repositories you trust. */
-  /** From loadRepositoryGuidance, called before any repository code has run. */
+  /** From loadRepositoryGuidance, called before any repository code has run. Only for repositories you trust. */
   repositoryGuidance?: RepositoryGuidance;
   onCheckpoint?: (result: SandboxHarnessResult) => Promise<void>;
 }): Promise<SandboxHarnessResult> {

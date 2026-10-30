@@ -5,6 +5,8 @@ import type { ExecResult } from '@cloudflare/sandbox';
 // setting beats anything in .git/config. Other settings can still run code, such
 // as gpg.program or a clean filter.
 export const PUBLISH_GIT = 'git -c core.hooksPath=/dev/null -c core.fsmonitor=false';
+/** For a diff that is kept or relied on: the patch itself, not what a configured diff driver prints. */
+export const REAL_DIFF = '--no-ext-diff --no-textconv';
 const MAX_DIAGNOSTIC_CHARS = 4_000;
 const MAX_DIFF_CHARS = 1_000_000;
 /** Hex chars of the change digest kept for branch names — 48 bits of identity. */
@@ -126,7 +128,7 @@ export async function publishBranch(options: PublishBranchOptions): Promise<Publ
 
   const diff = await run(
     'staged_diff',
-    `cd ${shellQuote(options.repoPath)} && ${PUBLISH_GIT} diff --cached --binary`,
+    `cd ${shellQuote(options.repoPath)} && ${PUBLISH_GIT} diff --cached --binary ${REAL_DIFF}`,
   );
   assertSuccess(diff, 'git_diff_failed', false, 'staged diff capture failed', options.secrets);
   await options.writeArtifact(
