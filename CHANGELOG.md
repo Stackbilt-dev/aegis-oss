@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Added
-- **Sandbox tasks read the repository's conventions.** For home-org repositories, the task message includes `.agents/sandbox.md`, or else `AGENTS.md` and `CLAUDE.md`, fenced and with known key formats stripped. A file over 6,000 characters becomes an outline of its headings. Fork-mode tasks don't get this, because the content comes from upstream. See [docs/sandbox-executor.md](docs/sandbox-executor.md#repository-conventions).
+- **Sandbox tasks read the repository's conventions.** For home-org repositories, the task message includes `.agents/sandbox.md`, or else `AGENTS.md` and `CLAUDE.md`, fenced and with known key formats stripped. A file over 6,000 characters becomes an outline of its headings. Fork-mode tasks, and home-org repositories that are forks, don't get this, because the content comes from upstream. See [docs/sandbox-executor.md](docs/sandbox-executor.md#repository-conventions).
 
 ## 0.10.1 (2026-10-16)
 

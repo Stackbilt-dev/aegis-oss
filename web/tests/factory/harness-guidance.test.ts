@@ -1,8 +1,13 @@
+import { execSync, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { LLMProviders } from '@stackbilt/llm-providers';
 import {
   loadRepositoryGuidance,
   redactCredentials,
+  redactHarnessText,
   runSandboxHarness,
   selectHarnessToolChoice,
 } from '../../src/factory/harness.js';
@@ -10,10 +15,10 @@ import {
 /** `tracked` maps a path to its content. A `symlinks` entry is tracked with git's symlink mode. */
 function sandboxWith(tracked: Record<string, string>, symlinks: string[] = []) {
   return {
-    exec: vi.fn(async () => ({
+    exec: vi.fn(async (command: string, _options?: unknown) => ({
       success: true,
       exitCode: 0,
-      stdout: [
+      stdout: command.startsWith('wc -c') ? `${tracked[/'(.+)'/.exec(command)?.[1] ?? '']?.length ?? 0}\n` : [
         ...Object.keys(tracked).map((path) => `100644 abc 0\t${path}`),
         ...symlinks.map((path) => `120000 abc 0\t${path}`),
       ].join('\n'),
@@ -28,6 +33,79 @@ function sandboxWith(tracked: Record<string, string>, symlinks: string[] = []) {
     mkdir: async () => undefined,
   };
 }
+
+// The container runs these under sh, and cmd.exe quotes differently.
+describe.skipIf(spawnSync('sh', ['-c', 'true']).status !== 0)('loadRepositoryGuidance against real git', () => {
+  /** A real repository and the sandbox calls run against it. `index` entries are added by mode, with no file. */
+  function repository(files: Record<string, string>, index: { mode: string; path: string }[] = []) {
+    const root = mkdtempSync(join(tmpdir(), 'guidance-'));
+    const git = (args: string) => execSync(`git ${args}`, { cwd: root, encoding: 'utf8', stdio: 'pipe' });
+    git('init -q');
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), content);
+    }
+    git('add -A');
+    const blob = execSync('git hash-object -w --stdin', { cwd: root, input: 'target', encoding: 'utf8' }).trim();
+    for (const { mode, path } of index) git(`update-index --add --cacheinfo ${mode},${blob},${path}`);
+    return {
+      root,
+      sandbox: {
+        exec: async (command: string, options?: { cwd?: string }) => {
+          try {
+            return { success: true, exitCode: 0, stdout: execSync(command, { cwd: options?.cwd, encoding: 'utf8', stdio: 'pipe', shell: 'sh' }), stderr: '' };
+          } catch (error) {
+            return { success: false, exitCode: 1, stdout: '', stderr: String((error as { stderr?: unknown }).stderr ?? error) };
+          }
+        },
+        readFile: async (path: string) => ({ content: readFileSync(path, 'utf8') }),
+      },
+    };
+  }
+
+  it('matches any case at the root only, and nothing beside or under it', async () => {
+    const { root, sandbox } = repository({
+      'Agents.MD': 'root rules',
+      'sub/AGENTS.md': 'nested rules',
+      'AGENTS.md.d/x': 'directory rules',
+      'CLAUDE.md.bak': 'backup rules',
+    });
+    try {
+      const { text, summary } = await loadRepositoryGuidance(sandbox, root);
+      expect(text).toContain('root rules');
+      expect(text).not.toContain('nested rules');
+      expect(text).not.toContain('directory rules');
+      expect(text).not.toContain('backup rules');
+      expect(summary).toEqual(['Agents.MD: included, 10 chars']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('skips a symlink by its mode, and records a gitlink it cannot read', async () => {
+    const { root, sandbox } = repository({}, [
+      { mode: '120000', path: 'AGENTS.md' },
+      { mode: '160000', path: 'CLAUDE.md' },
+    ]);
+    try {
+      const { text, summary } = await loadRepositoryGuidance(sandbox, root);
+      expect(text).toBe('');
+      expect(summary).toHaveLength(1);
+      expect(summary[0]).toContain('CLAUDE.md: read failed');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('measures the file it is about to read', async () => {
+    const { root, sandbox } = repository({ 'AGENTS.md': 'x'.repeat(1_000_001) });
+    try {
+      expect((await loadRepositoryGuidance(sandbox, root)).summary).toEqual(['AGENTS.md: skipped, 1000001 bytes']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('loadRepositoryGuidance', () => {
   it('includes both files, labelled, AGENTS first', async () => {
@@ -88,6 +166,41 @@ describe('loadRepositoryGuidance', () => {
     const secrets = [`ghp_${'a'.repeat(36)}`, `sk-ant-api03-${'b'.repeat(24)}`, 'AKIAIOSFODNN7EXAMPLE'];
     const { text } = await loadRepositoryGuidance(sandboxWith({ 'AGENTS.md': secrets.join(' ') }), '/r');
     for (const secret of secrets) expect(text).not.toContain(secret);
+  });
+
+  it('strips service key formats from persisted text, but not from what the model reads', () => {
+    const line = 'const k = "AKIAIOSFODNN7EXAMPLE";';
+    expect(redactCredentials(line)).toBe(line);
+    expect(redactHarnessText(line)).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    const key = `sk-ant-api03-${'b'.repeat(24)}`;
+    expect(redactCredentials(key)).toBe(key);
+    expect(redactHarnessText(key)).not.toContain(key);
+  });
+
+  it('skips a file too large to read, and says so', async () => {
+    const sandbox = sandboxWith({ 'AGENTS.md': 'x' });
+    const readFile = vi.spyOn(sandbox, 'readFile');
+    sandbox.exec.mockImplementation(async (command: string) => ({
+      success: true,
+      exitCode: 0,
+      stdout: command.startsWith('wc -c') ? '1000001\n' : '100644 abc 0\tAGENTS.md',
+      stderr: '',
+    }));
+    const { text, summary } = await loadRepositoryGuidance(sandbox, '/r');
+    expect(text).toBe('');
+    expect(readFile).not.toHaveBeenCalled();
+    expect(summary).toEqual(['AGENTS.md: skipped, 1000001 bytes']);
+  });
+
+  it('does not read a file whose size it could not get', async () => {
+    const sandbox = sandboxWith({ 'AGENTS.md': 'x' });
+    const readFile = vi.spyOn(sandbox, 'readFile');
+    sandbox.exec.mockImplementation(async (command: string) => (command.startsWith('wc -c')
+      ? { success: false, exitCode: 1, stdout: '', stderr: 'no such file' }
+      : { success: true, exitCode: 0, stdout: '100644 abc 0\tAGENTS.md', stderr: '' }));
+    const { summary } = await loadRepositoryGuidance(sandbox, '/r');
+    expect(readFile).not.toHaveBeenCalled();
+    expect(summary[0]).toContain('no such file');
   });
 
   it('records a failed read rather than hiding it', async () => {

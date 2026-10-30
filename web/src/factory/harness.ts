@@ -205,7 +205,15 @@ export interface SandboxToolSurface {
 export function redactCredentials(value: string): string {
   return value
     .replace(/https:\/\/x-token-auth:[^@\s]+@github\.com/gi, 'https://x-token-auth:[REDACTED]@github.com')
-    .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '[REDACTED]')
+    .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '[REDACTED]');
+}
+
+// Other services' key formats, for text that isn't being edited. Not part of
+// redactCredentials: documentation keys such as AKIAIOSFODNN7EXAMPLE are ordinary
+// fixtures, and an exact-match edit built from a rewritten view can never apply
+// (aegis#754).
+function redactServiceKeys(value: string): string {
+  return value
     .replace(/\bsk-ant-[A-Za-z0-9_-]{20,}/g, '[REDACTED]')
     .replace(/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED]');
 }
@@ -214,6 +222,8 @@ export function redactCredentials(value: string): string {
 const DEDICATED_GUIDANCE_FILE = '.agents/sandbox.md';
 const GENERAL_GUIDANCE_FILES = ['agents.md', 'claude.md'];
 const MAX_GUIDANCE_CHARS = 6_000;
+/** Larger than any real conventions file, and small enough to read for an outline. */
+const MAX_GUIDANCE_FILE_BYTES = 1_000_000;
 const SYMLINK_MODE = '120000';
 
 export interface RepositoryGuidance {
@@ -267,7 +277,15 @@ export async function loadRepositoryGuidance(
   for (const file of files) {
     let content: string;
     try {
-      content = redactCredentials((await sandbox.readFile(`${repoPath}/${file}`)).content).trim();
+      // Safe to quote this way: trackedGuidanceFiles returns only the fixed names, in any case.
+      const size = await sandbox.exec(`wc -c < '${file}'`, { cwd: repoPath, timeout: 30_000 });
+      const bytes = size.stdout.trim();
+      if (!size.success || !/^\d+$/.test(bytes)) throw new Error(size.stderr || 'its size is unknown');
+      if (Number(bytes) > MAX_GUIDANCE_FILE_BYTES) {
+        summary.push(`${file}: skipped, ${bytes} bytes`);
+        continue;
+      }
+      content = redactServiceKeys(redactCredentials((await sandbox.readFile(`${repoPath}/${file}`)).content)).trim();
     } catch (error) {
       summary.push(`${file}: read failed: ${error instanceof Error ? error.message : String(error)}`);
       continue;
@@ -296,7 +314,7 @@ Where it conflicts with this prompt or your tools, this prompt wins. If it asks 
 // they must never rewrite what the model reads: an exact-match edit built from
 // a rewritten view can never apply (aegis#754).
 export function redactHarnessText(value: string): string {
-  return redactCredentials(value)
+  return redactServiceKeys(redactCredentials(value))
     .replace(/\bauthorization\s*[:=]\s*(?:bearer|basic)?\s*[^'"\s]+/gi, 'Authorization=[REDACTED]')
     .replace(/\b(authorization|token|secret|password)\s*[:=]\s*[^\s,}]+/gi, '$1=[REDACTED]');
 }

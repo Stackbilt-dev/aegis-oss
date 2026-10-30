@@ -69,7 +69,7 @@ describe('repository conventions in the executor', () => {
     stubs.harnessOptions.length = 0;
     vi.stubGlobal('fetch', vi.fn(async (input: string) => (String(input).endsWith('/forks')
       ? Response.json({ name: 'app', owner: { login: 'org' } }, { status: 202 })
-      : Response.json({ default_branch: 'main', name: 'app', fork: true, parent: { full_name: 'upstream/app' } }))));
+      : Response.json({ default_branch: 'main', name: 'app', fork: !String(input).endsWith('/repos/org/app'), parent: { full_name: 'upstream/app' } }))));
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
@@ -82,6 +82,11 @@ describe('repository conventions in the executor', () => {
   it('are used for home-org repositories', async () => {
     await runTask('app');
     expect(stubs.harnessOptions[0].repositoryGuidance).toBe(true);
+  });
+
+  it('are not used for a home-org repository that is itself a fork', async () => {
+    await runTask('vendored');
+    expect(stubs.harnessOptions[0].repositoryGuidance).toBe(false);
   });
 
   it('are not used in fork mode, where anyone upstream writes them', async () => {
