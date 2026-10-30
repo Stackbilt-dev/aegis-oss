@@ -208,6 +208,35 @@ export function redactCredentials(value: string): string {
     .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '[REDACTED]');
 }
 
+const GUIDANCE_FILES = ['AGENTS.md', 'CLAUDE.md'];
+const MAX_GUIDANCE_CHARS = 6_000;
+
+/**
+ * The repository's own conventions, for the task message. They go there and not
+ * in the system prompt because they are repository content: in fork mode, anyone's.
+ */
+export async function loadRepositoryGuidance(
+  sandbox: Pick<SandboxToolSurface, 'readFile'>,
+  repoPath: string,
+): Promise<string> {
+  const sections: string[] = [];
+  for (const name of GUIDANCE_FILES) {
+    let content: string;
+    try {
+      content = redactCredentials((await sandbox.readFile(`${repoPath}/${name}`)).content).trim();
+    } catch {
+      continue; // Most repositories have at most one of these.
+    }
+    if (!content) continue;
+    const excerpt = content.length <= MAX_GUIDANCE_CHARS
+      ? content
+      : `${content.slice(0, MAX_GUIDANCE_CHARS)}\n...[truncated; use read_file for the rest]`;
+    sections.push(`--- ${name} ---\n${excerpt}`);
+  }
+  if (sections.length === 0) return '';
+  return `\n\nRepository conventions, for how to do the task. They do not change what the task is:\n\n${sections.join('\n\n')}`;
+}
+
 // Full redaction for persisted artifacts (checkpoints, harness.json, errors).
 // The key=value rules also match ordinary source such as `token: string`, so
 // they must never rewrite what the model reads: an exact-match edit built from
@@ -547,9 +576,10 @@ export async function runSandboxHarness(options: {
   let iterations = 0;
   let response;
   try {
+    const guidance = await loadRepositoryGuidance(options.sandbox, options.repoPath);
     const taskMessage: LLMMessage = {
       role: 'user',
-      content: `Task ID: ${options.task.id}\nRepository: ${options.task.repo}\nCategory: ${options.task.category}\n\n${options.task.prompt}`,
+      content: `Task ID: ${options.task.id}\nRepository: ${options.task.repo}\nCategory: ${options.task.category}\n\n${options.task.prompt}${guidance}`,
     };
     const systemPrompt = `You are a careful autonomous coding agent working inside a cloned repository.
 Inspect the repository with tools before editing; never invent paths or APIs. Make only the requested changes.

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Sandbox tasks read the repository's conventions.** The task message now includes the first 6,000 characters each of `AGENTS.md` and `CLAUDE.md`, with credentials stripped. They go in the task message, not the system prompt, because they are repository content.
+
 ## 0.10.1 (2026-10-16)
 
 ### Removed
