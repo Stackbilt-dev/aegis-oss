@@ -110,25 +110,35 @@ function blocked(reason: string): Response {
 
 /** The pkt-lines before a push's pack: optional `shallow` lines, then commands, then a flush. */
 class PushCommandParser {
-  private readonly decoder = new TextDecoder();
+  // Strict, so that no line reads differently here than it does on the server.
+  private readonly decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
   private offset = 0;
   readonly commands: string[] = [];
 
+  /** The bytes up to and including the flush, once parse has returned 'complete'. */
+  get consumed(): number {
+    return this.offset + 4;
+  }
+
   /** Picks up where it stopped, so a body arriving in small chunks costs no more to read. */
   parse(bytes: Uint8Array): 'complete' | 'incomplete' | 'invalid' {
-    while (this.offset + 4 <= bytes.length) {
-      const prefix = this.decoder.decode(bytes.subarray(this.offset, this.offset + 4));
-      if (!/^[0-9a-f]{4}$/i.test(prefix)) return 'invalid';
-      const length = Number.parseInt(prefix, 16);
-      if (length === 0) return 'complete';
-      if (length < 4) return 'invalid';
-      if (this.offset + length > bytes.length) return 'incomplete';
-      // Capabilities follow the first command after a NUL.
-      const line = this.decoder.decode(bytes.subarray(this.offset + 4, this.offset + length)).split('\0')[0].replace(/\n$/, '');
-      if (!line.startsWith('shallow ')) this.commands.push(line);
-      this.offset += length;
+    try {
+      while (this.offset + 4 <= bytes.length) {
+        const prefix = this.decoder.decode(bytes.subarray(this.offset, this.offset + 4));
+        if (!/^[0-9a-f]{4}$/i.test(prefix)) return 'invalid';
+        const length = Number.parseInt(prefix, 16);
+        if (length === 0) return 'complete';
+        if (length < 4) return 'invalid';
+        if (this.offset + length > bytes.length) return 'incomplete';
+        // Capabilities follow the first command after a NUL.
+        const line = this.decoder.decode(bytes.subarray(this.offset + 4, this.offset + length)).split('\0')[0].replace(/\n$/, '');
+        if (!line.startsWith('shallow ')) this.commands.push(line);
+        this.offset += length;
+      }
+      return 'incomplete';
+    } catch {
+      return 'invalid';
     }
-    return 'incomplete';
   }
 }
 
@@ -174,6 +184,18 @@ async function forwardPush(
   if (refusal) {
     await reader.cancel().catch(() => undefined);
     return blocked(refusal);
+  }
+
+  // With no commands there is nothing to check after the flush, so nothing after
+  // it goes out: this check can't vouch for how the server reads what follows.
+  if (parser.commands.length === 0) {
+    await reader.cancel().catch(() => undefined);
+    return fetcher(new Request(request.url, {
+      method: request.method,
+      headers,
+      body: read.slice(0, parser.consumed),
+      redirect: 'manual',
+    }));
   }
 
   const first = read;

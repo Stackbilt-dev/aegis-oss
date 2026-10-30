@@ -34,7 +34,7 @@ const PUSH = '/Stackbilt-dev/aegis.git/git-receive-pack';
 const pushScope: GitHubEgressScope = { writeRepos: ['Stackbilt-dev/aegis'], readRepos: [], pushUpdate: { ref: REF, sha: COMMIT } };
 
 function pkt(line: string): string {
-  return `${(line.length + 4).toString(16).padStart(4, '0')}${line}`;
+  return `${(new TextEncoder().encode(line).length + 4).toString(16).padStart(4, '0')}${line}`;
 }
 
 /** What git sends: shallow boundaries, commands with capabilities on the first, a flush, then the pack. */
@@ -166,6 +166,13 @@ describe('assertEgressScope', () => {
     await brokerGitHubRequest(new Request('https://github.com/-/sandbox-egress-scope'), 't', EMPTY_GITHUB_SCOPE, fetcher);
     expect(fetcher).not.toHaveBeenCalled();
   });
+
+  it('answers only at its exact address', async () => {
+    const { fetcher } = capture();
+    await brokerGitHubRequest(new Request('https://github.com/-/sandbox-egress-scope/x'), 't', EMPTY_GITHUB_SCOPE, fetcher);
+    await brokerGitHubRequest(new Request('https://github.com/-/sandbox-egress-scope?x=1'), 't', EMPTY_GITHUB_SCOPE, fetcher);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('what a push may change', () => {
@@ -211,6 +218,38 @@ describe('what a push may change', () => {
   it('forwards the flush-only probe of a large push, even with no update expected', async () => {
     const attempt = push('0000', { writeRepos: ['Stackbilt-dev/aegis'], readRepos: [] });
     expect((await attempt.response).status).toBe(200);
+    expect(await attempt.seen[0].text()).toBe('0000');
+  });
+
+  it('sends nothing past the flush when a body has no commands', async () => {
+    const hidden = `0000${pkt(`${OLD_SHA} ${COMMIT} refs/heads/evil\n`)}0000PACK`;
+    const attempt = push(hidden, { writeRepos: ['Stackbilt-dev/aegis'], readRepos: [] });
+    expect((await attempt.response).status).toBe(200);
+    expect(await attempt.seen[0].text()).toBe('0000');
+
+    const afterShallow = push(`${pkt(`shallow ${OTHER_COMMIT}\n`)}${hidden}`);
+    expect((await afterShallow.response).status).toBe(200);
+    expect(await afterShallow.seen[0].text()).toBe(`${pkt(`shallow ${OTHER_COMMIT}\n`)}0000`);
+  });
+
+  it('drops a length that no longer describes the body', async () => {
+    const body = pushBody([`${OLD_SHA} ${COMMIT} ${REF}`]);
+    const attempt = push(body, pushScope, { 'Content-Length': String(body.length) });
+    expect((await attempt.response).status).toBe(200);
+    expect(attempt.seen[0].headers.has('Content-Length')).toBe(false);
+  });
+
+  it('counts a line as shallow only when it is one', async () => {
+    await refused(push(`${pkt(`xshallow ${OTHER_COMMIT}\n`)}0000PACK`), 'unsupported');
+    await refused(push(`${pkt(`shallowx ${OTHER_COMMIT}\n`)}0000PACK`), 'unsupported');
+  });
+
+  it('refuses a line the server would read differently: a BOM, or invalid UTF-8', async () => {
+    await refused(push(`${pkt(`\uFEFFshallow ${OTHER_COMMIT}\n`)}${pkt(`${OLD_SHA} ${COMMIT} refs/heads/main\n`)}0000PACK`), 'only one ref');
+    await refused(push(`${pkt(`\uFEFF${OLD_SHA} ${COMMIT} ${REF}\n`)}0000PACK`), 'unsupported');
+    const line = new TextEncoder().encode(`${OLD_SHA} ${COMMIT} ${REF}\n`);
+    const framed = new Uint8Array([...new TextEncoder().encode((line.length + 5).toString(16).padStart(4, '0')), 0xff, ...line, ...new TextEncoder().encode('0000')]);
+    await refused(push(framed), 'can\'t be read');
   });
 
   it('refuses a push when no update is expected', async () => {
