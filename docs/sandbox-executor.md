@@ -179,7 +179,7 @@ What the broker doesn't cover:
 - **Whatever the task stages gets published.** `git add -A` publishes the repository's tree, so code in the container can put anything it can read into the pull request. That includes a private sibling already cloned to disk. Don't give a public repository private siblings.
 - **A process left running isn't stopped.** It can't push anything but the executor's commit to the task's branch, but it can change the files between the acceptance check and the commit. A push can also carry extra objects that no branch points to, and GitHub may serve those by hash, so the same warning about public repositories applies.
 - **Settings in `.git/config`.** Publication overrides `core.hooksPath` and `core.fsmonitor`, but other settings can still run code in the container during it, such as `gpg.program` or a clean filter. That code is held to the same limits as a process left running. Reading the diff that names the branch ignores diff drivers, but other settings can still change that diff, and so the branch name.
-- **What the acceptance checks see.** They read `.git` in the container, and code that ran there could write to it. It can make the pull request contain changes the checks didn't see, for example with `.git/info/attributes`, or with its own `git` on the `PATH`. Each published report says so. Review the pull request's diff.
+- **What the acceptance checks see.** They read `.git` in the container, and code that ran there could write to it. It can make the pull request contain changes the checks didn't see, for example with `.git/info/attributes`. Its own `git` on the `PATH` would void the checks if the container user can put one there, which hasn't been tested. Each report of passed checks says so. Review the pull request's diff.
 - **Workflows in the pushed commit.** With the `workflow` scope, a commit that adds a workflow can run on `push` with the repository's Actions secrets, before anyone reviews it. Leave that scope off the token, and protect your default branch.
 - **Git LFS.** Its batch API is a `POST`, so a repository that needs LFS objects at checkout fails.
 - **Private registries.** Credentials for them aren't brokered, and those hosts aren't on the list.
@@ -199,7 +199,7 @@ The content is fenced, and the system prompt tells the agent that it can't chang
 ## Limits
 
 - One task at a time per executor. It's a single Durable Object.
-- A task fails if `HEAD` has moved from the cloned commit by the end of the acceptance check, because those checks wouldn't cover a commit made in the container. A recipe can't use `git pull` or check out another ref. A process left running can still commit after that check.
+- A task fails if `HEAD` has moved from the cloned commit by the end of the acceptance check, because those checks wouldn't cover a commit made in the container. A recipe that moves `HEAD` to another commit fails its task, but only at that point, after the agent has run. A process left running can still commit after that check.
 - Files over 40,000 characters can't be edited by the agent's tools.
 - If the Durable Object is evicted mid-task, the task restarts from the clone step; it doesn't resume where it stopped. Publication is idempotent for an identical diff, but a re-run can produce a different diff.
 - The `tests` check supports vitest only.

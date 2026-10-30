@@ -304,7 +304,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
       // Whether there is a repository to save a diff from. A stub alone is no
       // reason to run a command: that would boot a container, or wait on a slot.
       let cloned = false;
-      let clonedHead: string | undefined;
+      let movedFrom: string | undefined;
       let saveDiff = false;
       let closeEgress: (() => Promise<void>) | undefined;
       try {
@@ -386,7 +386,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         cloned = true;
         // Nothing from the repository has run yet, so this is the commit as cloned
         // and these are its files. The value stays out here, out of the container's reach.
-        clonedHead = await headCommit(sandbox);
+        const clonedHead = await headCommit(sandbox);
         // A home-org fork's files still come from whoever commits upstream.
         const repositoryGuidance = !target.external && !isFork
           ? await loadRepositoryGuidance(sandbox, REPO_PATH)
@@ -477,7 +477,7 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         if (signal.aborted) return;
 
         // Decide acceptance from facts the executor gathers itself, before
-        // anything is published, so a false completion never becomes a PR (G15).
+        // anything is published, so a completion the checks can see is false never becomes a PR (G15).
         const packageCwd = config.verificationCwd?.(harnessTask.repo) ?? '';
         const verdict = await evaluateAcceptance(acceptance.kind === 'spec' ? acceptance.spec : null, {
           listChangedFiles: async () => {
@@ -510,10 +510,12 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
             }
           },
         });
+        await this.workspace.writeFile(`tasks/${task.id}/acceptance.json`, JSON.stringify(verdict, null, 2));
         // Those checks read the index against HEAD, so a commit made in the container
         // would pass them unseen and still be pushed. Checked last: they run tests too.
         const currentHead = await headCommit(sandbox);
         if (currentHead !== clonedHead) {
+          movedFrom = clonedHead;
           const detail = `HEAD moved from ${clonedHead} to ${currentHead} during the task, so the acceptance checks don't cover what would be pushed`;
           await this.workspace.writeFile(`tasks/${task.id}/acceptance.json`, JSON.stringify({
             ...verdict,
@@ -522,7 +524,6 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
           }, null, 2));
           throw new TaskExecutorError('acceptance_failed', false, 1, detail);
         }
-        await this.workspace.writeFile(`tasks/${task.id}/acceptance.json`, JSON.stringify(verdict, null, 2));
         if (verdict.status === 'failed') {
           const diff = await sandbox.exec(`cd ${REPO_PATH} && ${PUBLISH_GIT} diff --cached ${REAL_DIFF}`);
           await this.workspace.writeFile(`tasks/${task.id}/diff.patch`, redactCredentials(diff.stdout).slice(0, 200_000));
@@ -617,17 +618,17 @@ export function createTaskExecutorDO(config: TaskExecutorConfig) {
         // Free the executor first, so a slow diff or release can't hold up the next task.
         this.ctrl = undefined;
         await closeEgress?.();
-        if (started && saveDiff) await this.saveFailureDiff(task.id, started, clonedHead);
+        if (started && saveDiff) await this.saveFailureDiff(task.id, started, movedFrom);
         if (started) await releaseSandbox(started);
       }
     }
 
     // The container is about to go, and with it any edits a failed task made.
-    private async saveFailureDiff(taskId: string, sandbox: ReturnType<typeof getSandbox>, clonedHead?: string): Promise<void> {
+    private async saveFailureDiff(taskId: string, sandbox: ReturnType<typeof getSandbox>, movedFrom?: string): Promise<void> {
       try {
         // exec's own timeout covers the command, not a wait for the container.
         const diff = await settleWithin(
-          sandbox.exec(`cd ${REPO_PATH} && ${PUBLISH_GIT} add -A && ${PUBLISH_GIT} diff --cached ${REAL_DIFF}${clonedHead ? ` ${clonedHead}` : ''}`, { timeout: FAILURE_DIFF_TIMEOUT_MS }),
+          sandbox.exec(`cd ${REPO_PATH} && ${PUBLISH_GIT} add -A && ${PUBLISH_GIT} diff --cached ${REAL_DIFF}${movedFrom ? ` ${movedFrom}` : ''}`, { timeout: FAILURE_DIFF_TIMEOUT_MS }),
           FAILURE_DIFF_TIMEOUT_MS,
         );
         if (diff.success && diff.stdout) {

@@ -167,6 +167,31 @@ describe('a brokered task', () => {
     expect(sandbox.commands.some((command) => command.includes(' commit -m '))).toBe(false);
   });
 
+  it('keeps the verdict when HEAD can not be read after the checks', async () => {
+    files.clear();
+    const sandbox = fakeSandbox();
+    const exec = sandbox.exec.getMockImplementation() as typeof sandbox.exec;
+    let lookups = 0;
+    sandbox.exec.mockImplementation(async (command: string) => (command.includes('rev-parse HEAD') && (lookups += 1) === 2
+      ? { success: false, exitCode: 128, stdout: '', stderr: 'bad HEAD' }
+      : exec(command)));
+    sandboxMock.current = sandbox;
+    await run(execute('app', {}), 'failed');
+    expect(files.has('tasks/11111111-1111-4111-8111-111111111111/acceptance.json')).toBe(true);
+  });
+
+  it('leaves the publication diff alone when a task fails after committing', async () => {
+    const sandbox = fakeSandbox();
+    const exec = sandbox.exec.getMockImplementation() as typeof sandbox.exec;
+    sandbox.exec.mockImplementation(async (command: string) => (command.includes(' push ')
+      ? { success: false, exitCode: 1, stdout: '', stderr: 'failed' }
+      : exec(command)));
+    sandboxMock.current = sandbox;
+    await run(execute('app', {}), 'failed');
+    const evidence = sandbox.commands.filter((command) => command.includes(' add -A && ') && command.includes('--no-textconv'));
+    expect(evidence.at(-1)).toMatch(/--no-textconv$/);
+  });
+
   it('reads the diff of a task that failed acceptance with fsmonitor and diff drivers off', async () => {
     const sandbox = fakeSandbox();
     sandboxMock.current = sandbox;
