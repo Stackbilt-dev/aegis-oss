@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 (2026-10-30)
 
 ### Added
 - **Sandbox egress broker (opt-in).** With `egressBroker: true` and `BrokeredSandbox` exported as `Sandbox`, the container holds a placeholder instead of the GitHub token and its network is closed. A Worker-side handler attaches the real token and narrows what it allows by stage: private reads only for clone and bootstrap, nothing for the model and its tests, and one repository's write only for the executor's push. Other allowed hosts are read-only. A self-test fails the task unless a push and a registry write are refused by the policy and `example.com` doesn't answer with a 200, so it doesn't catch every open network. `createBrokeredSandbox({ extraReadOnlyHosts })` adds read-only hosts; don't subclass `BrokeredSandbox`. Off by default. See [docs/sandbox-executor.md](docs/sandbox-executor.md#egress-broker).
