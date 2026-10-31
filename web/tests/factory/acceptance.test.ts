@@ -248,7 +248,7 @@ describe('acceptance fact parsing', () => {
   it('formats a verdict for the PR body', async () => {
     const verdict = await evaluateAcceptance({ max_added_lines: 5 }, facts({ changed: [{ path: 'web/a.ts', added: 2, deleted: 0 }] }));
     expect(formatAcceptanceReport(verdict)).toBe(
-      'Acceptance: 1/1 checks passed (re-run by the executor, not reported by the model).\n\n- ✅ `max_added_lines` — 2 added (limit 5)',
+      'Acceptance: 1/1 checks passed (re-run by the executor, not reported by the model).\n\n- ✅ `max_added_lines` — 2 added (limit 5)\n\nThese checks read the repository in the container, so code that ran there can make this PR contain changes they didn\'t see. Review the diff.',
     );
   });
 });

@@ -133,7 +133,7 @@ By default, `defaultExternalRepoPolicy` admits a task on a repository outside `h
 
 Pass your own `externalRepoPolicy` to be stricter (for example, an allowlist of owners) or looser. The executor applies it when it claims a task.
 
-**Know the exposure.** Fork mode runs the upstream's install scripts and tests inside the container. Without the egress broker below, your GitHub token appears on the `git clone` and `git push` command lines, and anything those scripts leave behind, such as a git hook or a running process, can read it. Turn the broker on, use a token scoped to what the executor needs, and run fork mode only on repositories you have reviewed.
+**Know the exposure.** Fork mode runs the upstream's install scripts and tests inside the container. Without the egress broker below, your GitHub token appears on the `git clone` and `git push` command lines, and anything those scripts leave behind, such as a running process, can read it. A setting left in `.git/config` can also send the push, with the token, to another host, with no code running at all. Turn the broker on, use a token scoped to what the executor needs, and run fork mode only on repositories you have reviewed.
 
 ## Egress broker
 
@@ -151,7 +151,7 @@ export const TaskExecutorDO = createTaskExecutorDO({
 
 Your Worker needs `ctx.exports`: a compatibility date of 2025-11-17 or later, or the `enable_ctx_exports` flag. Set both halves: exporting `BrokeredSandbox` without `egressBroker: true` closes the network but still puts the real token on the command line, and the task's push is refused. With `egressBroker: true` and a plain `Sandbox`, the task fails with `egress_setup_failed` before anything runs in the container.
 
-Before any repository code runs, the task also checks from inside the container that a push and a registry write are refused by this policy and that `example.com` is unreachable. Each time the allowed access changes while the task runs, it checks that new requests get the new access. If any of that fails, the task fails with `egress_setup_failed`.
+Before any repository code runs, the task also checks from inside the container that a push and a registry write are refused by this policy and that `example.com` doesn't answer with a 200. Each time the allowed access changes while the task runs, it checks that new requests get the new access. If any of that fails, the task fails with `egress_setup_failed`.
 
 What a brokered task can do depends on the stage:
 
@@ -178,6 +178,8 @@ export const Sandbox = createBrokeredSandbox({ extraReadOnlyHosts: ['files.examp
 What the broker doesn't cover:
 - **Whatever the task stages gets published.** `git add -A` publishes the repository's tree, so code in the container can put anything it can read into the pull request. That includes a private sibling already cloned to disk. Don't give a public repository private siblings.
 - **A process left running isn't stopped.** It can't push anything but the executor's commit to the task's branch, but it can change the files between the acceptance check and the commit. A push can also carry extra objects that no branch points to, and GitHub may serve those by hash, so the same warning about public repositories applies.
+- **Settings in `.git/config`.** Publication overrides `core.hooksPath` and `core.fsmonitor`, but other settings can still run code in the container during it, such as `gpg.program` or a clean filter. That code is held to the same limits as a process left running. Reading the diff that names the branch ignores diff drivers, but other settings can still change that diff, and so the branch name.
+- **What the acceptance checks see.** They read `.git` in the container, and code that ran there could write to it. It can make the pull request contain changes the checks didn't see, for example with `.git/info/attributes`. Its own `git` on the `PATH` would void the checks if the container user can put one there, which hasn't been tested. Each report of passed checks says so. Review the pull request's diff.
 - **Workflows in the pushed commit.** With the `workflow` scope, a commit that adds a workflow can run on `push` with the repository's Actions secrets, before anyone reviews it. Leave that scope off the token, and protect your default branch.
 - **Git LFS.** Its batch API is a `POST`, so a repository that needs LFS objects at checkout fails.
 - **Private registries.** Credentials for them aren't brokered, and those hosts aren't on the list.
@@ -187,8 +189,9 @@ What the broker doesn't cover:
 
 For repositories in your home organization, the task message includes conventions from the repository, so the agent follows them without having to find them. In fork mode, and for a home-org repository that is itself a fork, nothing is included, because the content comes from whoever can commit upstream, but the agent can still choose to read those files.
 
-- If `.agents/sandbox.md` is tracked and isn't a symlink, only that file is used, so an empty one turns conventions off. This is the best option: a short file written for this agent, with your layout, code style and test commands.
+- If `.agents/sandbox.md` is tracked and isn't a symlink, only that file is used, so an empty one turns conventions off for that repository. There is no executor setting for this. This is the best option: a short file written for this agent, with your layout, code style and test commands.
 - Otherwise, `AGENTS.md` and `CLAUDE.md` are used, matched case-insensitively. Symlinks are skipped and identical files are sent once.
+- The files are read right after the clone, before any of the repository's code runs, so an install script can't change the text in the task message. The agent's `read_file` still reads the tree as it stands after install, including a long file it only got the outline of.
 - A file over 6,000 characters is replaced by an outline of its headings. Long general-purpose files often open with material for interactive sessions, so keep the rules you want applied in `.agents/sandbox.md`. A file over 1 MB is skipped.
 
 The content is fenced, and the system prompt tells the agent that it can't change the task and that the executor's own rules win. That is an instruction to a model, not a security control, so review what you commit to these files. They can't change the acceptance contract, which comes only from the task prompt. Known GitHub, Anthropic and AWS key formats are stripped, but other secrets aren't, so don't commit any. Each run records what it included as a `load_guidance` event in `harness.json`.
@@ -196,6 +199,7 @@ The content is fenced, and the system prompt tells the agent that it can't chang
 ## Limits
 
 - One task at a time per executor. It's a single Durable Object.
+- A task fails if `HEAD` has moved from the cloned commit by the end of the acceptance check, because those checks wouldn't cover a commit made in the container. A recipe that moves `HEAD` to another commit fails its task, but only at that point, after the agent has run. A process left running can still commit after that check.
 - Files over 40,000 characters can't be edited by the agent's tools.
 - If the Durable Object is evicted mid-task, the task restarts from the clone step; it doesn't resume where it stopped. Publication is idempotent for an identical diff, but a re-run can produce a different diff.
 - The `tests` check supports vitest only.

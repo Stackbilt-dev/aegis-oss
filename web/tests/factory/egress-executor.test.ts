@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SANDBOX_PLACEHOLDER_TOKEN, type GitHubEgressScope } from '../../src/factory/egress.js';
 
 const sandboxMock = vi.hoisted(() => ({ current: undefined as unknown }));
+const files = vi.hoisted(() => new Map<string, string>());
 vi.mock('@cloudflare/sandbox', () => ({
   getSandbox: () => sandboxMock.current,
   // Keeps the setter semantics that matter: handlers register per class name.
@@ -18,7 +19,7 @@ vi.mock('@cloudflare/sandbox', () => ({
 }));
 vi.mock('@cloudflare/shell', () => ({
   Workspace: class {
-    async writeFile() { return undefined; }
+    async writeFile(path: string, content: string) { files.set(path, content); }
     async readFile() { return ''; }
   },
 }));
@@ -44,12 +45,13 @@ import { createTaskExecutorDO, type TaskExecutorConfig } from '../../src/factory
 
 const REAL_TOKEN = 'real-token-value';
 const SHA = 'a'.repeat(40);
+const OTHER_SHA = 'b'.repeat(40);
 
-function task(repo: string) {
+function task(repo: string, prompt = 'Do the task.') {
   return {
     id: '11111111-1111-4111-8111-111111111111',
     title: 'Task',
-    prompt: 'Do the task.',
+    prompt,
     repo,
     category: 'tests',
     authority: 'operator',
@@ -58,7 +60,8 @@ function task(repo: string) {
   };
 }
 
-function fakeSandbox(enforced = true, staleScope = false) {
+function fakeSandbox(enforced = true, staleScope = false, moveHeadOn?: string) {
+  let head = SHA;
   const commands: string[] = [];
   const scopes: GitHubEgressScope[] = [];
   const timeline: string[] = [];
@@ -73,6 +76,7 @@ function fakeSandbox(enforced = true, staleScope = false) {
     }),
     exec: vi.fn(async (command: string) => {
       commands.push(command);
+      if (moveHeadOn && command.includes(moveHeadOn)) head = OTHER_SHA;
       if (command.includes(' push ')) timeline.push('push');
       else if (command.includes(' clone ')) timeline.push('clone');
       else if (command.includes('install')) timeline.push('install');
@@ -82,7 +86,7 @@ function fakeSandbox(enforced = true, staleScope = false) {
         stdout = JSON.stringify({ ...inForce, pushUpdate: inForce.pushUpdate ?? null });
       } else if (command.includes('example.com')) stdout = '520';
       else if (command.includes('curl')) stdout = enforced ? 'Blocked by the sandbox egress policy: no' : 'not found';
-      else if (command.includes('rev-parse HEAD')) stdout = SHA;
+      else if (command.includes('rev-parse HEAD')) stdout = head;
       else if (command === `cd /workspace/repo && ${STAGED_NUMSTAT_COMMAND}`) stdout = btoa('1\t0\tfile.ts\0');
       return { success: true, exitCode: 0, stdout, stderr: '' };
     }),
@@ -95,9 +99,9 @@ function fakeSandbox(enforced = true, staleScope = false) {
 
 const dbWrites: unknown[][] = [];
 
-function execute(repo: string, config: Partial<TaskExecutorConfig>) {
+function execute(repo: string, config: Partial<TaskExecutorConfig>, prompt?: string) {
   dbWrites.length = 0;
-  const row = task(repo);
+  const row = task(repo, prompt);
   const statement = {
     bind: (...args: unknown[]) => {
       dbWrites.push(args);
@@ -142,6 +146,58 @@ describe('a brokered task', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['before the checks, as an install script could', 'install'],
+    ['during the checks, as a test could', STAGED_NUMSTAT_COMMAND],
+  ])('refuses to publish when HEAD moved %s', async (_when, moveHeadOn) => {
+    const sandbox = fakeSandbox(true, false, moveHeadOn);
+    sandboxMock.current = sandbox;
+    await run(execute('app', { bootstrap: () => [{ name: 'install', command: 'install', cwd: '/workspace/repo' }] }), 'failed');
+    expect(JSON.stringify(dbWrites)).toContain(`HEAD moved from ${SHA} to ${OTHER_SHA}`);
+    // Retrying re-runs what moved it, and the evidence has to include what it committed.
+    expect(dbWrites.some((write) => write[1] === 'acceptance_failed' && write[2] === 0)).toBe(true);
+    expect(sandbox.commands.some((command) => command.includes(` diff --cached --no-ext-diff --no-textconv ${SHA}`))).toBe(true);
+    expect(JSON.parse(files.get('tasks/11111111-1111-4111-8111-111111111111/acceptance.json') ?? '{}')).toMatchObject({
+      status: 'failed',
+      checks: expect.arrayContaining([expect.objectContaining({ check: 'head_unmoved', ok: false })]),
+    });
+    expect(sandbox.timeline).not.toContain('push');
+    expect(sandbox.commands.some((command) => command.includes(' commit -m '))).toBe(false);
+  });
+
+  it('keeps the verdict when HEAD can not be read after the checks', async () => {
+    files.clear();
+    const sandbox = fakeSandbox();
+    const exec = sandbox.exec.getMockImplementation() as typeof sandbox.exec;
+    let lookups = 0;
+    sandbox.exec.mockImplementation(async (command: string) => (command.includes('rev-parse HEAD') && (lookups += 1) === 2
+      ? { success: false, exitCode: 128, stdout: '', stderr: 'bad HEAD' }
+      : exec(command)));
+    sandboxMock.current = sandbox;
+    await run(execute('app', {}), 'failed');
+    expect(files.has('tasks/11111111-1111-4111-8111-111111111111/acceptance.json')).toBe(true);
+  });
+
+  it('leaves the publication diff alone when a task fails after committing', async () => {
+    const sandbox = fakeSandbox();
+    const exec = sandbox.exec.getMockImplementation() as typeof sandbox.exec;
+    sandbox.exec.mockImplementation(async (command: string) => (command.includes(' push ')
+      ? { success: false, exitCode: 1, stdout: '', stderr: 'failed' }
+      : exec(command)));
+    sandboxMock.current = sandbox;
+    await run(execute('app', {}), 'failed');
+    const evidence = sandbox.commands.filter((command) => command.includes(' add -A && ') && command.includes('--no-textconv'));
+    expect(evidence.at(-1)).toMatch(/--no-textconv$/);
+  });
+
+  it('reads the diff of a task that failed acceptance with fsmonitor and diff drivers off', async () => {
+    const sandbox = fakeSandbox();
+    sandboxMock.current = sandbox;
+    await run(execute('app', {}, 'Do the task.\n\n```acceptance\n{"changed_files_only":["other.ts"]}\n```'), 'failed');
+    expect(JSON.stringify(dbWrites)).toContain('acceptance checks failed');
+    expect(sandbox.commands).toContain('cd /workspace/repo && git --no-replace-objects -c core.hooksPath=/dev/null -c core.fsmonitor=false diff --cached --no-ext-diff --no-textconv');
   });
 
   it('never tells the container the real token', async () => {

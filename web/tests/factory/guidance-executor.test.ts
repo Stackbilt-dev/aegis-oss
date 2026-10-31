@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const stubs = vi.hoisted(() => ({
   sandbox: undefined as unknown,
-  harnessOptions: [] as { repositoryGuidance?: boolean; task: { prompt: string } }[],
+  harnessOptions: [] as { repositoryGuidance?: { text: string }; task: { prompt: string } }[],
 }));
 vi.mock('@cloudflare/sandbox', () => ({ getSandbox: () => stubs.sandbox }));
 vi.mock('@cloudflare/shell', () => ({
@@ -35,10 +35,18 @@ vi.mock('../../src/factory/harness.js', async (original) => ({
 import { createTaskExecutorDO } from '../../src/factory/executor-do.js';
 
 async function runTask(repo: string) {
+  // What the file holds changes once the install has run, as an install script could do.
+  let conventions = 'as cloned';
   stubs.sandbox = {
     destroy: async () => undefined,
-    exec: async () => ({ success: true, exitCode: 0, stdout: '', stderr: '' }),
-    readFile: async () => ({ content: '' }),
+    exec: async (command: string) => {
+      if (command.includes('install-script')) conventions = 'rewritten by install script';
+      const stdout = command.startsWith('git ls-files') ? '100644 abc 0\tAGENTS.md\n'
+        : command.startsWith('wc -c') ? '9\n'
+          : command.includes('rev-parse HEAD') ? 'a'.repeat(40) : '';
+      return { success: true, exitCode: 0, stdout, stderr: '' };
+    },
+    readFile: async () => ({ content: conventions }),
   };
   const row = {
     id: '11111111-1111-4111-8111-111111111111',
@@ -55,6 +63,7 @@ async function runTask(repo: string) {
     homeOrg: 'org',
     gitIdentity: { name: 'n', email: 'e@example.com' },
     externalRepoPolicy: () => null,
+    bootstrap: () => [{ name: 'install', command: 'install-script', cwd: '/workspace/repo' }],
   } as never);
   const instance = new (TaskExecutorDO as unknown as new (env: unknown) => {
     fetch(request: Request): Promise<Response>;
@@ -81,16 +90,21 @@ describe('repository conventions in the executor', () => {
 
   it('are used for home-org repositories', async () => {
     await runTask('app');
-    expect(stubs.harnessOptions[0].repositoryGuidance).toBe(true);
+    expect(stubs.harnessOptions[0].repositoryGuidance?.text).toContain('as cloned');
+  });
+
+  it('are read before the install runs, so an install script can not rewrite them', async () => {
+    await runTask('app');
+    expect(stubs.harnessOptions[0].repositoryGuidance?.text).not.toContain('rewritten');
   });
 
   it('are not used for a home-org repository that is itself a fork', async () => {
     await runTask('vendored');
-    expect(stubs.harnessOptions[0].repositoryGuidance).toBe(false);
+    expect(stubs.harnessOptions[0].repositoryGuidance).toBeUndefined();
   });
 
   it('are not used in fork mode, where anyone upstream writes them', async () => {
     await runTask('upstream/app');
-    expect(stubs.harnessOptions[0].repositoryGuidance).toBe(false);
+    expect(stubs.harnessOptions[0].repositoryGuidance).toBeUndefined();
   });
 });

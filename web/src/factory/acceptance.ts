@@ -16,6 +16,7 @@
 // (task d3319cb8 / PR #749 claimed two new tests and the suite count never moved).
 
 import { isAllowedVerificationCommand, normalizeRepositoryPath } from './harness.js';
+import { PUBLISH_GIT } from './publish.js';
 
 export interface AcceptanceSpec {
   changed_files_only?: string[];
@@ -194,7 +195,7 @@ export function parseVitestJsonReport(
  * one: a two-file change parsed as a single path with the first file's line
  * counts (canary task 582da644). Base64 carries the bytes intact.
  */
-export const STAGED_NUMSTAT_COMMAND = 'git add -A && git diff --cached --numstat --no-renames -z | base64 -w0';
+export const STAGED_NUMSTAT_COMMAND = `${PUBLISH_GIT} add -A && ${PUBLISH_GIT} diff --cached --numstat --no-renames -z | base64 -w0`;
 
 /** Decode STAGED_NUMSTAT_COMMAND output. Throws when the NUL framing did not survive. */
 export function decodeStagedNumstat(encoded: string): ChangedFile[] {
@@ -305,7 +306,13 @@ export function formatAcceptanceReport(verdict: AcceptanceVerdict): string {
   }
   const passed = verdict.checks.filter((check) => check.ok).length;
   const lines = verdict.checks.map((check) => `- ${check.ok ? '✅' : '❌'} \`${check.check}\` — ${check.detail}`);
-  return [`Acceptance: ${passed}/${verdict.checks.length} checks passed (re-run by the executor, not reported by the model).`, '', ...lines].join('\n');
+  return [
+    `Acceptance: ${passed}/${verdict.checks.length} checks passed (re-run by the executor, not reported by the model).`,
+    '',
+    ...lines,
+    '',
+    "These checks read the repository in the container, so code that ran there can make this PR contain changes they didn't see. Review the diff.",
+  ].join('\n');
 }
 
 export function acceptanceResultNote(verdict: AcceptanceVerdict): string {
