@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.1 (2026-10-30)
+
+### Fixed
+- **0.11.0 failed the typecheck of a Worker built without the DOM types.** `settleWithin` passed a possibly undefined timer to `clearTimeout`, which the Workers types refuse. Core ships TypeScript source, so that error appeared in the consumer's own typecheck.
+
 ## 0.11.0 (2026-10-30)
 
 ### Added

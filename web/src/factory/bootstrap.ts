@@ -141,7 +141,7 @@ export async function settleWithin<T>(work: Promise<T>, timeoutMs: number): Prom
       }),
     ]);
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
