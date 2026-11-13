@@ -3,9 +3,15 @@
 ## 0.11.2 (2026-11-13)
 
 ### Fixed
-- **Scheduled LLM work no longer falls through to Anthropic.** `askWorkersAiOrGroq` (used by `operator-log`, reflection and the dreaming passes) sent its Workers AI fallback through `buildLLMProviderFactory`, whose chain appends every configured provider. When Groq and Workers AI both failed, the call went on to Anthropic. In one deployment that is out of credit, `operator-log` failed every day for a month with `Your credit balance is too low`, which hid the real errors. The fallback now uses a Workers AI-only factory, as #412 intended.
-- **Provider errors are no longer swallowed.** A Groq failure is logged, and when both free providers fail the error names both causes and the prompt size.
-- **The `operator-log` prompt is bounded.** Completed tasks, failed tasks and goal actions are capped at 20 rows each, titles at 120 chars and failed-task errors at 200 chars, so a long task log can't push the prompt past the free providers' limits.
+- **Scheduled LLM work no longer falls through to Anthropic.** `askWorkersAiOrGroq` (operator log, memory reflection, and the dreaming facts, persona, agenda-triage and pattern-synthesis passes) and the conversation-facts task sent their Workers AI fallback through `buildLLMProviderFactory`. That factory's chain appends every configured provider, so a failure there could go on to Groq again and then Anthropic. In one deployment that is out of credit, `operator-log` failed every day for a month with `Your credit balance is too low`, which hid the real errors. Both now call Groq and Workers AI directly through a new shared `askFreeLlm`, as #412 intended.
+- **The real provider error is reported.** Errors are no longer swallowed, and the factory's isolate-wide circuit breaker is out of this path, so a later call in the same cron run can't report `Circuit breaker rejected request` in place of the cause. When both providers fail, the error names both causes, each cut to 300 chars, plus the prompt size.
+- **Groq without AI Gateway.** A bare `groqBaseUrl` (`https://api.groq.com`, the default when no gateway is configured) was used without `/openai/v1`, so every request got `Unknown request URL`. This is fixed for these scheduled helpers only. Other Groq callers (router, executors) still go through `buildGroqFactory` with the base as given and are unchanged. AI Gateway bases (`…/groq`) work either way.
+- **Prompts are bounded.**
+  - Operator log: completed tasks, failed tasks and goal actions are capped at 20 rows each. Titles are cut to 120 chars, failed-task errors to 200, `task_pattern` to 120 and observed error strings to 160.
+  - Memory reflection: the memory listing is cut at 24,000 chars.
+
+### Behaviour change
+- If both Groq and Workers AI fail, these tasks now fail (the dreaming passes return nothing). They no longer fall through to Anthropic, even in deployments that have Anthropic credit.
 
 ## 0.11.1 (2026-10-30)
 
