@@ -351,7 +351,7 @@ export async function runOperatorLogCycle(env: EdgeEnv): Promise<void> {
     : '  (none)';
 
   const goalSummary = activity.goalActions.length > 0
-    ? activity.goalActions.map(g =>
+    ? activity.goalActions.slice(0, 20).map(g =>
         `  ${g.outcome ?? 'pending'} | ${g.description.slice(0, 120)}`
       ).join('\n')
     : '  (none)';
@@ -359,16 +359,18 @@ export async function runOperatorLogCycle(env: EdgeEnv): Promise<void> {
   // Build task pipeline summary
   const prsCreated = [...activity.tasksCompleted, ...activity.tasksFailed].filter(t => t.pr_url).length;
 
+  // Lists are capped (rows and per-field length) so a busy day or a failed
+  // task's full log can't push the prompt past the free providers' limits.
   const taskSummary = activity.tasksCompleted.length > 0
-    ? activity.tasksCompleted.map(t => {
+    ? activity.tasksCompleted.slice(0, 20).map(t => {
         const pr = t.pr_url ? ` → PR: ${prLink(t.pr_url)}` : '';
-        return `  ✓ [${t.category}] ${t.title} (${t.repo})${pr}`;
+        return `  ✓ [${t.category}] ${t.title.slice(0, 120)} (${t.repo})${pr}`;
       }).join('\n')
     : '  (none)';
 
   const failedSummary = activity.tasksFailed.length > 0
-    ? activity.tasksFailed.map(t =>
-        `  ✗ [${t.category}] ${t.title} (${t.repo}) — ${t.error ?? `exit ${t.exit_code}`}`
+    ? activity.tasksFailed.slice(0, 20).map(t =>
+        `  ✗ [${t.category}] ${t.title.slice(0, 120)} (${t.repo}) — ${(t.error ?? `exit ${t.exit_code}`).slice(0, 200)}`
       ).join('\n')
     : '  (none)';
 

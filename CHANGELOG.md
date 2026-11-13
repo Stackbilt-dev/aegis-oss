@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.2 (2026-11-13)
+
+### Fixed
+- **Scheduled LLM work no longer falls through to Anthropic.** `askWorkersAiOrGroq` (used by `operator-log`, reflection and the dreaming passes) sent its Workers AI fallback through `buildLLMProviderFactory`, whose chain appends every configured provider. When Groq and Workers AI both failed, the call went on to Anthropic. In one deployment that is out of credit, `operator-log` failed every day for a month with `Your credit balance is too low`, which hid the real errors. The fallback now uses a Workers AI-only factory, as #412 intended.
+- **Provider errors are no longer swallowed.** A Groq failure is logged, and when both free providers fail the error names both causes and the prompt size.
+- **The `operator-log` prompt is bounded.** Completed tasks, failed tasks and goal actions are capped at 20 rows each, titles at 120 chars and failed-task errors at 200 chars, so a long task log can't push the prompt past the free providers' limits.
+
 ## 0.11.1 (2026-10-30)
 
 ### Fixed
