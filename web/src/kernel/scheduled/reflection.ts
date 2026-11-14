@@ -37,6 +37,8 @@ export interface MemoryForReflection {
   last_accessed_at: string;
 }
 
+const REFLECTION_MAX_SECTION_CHARS = 24_000;
+
 export async function runMemoryReflectionCycle(env: EdgeEnv): Promise<void> {
   // Guard: run only on Saturdays at 08:00 UTC
   const now = new Date();
@@ -84,9 +86,13 @@ export async function runMemoryReflectionCycle(env: EdgeEnv): Promise<void> {
     return `### ${topic} (${facts.length} entries)\n${factsText}`;
   }).join('\n\n');
 
-  const userPrompt = `Here is my complete active memory — ${entries.length} entries across ${byTopic.size} topics:\n\n${topicSections}\n\nReflect.`;
+  // Capped so a large memory store can't exceed the free providers' request limits.
+  const sections = topicSections.length > REFLECTION_MAX_SECTION_CHARS
+    ? `${topicSections.slice(0, REFLECTION_MAX_SECTION_CHARS)}\n\n[… truncated: memory listing exceeded ${REFLECTION_MAX_SECTION_CHARS} chars]`
+    : topicSections;
+  const userPrompt = `Here is my complete active memory — ${entries.length} entries across ${byTopic.size} topics:\n\n${sections}\n\nReflect.`;
 
-  // Route through Workers AI (free) ��� Groq fallback — no raw Anthropic calls (#412)
+  // Groq first, Workers AI fallback: free providers only, never Anthropic (#412)
   const reflection = await askWorkersAiOrGroq(env, REFLECTION_SYSTEM, userPrompt);
   if (!reflection) throw new Error('Empty reflection response');
 
@@ -351,7 +357,7 @@ export async function runOperatorLogCycle(env: EdgeEnv): Promise<void> {
     : '  (none)';
 
   const goalSummary = activity.goalActions.length > 0
-    ? activity.goalActions.map(g =>
+    ? activity.goalActions.slice(0, 20).map(g =>
         `  ${g.outcome ?? 'pending'} | ${g.description.slice(0, 120)}`
       ).join('\n')
     : '  (none)';
@@ -359,16 +365,18 @@ export async function runOperatorLogCycle(env: EdgeEnv): Promise<void> {
   // Build task pipeline summary
   const prsCreated = [...activity.tasksCompleted, ...activity.tasksFailed].filter(t => t.pr_url).length;
 
+  // Lists are capped (rows and per-field length) so a busy day or a failed
+  // task's full log can't push the prompt past the free providers' limits.
   const taskSummary = activity.tasksCompleted.length > 0
-    ? activity.tasksCompleted.map(t => {
+    ? activity.tasksCompleted.slice(0, 20).map(t => {
         const pr = t.pr_url ? ` → PR: ${prLink(t.pr_url)}` : '';
-        return `  ✓ [${t.category}] ${t.title} (${t.repo})${pr}`;
+        return `  ✓ [${t.category}] ${t.title.slice(0, 120)} (${t.repo})${pr}`;
       }).join('\n')
     : '  (none)';
 
   const failedSummary = activity.tasksFailed.length > 0
-    ? activity.tasksFailed.map(t =>
-        `  ✗ [${t.category}] ${t.title} (${t.repo}) — ${t.error ?? `exit ${t.exit_code}`}`
+    ? activity.tasksFailed.slice(0, 20).map(t =>
+        `  ✗ [${t.category}] ${t.title.slice(0, 120)} (${t.repo}) — ${(t.error ?? `exit ${t.exit_code}`).slice(0, 200)}`
       ).join('\n')
     : '  (none)';
 
@@ -400,7 +408,7 @@ ${goalSummary}
 **Degraded/Broken Procedures** (grounding data — cite ONLY these names in Signals, no others):
 ${activity.degradedProcedures.length > 0
   ? activity.degradedProcedures.map(p =>
-      `  task_pattern="${p.task_pattern}" executor="${p.executor}" status=${p.status} consecutive_failures=${p.consecutive_failures} success=${p.success_count} fail=${p.fail_count} (lifetime rate: ${p.success_count + p.fail_count > 0 ? Math.round(p.success_count / (p.success_count + p.fail_count) * 100) : 0}%)`
+      `  task_pattern="${p.task_pattern.slice(0, 120)}" executor="${p.executor}" status=${p.status} consecutive_failures=${p.consecutive_failures} success=${p.success_count} fail=${p.fail_count} (lifetime rate: ${p.success_count + p.fail_count > 0 ? Math.round(p.success_count / (p.success_count + p.fail_count) * 100) : 0}%)`
     ).join('\n')
   : '  (none — all procedures healthy or learning)'}
 
@@ -411,12 +419,12 @@ ${activity.recentClassifications.length > 0
 
 **Allowed error codes/strings** (24h observed — cite ONLY these, never invent others):
 ${activity.recentErrorCodes.length > 0
-  ? activity.recentErrorCodes.map(e => `  "${e}"`).join('\n')
+  ? activity.recentErrorCodes.map(e => `  "${e.slice(0, 160)}"`).join('\n')
   : '  (none — no errors in last 24h)'}
 
 Write your worklog entry.`;
 
-  // Route through Workers AI (free) → Groq fallback — no raw Anthropic calls (#412)
+  // Groq first, Workers AI fallback: free providers only, never Anthropic (#412)
   const logEntry = await askWorkersAiOrGroq(env, OPERATOR_LOG_SYSTEM, userPrompt);
   if (!logEntry) throw new Error('Empty log response');
 

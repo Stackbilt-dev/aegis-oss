@@ -5,9 +5,8 @@
 // Workers AI llama-3.1-8b (free tier) as fallback.
 
 import { type EdgeEnv } from '../dispatch.js';
-import { buildLLMProviderFactory } from '../provider-factory.js';
 import { recordMemory as recordMemoryAdapter } from '../memory-adapter.js';
-import { askGroq } from '../../groq.js';
+import { askFreeLlm } from './dreaming/llm.js';
 import { pushFactsToMindSpring, type FactEntry } from './mindspring-notebook.js';
 
 const WATERMARK_KEY = 'conversation_facts_watermark';
@@ -88,26 +87,13 @@ async function askAi(
   system: string,
   user: string,
 ): Promise<string> {
-  // Groq first — free, same 70B quality, no neuron consumption
-  if (env.groqApiKey) {
-    try {
-      return await askGroq(env.groqApiKey, env.groqResponseModel, system, user, env.groqBaseUrl);
-    } catch {
-      // fall through to Workers AI
-    }
-  }
-  // Workers AI fallback — llama-3.1-8b is on the genuine free tier
-  if (env.ai) {
-    const result = await buildLLMProviderFactory(env).generateResponse({
-      model: '@cf/meta/llama-3.1-8b-instruct',
-      systemPrompt: system,
-      messages: [{ role: 'user', content: user }],
-      maxTokens: 1024,
-      temperature: 0.2,
-    });
-    return result.message ?? '';
-  }
-  throw new Error('[conv-facts] No LLM provider available (groqApiKey and env.ai both missing)');
+  // Groq first, then Workers AI llama-3.1-8b (free tier); never a paid provider (#412)
+  return askFreeLlm(env, system, user, {
+    groqModel: env.groqResponseModel,
+    workersAiModel: '@cf/meta/llama-3.1-8b-instruct',
+    workersAiMaxTokens: 1024,
+    label: 'conv-facts',
+  });
 }
 
 export async function runConversationFactExtraction(env: EdgeEnv): Promise<void> {
