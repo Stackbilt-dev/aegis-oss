@@ -6,8 +6,10 @@ import { DatabaseSync } from 'node:sqlite';
 
 type Param = string | number | bigint | null | Uint8Array;
 
-function toParam(value: unknown): Param {
-  if (value === undefined) return null;
+// Matches D1: undefined is a type error (D1_TYPE_ERROR), not NULL, so a
+// missing bind fails here as it would in production.
+function toParam(value: unknown, index: number): Param {
+  if (value === undefined) throw new Error(`D1_TYPE_ERROR: Type 'undefined' not supported for value at index ${index}`);
   if (typeof value === 'boolean') return value ? 1 : 0;
   return value as Param;
 }
@@ -20,7 +22,7 @@ export function createSqliteD1(schemaSql: string): D1Database & { raw: DatabaseS
     let params: Param[] = [];
     const stmt = {
       bind(...args: unknown[]) {
-        params = args.map(toParam);
+        params = args.map((v, i) => toParam(v, i));
         return stmt;
       },
       async first<T>(column?: string): Promise<T | null> {
@@ -30,8 +32,10 @@ export function createSqliteD1(schemaSql: string): D1Database & { raw: DatabaseS
         return (column ? row[column] : row) as T;
       },
       async all<T>() {
+        const before = Number((raw.prepare('SELECT total_changes() AS n').get() as { n: number }).n);
         const results = raw.prepare(sql).all(...params) as T[];
-        return { results, success: true, meta: {} };
+        const after = Number((raw.prepare('SELECT total_changes() AS n').get() as { n: number }).n);
+        return { results, success: true, meta: { changes: after - before } };
       },
       async run() {
         const info = raw.prepare(sql).run(...params);

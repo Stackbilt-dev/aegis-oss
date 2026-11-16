@@ -597,8 +597,8 @@ CREATE INDEX IF NOT EXISTS idx_cb_findings_repo ON codebeast_findings(repo);
 CREATE INDEX IF NOT EXISTS idx_cb_findings_severity ON codebeast_findings(severity);
 
 -- ─── Agent events: durable event inbox (0.12.0, aegis-oss#100) ───
--- Handlers only insert; one runner per principal claims in batches.
--- See src/kernel/events.ts.
+-- Handlers only insert; one runner per principal claims under a lease.
+-- See src/kernel/events.ts and docs/agent-events.md.
 
 CREATE TABLE IF NOT EXISTS agent_events (
   id TEXT PRIMARY KEY,
@@ -610,17 +610,22 @@ CREATE TABLE IF NOT EXISTS agent_events (
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'claimed', 'done', 'failed', 'deferred')),
   attempts INTEGER NOT NULL DEFAULT 0,           -- claims so far
+  max_attempts INTEGER NOT NULL DEFAULT 3,       -- claims allowed before the event fails
   claim_id TEXT,                                 -- token of the run holding the claim
   claimed_at TEXT,
+  lease_until TEXT,                              -- claim lapses after this unless renewed
   available_at TEXT NOT NULL,                    -- not claimable before this (retry backoff)
   run_id TEXT,                                   -- run that completed, failed or deferred it
-  error TEXT,
-  created_at TEXT NOT NULL,
+  error TEXT,                                    -- last failure
+  defer_reason TEXT,                             -- why it is parked (status = 'deferred')
+  created_at TEXT NOT NULL,                      -- ISO 8601 from the caller; compared as text
   updated_at TEXT NOT NULL,
-  UNIQUE (source, source_id)
+  UNIQUE (principal, source, source_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_agent_events_claim
   ON agent_events(principal, status, available_at);
+CREATE INDEX IF NOT EXISTS idx_agent_events_claim_id
+  ON agent_events(claim_id);
 CREATE INDEX IF NOT EXISTS idx_agent_events_created
   ON agent_events(created_at);
