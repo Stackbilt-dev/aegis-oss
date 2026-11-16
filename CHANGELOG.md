@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.0 (2026-11-16)
+
+### Added
+- **Agent event inbox (`@stackbilt/aegis-core/kernel/events`).** This is step 1 of the always-on run model (#100). Every source of work (chat, webhooks, timers, approvals, other agents) can now call `enqueueEvent()` and return instead of starting a run itself. A runner then takes the events in batches with `claimBatch()` and settles each with `completeEvent()`, `failEvent()` or `deferEvent()`.
+  - **Dedup:** `(source, source_id)` is unique, so a redelivered webhook returns the existing event with `duplicate: true`. Events without a `sourceId` are never deduped.
+  - **Claiming:** a single `UPDATE … RETURNING` statement claims the oldest ready events for one principal (default 20, at most 100). Ready means pending and past `available_at`.
+  - **Crash replay:** a claim older than `claimTimeoutMs` (10 min) is reclaimed. A stale claim that has used `maxAttempts` (3) is failed rather than retried forever.
+  - **Fencing:** settling needs the `claimId` from the claim. A run whose claim was taken over gets `false` and can't overwrite the newer run's result.
+  - **Retries:** `failEvent` puts the event back with a backoff (30 s × attempts) while attempts remain. `retry: false` fails it at once.
+  - **Deferral:** `deferEvent` parks an event while a run waits on an approval. Resuming the run arrives in a later step.
+  - **Limits:** payloads are capped at 256 KB.
+- **`agent_events` table.** It is in `schema.sql` for fresh installs. Existing databases need `migrations/0002_agent_events.sql`.
+
+Not in this release: the runner Durable Object, timers, resumable approvals and the outbox (#100 steps 2–5). Nothing calls the inbox yet, so existing behaviour is unchanged.
+
 ## 0.11.2 (2026-11-13)
 
 ### Fixed
