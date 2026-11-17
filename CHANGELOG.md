@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.12.0 (2026-11-16)
+
+### Added
+- **Agent event inbox (`@stackbilt/aegis-core/kernel/events`).** This is step 1 of the always-on run model (#100). Every source of work (chat, webhooks, timers, approvals, other agents) can now call `enqueueEvent()` and return instead of starting a run itself. A runner then takes the events in batches with `claimBatch()`, keeps them during a long run with `renewClaim()`, and settles each with `completeEvent()`, `failEvent()` or `deferEvent()`. See [docs/agent-events.md](docs/agent-events.md).
+  - **Dedup:** `(principal, source, source_id)` is unique for the life of the row, so a redelivered webhook returns the existing event with `duplicate: true`, even after the first copy is done. The same source ID in two principals' inboxes is two events. Events without a `sourceId` are never deduped.
+  - **Claiming:** a single `UPDATE … RETURNING` statement claims the oldest ready events for one principal (default 20, at most 100). Ready means pending and past `available_at`.
+  - **Leases:** a claim holds its events until its own `lease_until` (default 10 min), so a caller passing a short lease can't take another claim's events. When a lease lapses (a crashed run), the events are reclaimed.
+  - **Attempts:** each event stores its own `max_attempts` (default 3), so claiming and retrying always use the same limit. A lapsed lease with no attempts left is failed rather than retried forever.
+  - **Fencing:** settling and renewing need the `claimId` from the claim. A run whose lease was taken over gets `false` (or `0` from `renewClaim`) and can't overwrite the newer run's result. This doesn't undo side effects the old run already caused.
+  - **Retries:** `failEvent` puts the event back with a backoff (30 s × attempts) while attempts remain. `retry: false` fails it at once.
+  - **Deferral:** `deferEvent` parks an event while a run waits on an approval, with its reason in `defer_reason`. Resuming the run arrives in a later step. `countOpenEvents` reports pending, claimed and deferred.
+  - **Validation:** payloads must be JSON-serialisable and at most 256 KB. Non-finite limits, leases and attempt counts, and invalid dates, throw before touching the database.
+- **`agent_events` table.** It is in `schema.sql` for fresh installs. Existing databases need `migrations/0002_agent_events.sql`.
+
+Not in this release: the runner Durable Object, timers, resumable approvals and the outbox (#100 steps 2–5). Nothing calls the inbox yet, so existing behaviour is unchanged.
+
 ## 0.11.2 (2026-11-13)
 
 ### Fixed

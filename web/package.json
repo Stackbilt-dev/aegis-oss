@@ -1,6 +1,6 @@
 {
   "name": "@stackbilt/aegis-core",
-  "version": "0.11.2",
+  "version": "0.12.0",
   "description": "Persistent AI agent framework for Cloudflare Workers. Multi-tier memory, autonomous goals, dreaming cycles, MCP native.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -40,6 +40,7 @@
     "./kernel/executor-router": "./src/kernel/executor-router.ts",
     "./kernel/provider-factory": "./src/kernel/provider-factory.ts",
     "./kernel/executors": "./src/kernel/executors/index.ts",
+    "./kernel/events": "./src/kernel/events.ts",
     "./kernel/scheduled": "./src/kernel/scheduled/index.ts",
     "./kernel/scheduled/dreaming": "./src/kernel/scheduled/dreaming.ts",
     "./kernel/scheduled/issue-watcher": "./src/kernel/scheduled/issue-watcher.ts",

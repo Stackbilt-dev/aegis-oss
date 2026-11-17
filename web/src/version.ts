@@ -1,3 +1,3 @@
 // Semantic version - bump on each deploy
 // Used in /health endpoint and changelog tracking
-export const VERSION = '0.11.2';
+export const VERSION = '0.12.0';
