@@ -13,8 +13,17 @@
   - **Deferral:** `deferEvent` parks an event while a run waits on an approval, with its reason in `defer_reason`. Resuming the run arrives in a later step. `countOpenEvents` reports pending, claimed and deferred.
   - **Validation:** payloads must be JSON-serialisable and at most 256 KB. Non-finite limits, leases and attempt counts, and invalid dates, throw before touching the database.
 - **`agent_events` table.** It is in `schema.sql` for fresh installs. Existing databases need `migrations/0002_agent_events.sql`.
+- **Agent runner (`@stackbilt/aegis-core/durable-objects/agent-runner`, `…/kernel/runner`).** `createAgentRunnerDO({ handle })` returns a Durable Object class, one instance per principal, that drains the inbox.
+  - **Waking:** sources call `enqueueAndNotify()` (or `enqueueEvent` + `notifyRunner`). The first notify sets an alarm 2 s out, so a burst becomes one run.
+  - **Running:** the alarm runs `handle(events, ctx, env)` once per batch, renews the lease every `leaseMs / 3`, and settles each event from the handler's result. The result can be nothing (all done), one outcome for all, or a per-event map. An event missing from the map is retried, and a throw retries every event.
+  - **Rescheduling:** the alarm repeats until the inbox is idle, up to 5 runs per alarm. It then sets the next alarm from `nextReadyAt()`, so retries and crashed runs come back on their own.
+  - **Lease loss:** `ctx.signal` aborts when the run loses its lease.
+  - **Status:** `GET /status` reports the last alarm's totals.
+  - **One run at a time:** alarms never overlap, so each principal has one active run.
+  - See [docs/agent-events.md#runner](docs/agent-events.md#runner). The wrangler binding is in `wrangler.toml.example`, commented out.
+- **`nextReadyAt(db, principal)`** in `kernel/events`.
 
-Not in this release: the runner Durable Object, timers, resumable approvals and the outbox (#100 steps 2–5). Nothing calls the inbox yet, so existing behaviour is unchanged.
+Not in this release: folding or interrupting runs when events arrive mid-run, timers, resumable approvals and the outbox (#100 steps 2–5). Nothing in core calls the inbox or the runner yet, so existing behaviour is unchanged.
 
 ## 0.11.2 (2026-11-13)
 

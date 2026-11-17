@@ -101,3 +101,17 @@ crons = ["0 * * * *"]
 # [[migrations]]
 # tag = "v3-task-executor"
 # new_sqlite_classes = ["Sandbox", "TaskExecutorDO"]
+
+# ─── Agent runner (optional) ─────────────────────────────────
+# One Durable Object per principal that drains the agent_events inbox.
+# Guide: docs/agent-events.md#runner. In your Worker:
+#   export const AgentRunnerDO = createAgentRunnerDO({ handle: async (events, ctx, env) => { ... } });
+# Then uncomment:
+#
+# [[durable_objects.bindings]]
+# name = "AGENT_RUNNER"
+# class_name = "AgentRunnerDO"
+#
+# [[migrations]]
+# tag = "v4-agent-runner"
+# new_sqlite_classes = ["AgentRunnerDO"]

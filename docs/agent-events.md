@@ -54,9 +54,51 @@ source ──enqueueEvent──▶ agent_events ──claimBatch──▶ run �
 - `limit` (1–100), `leaseMs` (up to 24 h) and `maxAttempts` must be finite numbers of at least 1. Dates must be valid. Anything else throws before touching the database.
 - Timestamps are ISO 8601 strings from `Date#toISOString()` and are compared as text. Don't write rows with SQLite's `datetime('now')`, which uses a different format.
 
+## Runner
+
+Modules: `@stackbilt/aegis-core/kernel/runner` (the loop, with no Durable Object code) and `@stackbilt/aegis-core/durable-objects/agent-runner` (the DO).
+
+```ts
+import { createAgentRunnerDO, enqueueAndNotify } from '@stackbilt/aegis-core/durable-objects/agent-runner';
+
+export const AgentRunnerDO = createAgentRunnerDO<Env>({
+  async handle(events, ctx, env) {
+    // One run for the whole batch. Check ctx.signal before side effects.
+    // Return nothing (all done), one outcome for all, or { [event.id]: outcome }.
+  },
+});
+
+// In any handler, instead of doing the work inline:
+await enqueueAndNotify(env.DB, env.AGENT_RUNNER, { source: 'github', sourceId: deliveryId, kind: 'webhook', payload });
+```
+
+Wrangler: bind `AGENT_RUNNER` to `AgentRunnerDO` (see `wrangler.toml.example`).
+
+### How a run happens
+1. A source calls `enqueueEvent` and then `notifyRunner` (`enqueueAndNotify` does both). The runner for that principal, `idFromName(principal)`, sets an alarm `debounceMs` (default 2 s) after the **first** notify. Later notifies never push it back. This makes a burst of events one run.
+2. The alarm calls `runUntilIdle`. Each run is `drainOnce`: claim up to `batchLimit` events, call `handle` once, then settle each event. It repeats until nothing is ready, up to `maxRunsPerAlarm` runs (default 5). If that limit is hit, the runner sets the next alarm for now.
+3. Afterwards, the runner sets its next alarm for `nextReadyAt`: the earliest retry backoff or claim lease that could lapse. A crashed run's events therefore come back without any outside poke.
+
+Durable Object alarms never overlap, so a principal has at most one active run. Events that arrive mid-run wait for the next run, which starts as soon as this one ends. Folding them into the current run, or interrupting it, is not supported yet.
+
+### Outcomes
+| Handler result | Effect |
+|---|---|
+| returns nothing | every event `done` |
+| `{ status: 'done' }` / `'failed'` / `'deferred'` / `'retry'` | applied to every event |
+| `{ [eventId]: outcome }` | per event. An event missing from the map is **retried**, not dropped. |
+| throws | every event retried with the error message (a final failure once `max_attempts` is used) |
+
+While `handle` runs, the lease is renewed every `leaseMs / 3`. `ctx.renew()` renews it on demand. `ctx.signal` aborts once the run holds none of its events; stop side effects when it does. A settle refused because the claim was lost counts as `lost` in the summary.
+
+`GET /status` on the DO returns the principal, the next alarm, and the last alarm's totals. `onResult` receives every alarm's full result, for logging.
+
+### Safety net
+A lost notify (for example, the Worker failing between the insert and the notify) leaves an event pending with no alarm. Have your hourly cron call `notifyRunner` for each active principal, so nothing waits longer than an hour.
+
 ## Not yet
 
-- The runner Durable Object (one per principal, alarm-driven), and policy for events that arrive mid-run (#100 step 1, follow-up PR)
+- Folding events that arrive mid-run into the current run, or interrupting it
 - Resuming deferred events from approvals (step 2)
 - The outbox (step 3) and timers (step 4)
 - Pruning old `done`/`failed` rows

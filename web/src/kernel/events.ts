@@ -364,3 +364,19 @@ export async function countOpenEvents(db: D1Database, principal: string = DEFAUL
   }
   return counts;
 }
+
+/**
+ * When the next event for a principal could become claimable: the earliest
+ * pending available_at or claimed lease_until. null when nothing is open.
+ * A runner uses it to set its next wake-up.
+ */
+export async function nextReadyAt(db: D1Database, principal: string = DEFAULT_PRINCIPAL): Promise<Date | null> {
+  const row = await db.prepare(
+    `SELECT MIN(t) AS next FROM (
+       SELECT MIN(available_at) AS t FROM agent_events WHERE principal = ? AND status = 'pending'
+       UNION ALL
+       SELECT MIN(lease_until) AS t FROM agent_events WHERE principal = ? AND status = 'claimed'
+     )`,
+  ).bind(principal, principal).first<{ next: string | null }>();
+  return row?.next ? new Date(row.next) : null;
+}
