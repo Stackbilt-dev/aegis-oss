@@ -15,13 +15,22 @@
 - **`agent_events` table.** It is in `schema.sql` for fresh installs. Existing databases need `migrations/0002_agent_events.sql`.
 - **Agent runner (`@stackbilt/aegis-core/durable-objects/agent-runner`, `…/kernel/runner`).** `createAgentRunnerDO({ handle })` returns a Durable Object class, one instance per principal, that drains the inbox.
   - **Waking:** sources call `enqueueAndNotify()` (or `enqueueEvent` + `notifyRunner`). The first notify sets an alarm 2 s out, so a burst becomes one run.
-  - **Running:** the alarm runs `handle(events, ctx, env)` once per batch, renews the lease every `leaseMs / 3`, and settles each event from the handler's result. The result can be nothing (all done), one outcome for all, or a per-event map. An event missing from the map is retried, and a throw retries every event.
-  - **Rescheduling:** the alarm repeats until the inbox is idle, up to 5 runs per alarm. It then sets the next alarm from `nextReadyAt()`, so retries and crashed runs come back on their own.
+  - **Running:** the alarm runs `handle(events, ctx, env)` once per batch, renews the lease every `leaseMs / 3`, and settles each event from the handler's result. The handler doesn't get the claim ID and must not settle events itself.
+  - **Handler results:**
+    - Nothing (`undefined` or `null`) means all done. One outcome applies to all events, and a per-event map settles each one.
+    - An event missing from the map, or mapped to an invalid outcome, is retried.
+    - A throw, or any other result, retries every event and records the error.
+  - **Settle failures:** a settle that throws is counted in `settleErrors`, and the rest of the batch is still settled.
+  - **Rescheduling:**
+    - The alarm repeats until the inbox is idle, up to 5 runs or 10 minutes (`runDeadlineMs`) per alarm, so it stays inside the platform's alarm time limit.
+    - It then sets the next alarm from `nextReadyAt()`, so retries and crashed runs come back on their own.
+    - The next alarm is set **before** `onResult` runs. `onResult` gets 5 s.
+  - **Failures:** the alarm never throws. Errors go to `/status` with the platform's `retryCount`, and the runner sets its own retry alarm 60 s later. Invalid configuration throws when the class is created.
   - **Lease loss:** `ctx.signal` aborts when the run loses its lease.
-  - **Status:** `GET /status` reports the last alarm's totals.
+  - **Status:** `GET /status` reports the last alarm's totals and errors.
   - **One run at a time:** alarms never overlap, so each principal has one active run.
   - See [docs/agent-events.md#runner](docs/agent-events.md#runner). The wrangler binding is in `wrangler.toml.example`, commented out.
-- **`nextReadyAt(db, principal)`** in `kernel/events`.
+- **`nextReadyAt(db, principal)`, `normalizePrincipal()` and `PRINCIPAL_PATTERN`** in `kernel/events`. Every inbox function now checks principals against `^[\w.@:-]{1,128}$`, which is the runner's own rule. An event can therefore never be stored under a name no runner accepts, and `enqueueAndNotify` checks before writing anything.
 
 Not in this release: folding or interrupting runs when events arrive mid-run, timers, resumable approvals and the outbox (#100 steps 2–5). Nothing in core calls the inbox or the runner yet, so existing behaviour is unchanged.
 

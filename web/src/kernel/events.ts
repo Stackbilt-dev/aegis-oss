@@ -98,11 +98,13 @@ export interface FailOptions {
 export const MAX_EVENT_PAYLOAD_BYTES = 256 * 1024;
 export const DEFAULT_LEASE_MS = 10 * 60 * 1000;
 export const DEFAULT_MAX_ATTEMPTS = 3;
-const DEFAULT_PRINCIPAL = 'operator';
+export const DEFAULT_PRINCIPAL = 'operator';
+/** Principal names double as the runner Durable Object name, so they are kept to a safe charset. */
+export const PRINCIPAL_PATTERN = /^[\w.@:-]{1,128}$/;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const MAX_ATTEMPTS_CAP = 20;
-const MAX_LEASE_MS = 24 * 60 * 60 * 1000;
+export const MAX_LEASE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RETRY_BASE_MS = 30 * 1000;
 const MAX_TEXT_CHARS = 1000;
 
@@ -179,6 +181,22 @@ function validDate(value: Date | undefined, field: string): Date | undefined {
   return value;
 }
 
+/**
+ * Trim a principal, default it to 'operator', and check it against
+ * PRINCIPAL_PATTERN. Every inbox function and the runner use this, so an
+ * event can never be stored under a name no runner accepts.
+ */
+export function normalizePrincipal(value: string | undefined | null): string {
+  if (value == null) return DEFAULT_PRINCIPAL;
+  if (typeof value !== 'string') throw new Error('agent event: principal must be a string');
+  const trimmed = value.trim();
+  if (!trimmed) return DEFAULT_PRINCIPAL;
+  if (!PRINCIPAL_PATTERN.test(trimmed)) {
+    throw new Error(`agent event: principal must match ${PRINCIPAL_PATTERN.source}`);
+  }
+  return trimmed;
+}
+
 function iso(date: Date): string {
   return date.toISOString();
 }
@@ -194,7 +212,7 @@ function clip(text: string | undefined | null): string | null {
 export async function enqueueEvent(db: D1Database, input: EnqueueEventInput, now: Date = new Date()): Promise<EnqueueEventResult> {
   const source = requireText(input.source, 'source');
   const kind = requireText(input.kind, 'kind');
-  const principal = typeof input.principal === 'string' && input.principal.trim() ? input.principal.trim() : DEFAULT_PRINCIPAL;
+  const principal = normalizePrincipal(input.principal);
   const sourceId = typeof input.sourceId === 'string' && input.sourceId.trim() ? input.sourceId.trim() : null;
   const maxAttempts = boundedInt(input.maxAttempts, DEFAULT_MAX_ATTEMPTS, MAX_ATTEMPTS_CAP, 'maxAttempts');
   validDate(now, 'now');
@@ -234,7 +252,7 @@ export async function enqueueEvent(db: D1Database, input: EnqueueEventInput, now
  * claims with no attempts left are failed instead.
  */
 export async function claimBatch(db: D1Database, options: ClaimOptions = {}): Promise<ClaimedBatch> {
-  const principal = typeof options.principal === 'string' && options.principal.trim() ? options.principal.trim() : DEFAULT_PRINCIPAL;
+  const principal = normalizePrincipal(options.principal);
   const limit = boundedInt(options.limit, DEFAULT_LIMIT, MAX_LIMIT, 'limit');
   const leaseMs = boundedInt(options.leaseMs, DEFAULT_LEASE_MS, MAX_LEASE_MS, 'leaseMs');
   const now = validDate(options.now, 'now') ?? new Date();
@@ -350,7 +368,8 @@ export async function deferEvent(db: D1Database, id: string, claimId: string, op
 }
 
 /** Open events for a principal by status, e.g. for /health or a runner's alarm. */
-export async function countOpenEvents(db: D1Database, principal: string = DEFAULT_PRINCIPAL): Promise<{ pending: number; claimed: number; deferred: number }> {
+export async function countOpenEvents(db: D1Database, principalInput?: string): Promise<{ pending: number; claimed: number; deferred: number }> {
+  const principal = normalizePrincipal(principalInput);
   const result = await db.prepare(
     `SELECT status, COUNT(*) AS n FROM agent_events
       WHERE principal = ? AND status IN ('pending', 'claimed', 'deferred')
@@ -370,7 +389,8 @@ export async function countOpenEvents(db: D1Database, principal: string = DEFAUL
  * pending available_at or claimed lease_until. null when nothing is open.
  * A runner uses it to set its next wake-up.
  */
-export async function nextReadyAt(db: D1Database, principal: string = DEFAULT_PRINCIPAL): Promise<Date | null> {
+export async function nextReadyAt(db: D1Database, principalInput?: string): Promise<Date | null> {
+  const principal = normalizePrincipal(principalInput);
   const row = await db.prepare(
     `SELECT MIN(t) AS next FROM (
        SELECT MIN(available_at) AS t FROM agent_events WHERE principal = ? AND status = 'pending'

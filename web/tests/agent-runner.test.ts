@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createSqliteD1 } from './helpers/sqlite-d1.js';
-import { enqueueEvent, claimBatch, countOpenEvents } from '../src/kernel/events.js';
-import { drainOnce, runUntilIdle, type BatchHandler } from '../src/kernel/runner.js';
+import { enqueueEvent, claimBatch, countOpenEvents, MAX_LEASE_MS } from '../src/kernel/events.js';
+import { drainOnce, runUntilIdle, normalizeLeaseMs, type BatchHandler } from '../src/kernel/runner.js';
 import { createAgentRunnerDO, notifyRunner, enqueueAndNotify } from '../src/durable-objects/agent-runner.js';
 
 const SCHEMA = readFileSync(fileURLToPath(new URL('../schema.sql', import.meta.url)), 'utf8');
@@ -275,5 +275,185 @@ describe('notifyRunner / enqueueAndNotify', () => {
     const b = await enqueueAndNotify(db, ns, { source: 'github', sourceId: 'd1', kind: 'webhook' });
     expect(b).toEqual({ id: a.id, duplicate: true });
     expect(calls.map(c => c.name)).toEqual(['operator', 'operator']);
+  });
+});
+
+// ─── Review fixes (#102) ──────────────────────────────────────
+
+/** Wrap a D1 so the nth run() of a statement containing `match` throws. */
+function failingDb(inner: D1Database, match: string, nth: number): D1Database {
+  let seen = 0;
+  return {
+    prepare(sql: string) {
+      const stmt = inner.prepare(sql);
+      if (!sql.includes(match)) return stmt;
+      const wrapped = {
+        bind(...args: unknown[]) { stmt.bind(...args); return wrapped; },
+        first: (...a: any[]) => (stmt as any).first(...a),
+        all: () => stmt.all(),
+        run: async () => {
+          seen++;
+          if (seen === nth) throw new Error('D1 down');
+          return stmt.run();
+        },
+      };
+      return wrapped as unknown as D1PreparedStatement;
+    },
+  } as unknown as D1Database;
+}
+
+describe('handler results (review fixes)', () => {
+  it('treats a null result as all done', async () => {
+    const { id } = await enqueue();
+    const summary = await drainOnce(db, async () => null);
+    expect(summary).toMatchObject({ done: 1, settleErrors: 0 });
+    expect(row(id).status).toBe('done');
+  });
+
+  it.each([
+    ['a string', 'ok'],
+    ['a number', 42],
+    ['an array', [{ status: 'done' }]],
+  ])('retries every event when the handler returns %s', async (_label, value) => {
+    const a = await enqueue();
+    const b = await enqueue();
+    const summary = await drainOnce(db, async () => value as any);
+    expect(summary).toMatchObject({ claimed: 2, retried: 2, done: 0 });
+    expect(summary.error).toMatch(/invalid result/);
+    expect(row(a.id).status).toBe('pending');
+    expect(row(b.id).error).toMatch(/invalid result/);
+  });
+
+  it('retries on an invalid single outcome', async () => {
+    await enqueue();
+    const summary = await drainOnce(db, async () => ({ status: 'retry' }) as any); // no error string
+    expect(summary).toMatchObject({ retried: 1 });
+    expect(summary.error).toMatch(/invalid outcome/);
+  });
+
+  it('retries an event mapped to an invalid outcome', async () => {
+    const ok = await enqueue();
+    const bad = await enqueue();
+    const summary = await drainOnce(db, async () => ({ [ok.id]: { status: 'done' }, [bad.id]: { status: 'nope' } }) as any);
+    expect(summary).toMatchObject({ done: 1, retried: 1 });
+    expect(row(bad.id).error).toBe('handler returned an invalid outcome for this event');
+  });
+
+  it('keeps settling after one settle throws, and reports it', async () => {
+    const ids = [(await enqueue()).id, (await enqueue()).id, (await enqueue()).id];
+    const flaky = failingDb(db, "SET status = 'done'", 2);
+    const summary = await drainOnce(flaky, async () => undefined);
+    expect(summary).toMatchObject({ claimed: 3, done: 2, settleErrors: 1 });
+    expect(summary.error).toMatch(/settle failed: D1 down/);
+    expect(ids.map(id => row(id).status).sort()).toEqual(['claimed', 'done', 'done']);
+  });
+
+  it('does not hand the claim id to the handler', async () => {
+    await enqueue();
+    let keys: string[] = [];
+    await drainOnce(db, async (_e, ctx) => { keys = Object.keys(ctx); });
+    expect(keys.sort()).toEqual(['principal', 'renew', 'runId', 'signal']);
+  });
+});
+
+describe('limits (review fixes)', () => {
+  it('runUntilIdle starts no new run after the deadline', async () => {
+    for (let i = 0; i < 3; i++) await enqueue();
+    const result = await runUntilIdle(db, async () => undefined, { batchLimit: 1, deadlineMs: 0 });
+    expect(result.runs).toHaveLength(1);
+    expect(result.more).toBe(true);
+  });
+
+  it('normalizeLeaseMs validates and clamps like claimBatch', () => {
+    expect(normalizeLeaseMs(undefined)).toBe(10 * MIN);
+    expect(normalizeLeaseMs(1e15)).toBe(MAX_LEASE_MS);
+    expect(() => normalizeLeaseMs(NaN)).toThrow(/leaseMs/);
+    expect(() => normalizeLeaseMs(0)).toThrow(/leaseMs/);
+  });
+
+  it('enqueueEvent rejects a principal no runner could accept, before inserting', async () => {
+    await expect(enqueueEvent(db, { source: 's', kind: 'k', principal: 'has space' })).rejects.toThrow(/principal must match/);
+    await expect(enqueueEvent(db, { source: 's', kind: 'k', principal: 'x'.repeat(129) })).rejects.toThrow(/principal must match/);
+    expect((db as any).raw.prepare('SELECT COUNT(*) AS n FROM agent_events').get().n).toBe(0);
+  });
+
+  it('enqueueAndNotify rejects a bad principal without writing or notifying', async () => {
+    const fetchSpy = vi.fn();
+    const ns = { idFromName: (n: string) => n, get: () => ({ fetch: fetchSpy }) } as unknown as DurableObjectNamespace;
+    await expect(enqueueAndNotify(db, ns, { source: 's', kind: 'k', principal: 'Kurt O' })).rejects.toThrow(/principal must match/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect((db as any).raw.prepare('SELECT COUNT(*) AS n FROM agent_events').get().n).toBe(0);
+  });
+});
+
+describe('AgentRunnerDO (review fixes)', () => {
+  /** Fire the alarm the way the platform does: it is cleared first, so getAlarm() is null during the handler. */
+  async function fire(r: { runner: any; state: ReturnType<typeof fakeState> }, info?: { retryCount: number }) {
+    r.state.clearAlarm();
+    await r.runner.alarm(info);
+  }
+
+  it('rejects invalid configuration when the class is created', () => {
+    expect(() => createAgentRunnerDO({} as any)).toThrow(/handle is required/);
+    expect(() => createAgentRunnerDO({ handle: async () => undefined, batchLimit: 0 })).toThrow(/batchLimit/);
+    expect(() => createAgentRunnerDO({ handle: async () => undefined, leaseMs: NaN })).toThrow(/leaseMs/);
+    expect(() => createAgentRunnerDO({ handle: async () => undefined, debounceMs: -1 })).toThrow(/debounceMs/);
+  });
+
+  it('sets the next alarm before onResult runs, and a hanging onResult cannot block the alarm', async () => {
+    let alarmSeenByOnResult: number | null = null;
+    const r: any = makeRunner(async () => ({ status: 'retry', error: 'busy', retryDelayMs: 60_000 }), {
+      onResultTimeoutMs: 20,
+      onResult: () => { alarmSeenByOnResult = r.state.alarm; return new Promise(() => {}); },
+    });
+    await enqueue();
+    await notify(r.runner);
+    await fire(r);
+    expect(alarmSeenByOnResult).not.toBeNull();
+    expect(r.state.alarm).toBeGreaterThan(Date.now() + 50_000);
+  });
+
+  it('never throws: a failing alarm records the error and schedules its own retry', async () => {
+    const broken = { prepare() { throw new Error('D1 unavailable'); } } as unknown as D1Database;
+    const r = makeRunner(async () => undefined, { db: () => broken, errorBackoffMs: 30_000 });
+    await notify(r.runner);
+    const before = Date.now();
+    await expect(fire(r, { retryCount: 2 })).resolves.toBeUndefined();
+    expect(r.state.alarm).toBeGreaterThanOrEqual(before + 30_000);
+    const status = await (await r.runner.fetch(new Request('https://agent-runner/status'))).json() as any;
+    expect(status.last).toMatchObject({ ok: false, retryCount: 2, errors: ['D1 unavailable'] });
+  });
+
+  it('an event that arrives mid-run is handled in a later run, not lost', async () => {
+    let calls = 0;
+    const r: any = makeRunner(async () => {
+      calls++;
+      if (calls === 1) {
+        await enqueue({ source: 'chat', sourceId: 'mid-run' });
+        await notify(r.runner);
+      }
+    });
+    await enqueue();
+    await notify(r.runner);
+    await fire(r);
+    if ((await countOpenEvents(db)).pending > 0) {
+      // Not drained in the same wake-up: the mid-run notify must have left an alarm due within the debounce.
+      expect(r.state.alarm).not.toBeNull();
+      expect(r.state.alarm).toBeLessThanOrEqual(Date.now() + 2000);
+      await fire(r);
+    }
+    expect(await countOpenEvents(db)).toEqual({ pending: 0, claimed: 0, deferred: 0 });
+    expect(calls).toBe(2);
+  });
+
+  it('records settle errors in status and wakes again when the stuck lease lapses', async () => {
+    const r = makeRunner(async () => undefined, { db: () => failingDb(db, "SET status = 'done'", 1) });
+    await enqueue();
+    await notify(r.runner);
+    await fire(r);
+    const status = await (await r.runner.fetch(new Request('https://agent-runner/status'))).json() as any;
+    expect(status.last).toMatchObject({ ok: true, settleErrors: 1 });
+    expect(status.last.errors[0]).toMatch(/settle failed/);
+    expect(r.state.alarm).toBeGreaterThan(Date.now() + 5 * MIN);
   });
 });
